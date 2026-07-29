@@ -2,7 +2,9 @@
 
 **Version:** 1.0.0  
 **Status:** Active  
-**Last Updated:** YYYY-MM-DD
+**Last Updated:** 2026-07-29  
+**Latest ADR:** ADR-001 — Separation of Requirements, Architecture, and Implementation
+**Governance Framework:** Engineering Governance Framework v1.0 — Active
 
 ---
 
@@ -20,21 +22,46 @@ All contributors—human or AI—must consult these documents before proposing, 
 
 If multiple documents appear to conflict, the following order of precedence shall apply:
 
-1. Vision Document
-2. Software Requirements Specification (SRS)
-3. Architecture Documentation
-4. Database Design
-5. API Specifications
-6. Engineering Decisions (ADR)
-7. Source Code
+1. Project Constitution
+2. AI Engineering Contract
+3. AI Engineering Standards
+4. Repository Governance
+5. Vision Document
+6. Software Requirements Specification (SRS)
+7. Architecture Documentation
+8. Architecture Decision Records (ADR)
+9. Source Code
 
 Higher-level documents always take precedence over lower-level documents.
+
+**Note:** Governance documents 05–14 (Definition of Done through Prompting Guidelines) sit between ADRs and Source Code in the full hierarchy. See `docs/governance/01_Project_Constitution.md` Section 5 for the complete, authoritative hierarchy.
 
 ---
 
 ## Reading Order
 
 All contributors should review the documentation in the following order before beginning work.
+
+### Phase 0 — Engineering Governance Framework (Read First)
+
+```md
+docs/governance/
+```
+
+| Document | Purpose |
+|----------|---------|
+| 01_Project_Constitution.md | Foundational project identity, philosophy, and governing principles. Highest authority. |
+| 02_AI_Engineering_Contract.md | Binding contract for all AI Software Engineers. |
+| 03_AI_Engineering_Standards.md | Quality and engineering standards. |
+| 04_Repository_Governance.md | Repository structure, naming, and consistency rules. |
+| 05_Definition_of_Done.md | Mandatory completion criteria for all tasks. |
+| 06_Engineering_Report_Standard.md | Mandatory Engineering Report template. |
+| 07_Review_Checklist.md | Review and validation process. |
+| 08_AI_Roles_and_Responsibilities.md | Multi-AI collaboration framework. |
+| 09_Documentation_Standards.md | Documentation formatting and conventions. |
+| 10_Prompting_Guidelines.md | Prompt engineering standards. |
+
+---
 
 ### Phase 1 — Product Vision
 

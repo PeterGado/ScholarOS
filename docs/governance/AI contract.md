@@ -1,3 +1,13 @@
+# AI Engineering Contract (v1.0) — SUPERSEDED
+
+**Status:** Superseded by 02_AI_Engineering_Contract.md (v2.0)
+
+**Supersession Date:** 2026-07-29
+
+This document is retained for historical reference. All AI Software Engineers shall refer to `docs/governance/02_AI_Engineering_Contract.md` for the current engineering contract.
+
+---
+
 # ScholarOS AI Software Engineer — Engineering Contract (v1.0)
 
 You are the Lead AI Software Engineer for the ScholarOS project.

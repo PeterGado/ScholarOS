@@ -390,12 +390,17 @@ The intelligence layer shall be considered complete only when each major behavio
 * AIR-061: Every intelligence-related requirement shall be traceable to the approved ScholarOS vision, system responsibilities, and research workflow expectations.
 * AIR-062: The intelligence layer shall be documented and tested in a manner that supports explicit traceability from requirement to user-visible behavior.
 
----
-
-## 25. Summary
+---## 25. Summary
 
 Chapter 6 defines the AI and intelligence requirements for ScholarOS.
-
 The intelligence layer shall provide evidence-grounded, project-aware, human-supervised assistance that understands research before writing, preserves author voice, supports retrieval and context construction, remains provider-agnostic, and keeps the researcher responsible for the final academic judgment.
+
+**Forward traceability:**
+
+- **Chapter 7 (Data Requirements)** — Defines the data domains (knowledge, author profile, project memory, evidence traceability) that the intelligence layer operates on.
+- **Chapter 8 (User Workflows)** — Defines the workflow stages in which the intelligence layer participates (knowledge building, context assembly, drafting, review).
+- **Chapter 9 (API Requirements)** — Defines the external AI provider interface and internal service boundaries through which the intelligence layer is accessed.
+- **Chapter 10 (MVP Scope)** — Identifies which AI capabilities are implemented in the first release and which are deferred.
+- **Chapter 11 (Future Roadmap)** — Schedules advanced AI capabilities (Phase 7: Advanced Intelligence, and capability extensions across earlier phases) beyond the MVP.
 
 The chapter establishes the conceptual requirements for a modular intelligence subsystem that supports understanding, reasoning, drafting, refinement, and oversight without prescribing implementation details.

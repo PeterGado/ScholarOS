@@ -296,12 +296,17 @@ This section extends the project lifecycle and continuity concepts introduced in
 
 This section is about tracking the evolution of project artifacts and decisions, not about the generation or review of content itself.
 
----
-
-## 3. Functional Traceability Summary
+---## 3. Functional Traceability Summary
 
 The organization in this chapter is intended to remain traceable to the approved project documentation.
-
 The major functional areas above shall later be decomposed into specific functional requirements with unique identifiers, each traceable to the product objectives described in Chapter 2 and the system responsibilities described in Chapter 3.
 
 No functional area in this chapter is intended to introduce implementation detail, database design, or interface design. The purpose of this chapter is to provide a logical functional structure for later requirement specification.
+
+**Forward traceability:** The functional domains defined in this chapter are further specified and scoped by later SRS chapters:
+
+- **Chapter 7 (Data Requirements)** — Defines the data domains that support each functional area.
+- **Chapter 8 (User Workflows)** — Operationalizes each functional area as user-facing workflow stages.
+- **Chapter 9 (API Requirements)** — Defines the service interfaces required to expose each functional area.
+- **Chapter 10 (MVP Scope)** — Identifies which functional areas are implemented in the first release and which are deferred.
+- **Chapter 11 (Future Roadmap)** — Schedules deferred functional areas into post-MVP release phases.

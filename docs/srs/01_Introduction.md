@@ -113,6 +113,8 @@ The following requirement prefixes are used throughout the SRS.
 | DR | Data Requirement |
 | WR | Workflow Requirement |
 | API | API Requirement |
+| MVP | MVP Scope Requirement |
+| RDM | Roadmap Requirement |
 | DC | Design Constraint |
 
 Each requirement shall have a unique identifier to support traceability, implementation, and testing.
@@ -124,6 +126,16 @@ FR-001
 NFR-003
 
 AIR-014
+
+DR-021
+
+WR-008
+
+API-015
+
+MVP-005
+
+RDM-003
 
 ---
 

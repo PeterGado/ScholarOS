@@ -1,3 +1,13 @@
+# Base Instructions — SUPERSEDED
+
+**Status:** Superseded by 01_Project_Constitution.md and 02_AI_Engineering_Contract.md
+
+**Supersession Date:** 2026-07-29
+
+This document is retained for historical reference. The Project Constitution (01_Project_Constitution.md) and the AI Engineering Contract (02_AI_Engineering_Contract.md) define the foundational governance rules previously contained in this file.
+
+---
+
 # Base Instructions
 
 ## Role
