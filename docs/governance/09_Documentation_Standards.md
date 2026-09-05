@@ -2,7 +2,7 @@
 
 **Document:** 09_Documentation_Standards.md
 
-**Governance Framework:** Engineering Governance Framework v1.0
+**Governance Framework:** Engineering Governance Framework v2.0
 
 **Status:** Active
 
@@ -58,7 +58,7 @@ Every document shall begin with a document header:
 Governance documents shall also include:
 
 ```md
-**Governance Framework:** Engineering Governance Framework v1.0
+**Governance Framework:** Engineering Governance Framework v2.0
 
 **Authority:** [Position in hierarchy]
 ```
@@ -109,7 +109,7 @@ Governance documents shall also include:
 
 - Documentation is a living artifact. It shall be updated when requirements, architecture, or implementation change.
 - Outdated documentation is considered technical debt.
-- Documentation maintenance shall be tracked in the Journal.
+- Documentation maintenance shall be tracked in the journal (`docs/journal/`).
 
 ---
 
@@ -124,19 +124,40 @@ Governance documents shall also include:
 
 ### 6.2 ADRs
 
-- Must follow the structure defined in the existing ADR template (see ADR-001).
-- Required sections: Title, Status, Date, Context, Problem Statement, Decision, Rationale, Consequences, Alternatives Considered, Future Considerations, References.
+- Must follow the ADR structure defined in ADR-001.
+- ADRs shall answer four questions: What decision was made? Why was it made? What alternatives were rejected? What consequences follow?
+- ADRs must not duplicate governance, policy, or procedural rules. Where a topic is governed by another document, ADRs shall reference that document rather than redefining its rules.
+- Standard sections (see ADR-001 for exemplar content):
+  1. **Title and Metadata** — ADR number, descriptive title, status, date, author, governance framework reference
+  2. **Status** — Current status (Accepted, Proposed, Deprecated, Superseded) with explanatory note
+  3. **Context** — Background, motivation, and relevant project state
+  4. **Problem** — Clear statement of the problem being addressed
+  5. **Decision** — The architectural decision with scope and boundaries
+  6. **Rationale** — Reasons justifying the decision, with governance references
+  7. **Alternatives Considered** — Each alternative with description and rejection rationale
+  8. **Consequences** — Positive, negative, and neutral consequences with mitigations
+  9. **Repository Impact** — Concise reference to the repository governance document that defines structural implications
+  10. **AI Engineering Implications** — Concise reference to the AI Engineering Contract and Prompting Guidelines that govern AI behavior
+  11. **Compliance Rules** — Concise reference to the Review Checklist and Definition of Done that enforce compliance
+  12. **Related ADRs** — References to related ADRs and their relationships
+  13. **Future Considerations** — Areas for future ADR refinement
+  14. **References** — Complete list of referenced documents with section numbers
 - Must be numbered sequentially (ADR-001, ADR-002, etc.).
+- Sections 9, 10, and 11 shall contain governance references — not duplicated operational rules. The authoritative governance documents are:
+  - Repository Impact → 04_Repository_Governance.md
+  - AI Engineering Implications → 02_AI_Engineering_Contract.md, 10_Prompting_Guidelines.md
+  - Compliance Rules → 07_Review_Checklist.md, 05_Definition_of_Done.md
+- The ADR template is defined by ADR-001. Future ADRs may add sections as needed but must include all standard sections or explain why a section is not applicable.
 
 ### 6.3 Governance Documents
 
 - Must include document header, purpose, and relationship table to other governance documents.
 - Must be numbered sequentially (01_, 02_, etc.).
-- Must cross-reference related governance documents.
+- Must cross-reference related governance documents, including the standing responsibilities (11_Engineering_Responsibilities.md) and the Master Execution Prompt (12_Master_Execution_Prompt.md).
 
 ### 6.4 README Files
 
-- The root `docs/README.md` serves as the documentation index.
+- The root `docs/READme.md` serves as the documentation index.
 - Module-level README files shall explain purpose, setup, and usage.
 - README files shall be updated when the documentation structure changes.
 
@@ -179,6 +200,8 @@ Governance documents shall also include:
 | 03_AI_Engineering_Standards.md | Documentation quality expectations are defined in Standards. |
 | 04_Repository_Governance.md | Naming conventions and file organization are defined in Governance. |
 | 07_Review_Checklist.md | Documentation review is part of the review process. |
+| 11_Engineering_Responsibilities.md | Responsibility outputs are recorded in documentation per these standards. |
+| 12_Master_Execution_Prompt.md | The Master Execution Prompt template follows these standards. |
 
 ---
 
@@ -188,4 +211,6 @@ Governance documents shall also include:
 - 03_AI_Engineering_Standards.md — Section 4 (Documentation Standards)
 - 04_Repository_Governance.md — Section 3 (Naming Conventions)
 - 07_Review_Checklist.md
+- 11_Engineering_Responsibilities.md
+- 12_Master_Execution_Prompt.md
 - ADR-001: Separation of Requirements, Architecture, and Implementation

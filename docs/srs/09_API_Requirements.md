@@ -288,3 +288,26 @@ The following constraints apply to the API layer.
 * API-041: API definitions shall remain independent of specific technology choices (protocol, serialization, authentication framework).
 * API-042: API contracts shall be defined before implementation and shall not be determined by implementation convenience.
 * API-043: API capabilities shall correspond to the functional domains and workflow stages defined in the SRS, not to internal implementation structures.
+
+---
+
+## 7. Requirement Traceability
+
+The API requirements defined in this chapter are traceable to the following sources:
+
+- **Vision Document v1.0** — Section 9 (Target Users), Section 12 (Design Philosophy)
+- **SRS Chapter 1** — Section 7 (Document Conventions)
+- **SRS Chapter 4** — Functional domains served by the API domains
+- **SRS Chapter 5** — NFR-001 to NFR-010, NFR-013 to NFR-018, NFR-023 to NFR-034 (quality targets)
+- **SRS Chapter 6** — AIR-040 to AIR-042, AIR-055 to AIR-057 (provider abstraction and configuration)
+- **SRS Chapter 7** — DR-001 to DR-025 (data domains exposed through API operations)
+- **SRS Chapter 8** — WR-001 to WR-039 (workflow stages served by API domains)
+- **SRS Chapter 10** — MVP scope for API capability selection
+- **SRS Chapter 11** — Future Roadmap for API domain extension
+- **ADR-001** — Separation of API contracts from implementation decisions
+
+---
+
+## 8. Summary
+
+Chapter 9 defines the API requirements for ScholarOS: the API philosophy, internal API domains, external service interfaces, API quality requirements, and API constraints. The API layer is defined as technology-independent (API-041 to API-043), contract-first (API-042), and aligned to the functional domains and workflow stages of the SRS rather than to internal implementation structures.

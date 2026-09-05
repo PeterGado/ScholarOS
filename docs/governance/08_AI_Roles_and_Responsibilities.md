@@ -2,7 +2,7 @@
 
 **Document:** 08_AI_Roles_and_Responsibilities.md
 
-**Governance Framework:** Engineering Governance Framework v1.0
+**Governance Framework:** Engineering Governance Framework v2.0
 
 **Status:** Active
 
@@ -32,8 +32,9 @@ ScholarOS may be developed by multiple AI assistants operating concurrently or s
 - Plan and orchestrate the implementation.
 - Delegate subtasks to supporting AI agents when appropriate.
 - Ensure all work conforms to the governance framework.
+- Execute the standing engineering responsibilities (11_Engineering_Responsibilities.md) for each session; delegate their subtasks where appropriate.
 - Produce the Engineering Report.
-- Update the Journal.
+- Update the journal (`docs/journal/`).
 
 **Authority:** Full change authority as defined in 02_AI_Engineering_Contract.md.
 
@@ -83,6 +84,23 @@ ScholarOS may be developed by multiple AI assistants operating concurrently or s
 - Does not modify any files.
 - Does not make decisions.
 
+### 2.5 AI Teacher
+
+**Scope:** An AI agent assigned to knowledge-transfer sessions (Teaching Mode, RSP-007).
+
+**Responsibilities:**
+
+- Explain governance, requirements, architecture, or code to human or AI audiences.
+- Onboard new AI engineers and contributors into the governance framework.
+- Provide guided walkthroughs grounded in the authoritative documents.
+- Produce a Teaching Report recording audience, topics covered, materials used, open questions, and follow-ups.
+
+**Limitations:**
+
+- Does not modify files unless the user explicitly requests a teaching artifact.
+- Must not simplify to the point of inaccuracy.
+- Must not contradict the governance framework.
+
 ---
 
 ## 3. Multi-AI Workflow
@@ -94,6 +112,7 @@ When multiple AI agents collaborate on a task, the following workflow applies:
 1. The Lead AI Software Engineer reviews the task and plans the work.
 2. The Lead identifies subtasks that can be delegated.
 3. The Lead assigns each subtask to a Supporting AI Engineer with clear boundaries.
+4. Teaching sessions (RSP-007) are assigned to the AI Teacher role, who reports the Teaching Report to the Lead at completion.
 
 ### 3.2 Execution
 
@@ -111,7 +130,7 @@ When multiple AI agents collaborate on a task, the following workflow applies:
 
 1. The Lead ensures all work is consistent and complete.
 2. The Lead produces the Engineering Report.
-3. The Lead updates the Journal.
+3. The Lead updates the journal (`docs/journal/`).
 
 ---
 
@@ -129,7 +148,7 @@ When handing off work between AI agents:
 
 When a session ends and another session will continue the work:
 
-- The Journal shall be updated with the current state.
+- The journal (`docs/journal/`) shall be updated with the current state.
 - The Engineering Report shall document incomplete work.
 - Outstanding decisions and unresolved issues shall be documented.
 
@@ -139,7 +158,7 @@ If two AI agents produce conflicting work:
 
 1. The Lead determines which approach is correct.
 2. The incorrect work is reverted.
-3. The root cause of the conflict is documented in the Journal.
+3. The root cause of the conflict is documented in the journal (`docs/journal/`).
 
 ---
 
@@ -169,6 +188,8 @@ AI agents may use any tool available within their environment, subject to the fo
 | 02_AI_Engineering_Contract.md | Defines the base responsibilities for all AI engineers. |
 | 07_Review_Checklist.md | AI Reviewers use this checklist for reviews. |
 | 10_Prompting_Guidelines.md | Defines how to prompt AI agents effectively. |
+| 11_Engineering_Responsibilities.md | The Lead executes the standing responsibilities; the AI Teacher performs Teaching Mode (RSP-007); Supporting roles assist within their boundaries. |
+| 12_Master_Execution_Prompt.md | Sessions are initiated with this template, which assigns role boundaries per this document. |
 
 ---
 
@@ -177,3 +198,5 @@ AI agents may use any tool available within their environment, subject to the fo
 - 02_AI_Engineering_Contract.md
 - 07_Review_Checklist.md
 - 10_Prompting_Guidelines.md
+- 11_Engineering_Responsibilities.md
+- 12_Master_Execution_Prompt.md

@@ -2,7 +2,7 @@
 
 **Document:** 07_Review_Checklist.md
 
-**Governance Framework:** Engineering Governance Framework v1.0
+**Governance Framework:** Engineering Governance Framework v2.0
 
 **Status:** Active
 
@@ -58,7 +58,8 @@ Before submitting any change for review, the contributor must verify:
 
 - [ ] The Definition of Done (05) criteria are met.
 - [ ] An Engineering Report (06) has been produced.
-- [ ] The Journal has been updated.
+- [ ] The journal (`docs/journal/`) has been updated.
+- [ ] The standing engineering responsibilities (11) applicable to the task were executed and their outputs (dependency analysis, consistency validation, documentation synchronization, reporting) are documented.
 
 ---
 
@@ -165,6 +166,7 @@ A change is approved when:
 | 05_Definition_of_Done.md | Review verifies that DoD criteria are met. |
 | 06_Engineering_Report_Standard.md | Review validates the Engineering Report. |
 | 08_AI_Roles_and_Responsibilities.md | Different AI roles perform different review levels. |
+| 11_Engineering_Responsibilities.md | Review verifies that the responsibility outputs (RSP-004 through RSP-006) are complete. |
 
 ---
 
@@ -174,3 +176,4 @@ A change is approved when:
 - 05_Definition_of_Done.md
 - 06_Engineering_Report_Standard.md
 - 08_AI_Roles_and_Responsibilities.md
+- 11_Engineering_Responsibilities.md

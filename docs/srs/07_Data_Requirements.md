@@ -39,11 +39,13 @@ The ScholarOS data model consists of the following conceptual domains. Each doma
 
 ### 3.1 Project Data
 
-Project data defines the identity, scope, and configuration of a research project.
+**Narrowed by ADR-009 (architecture-level correction, recorded here for requirements traceability):** Project data now represents the raw research material nested inside the user's Agent workspace (§3.8) — identity, topic, and source documents. Project-level configuration described below is superseded by Agent-level configuration (§3.8); DR-003 is retained as historical text and satisfied at the Agent level going forward.
+
+Project data defines the identity, scope, and source materials of a research project.
 
 #### Purpose
 
-Establish the information needed to create, identify, and manage a research project as a persistent unit of work.
+Establish the information needed to create, identify, and manage a research project as the raw-material unit of work nested inside its owning Agent.
 
 #### Content Description
 
@@ -52,14 +54,13 @@ Project data includes:
 - Project identity information (name, description, creation date)
 - Research topic and scope definitions
 - Project status and lifecycle state
-- Configuration preferences specific to the project
-- Relationships to other projects or external references
+- Relationships to its owning Agent (1:1, permanent — ADR-009)
 
 #### Requirement Statements
 
 * DR-001: The system shall maintain project identity data that uniquely identifies each research project and distinguishes it from other projects.
 * DR-002: The system shall preserve project lifecycle data including creation, modification, and status information for each project.
-* DR-003: The system shall support project-level configuration data that governs project-specific behavior without altering system-wide defaults.
+* DR-003: The system shall support project-level configuration data that governs project-specific behavior without altering system-wide defaults. **(Superseded by DR-039 — configuration is agent-level, per ADR-009; retained as historical text.)**
 
 ---
 
@@ -223,6 +224,33 @@ Configuration and preference data includes:
 
 ---
 
+### 3.8 Agent Data
+
+**Added by ADR-009**, following a product clarification recorded in `docs/journal/2026-09-04.md`. Appended as a new domain to preserve the numbering of the original seven domains (§3.1–§3.7) and their DR-001 to DR-033/DR-035 requirement statements.
+
+Agent data represents the user's permanent, specialized research workspace.
+
+#### Purpose
+
+Establish the information needed to create, identify, and manage the user's permanent workspace, which wraps exactly one research project and accumulates everything derived from or produced within it.
+
+#### Content Description
+
+Agent data includes:
+
+- Agent identity information (owning user, creation date, status)
+- The one, permanent Project the Agent owns (topic and source materials — §3.1)
+- Ownership of Knowledge, Knowledge Chunk, Project Memory, Conversation, Author Profile, Draft, and Review data (moved from Project scope to Agent scope by this correction)
+- Agent-level configuration data (moved from Project-level configuration, §3.7)
+
+#### Requirement Statements
+
+* DR-037: The system shall maintain Agent identity data that uniquely identifies each user's workspace and distinguishes it from other users' workspaces.
+* DR-038: The system shall support exactly one Agent per authenticated user in the MVP, and exactly one permanent Project per Agent that is never replaced or reassigned; additional Agents per user are a deferred, monetization-gated capability, not an MVP requirement.
+* DR-039: The system shall scope Knowledge, Project Memory, Conversation, Author Profile, Draft, Review, and Agent-level configuration data to the Agent rather than directly to the Project.
+
+---
+
 ## 4. Data Lifecycle
 
 The ScholarOS data model supports the following conceptual lifecycle stages for each data element.
@@ -279,13 +307,14 @@ The following high-level relationships exist among data domains:
 
 | Source Domain | Relates To | Nature of Relationship |
 |---------------|------------|----------------------|
-| Project | All domains | Project is the organizing container for all project-specific data. |
+| Agent | Project, Knowledge, Project Memory, Conversation, Author Profile, Draft Content, Review, Configuration | Agent is the organizing container for all workspace-specific data, owning exactly one Project (permanent) and everything derived from or accumulated within it. **(Renamed/narrowed from "Project | All domains" by ADR-009.)** |
+| Agent | Project | An Agent owns exactly one Project, permanently. **(Added by ADR-009.)** |
 | Source Material | Knowledge | Knowledge is derived from source material analysis. |
 | Knowledge | Draft Content | Draft content is evidence-grounded in knowledge elements. |
 | Author Profile | Draft Content | Author profile influences draft content style and structure. |
-| Project Memory | All domains | Project memory accumulates context across the project lifecycle. |
+| Project Memory | All Agent-scoped domains | Project memory accumulates context across the Agent's lifecycle. **(Renamed from "project lifecycle" by ADR-009.)** |
 | Draft Content | Source Material | Draft content is traceable to supporting source materials. |
-| Configuration | All domains | Configuration governs behavior across all domains. |
+| Configuration | All domains | Configuration governs behavior across all domains, scoped to the Agent (renamed from Project scope by ADR-009). |
 
 #### Requirement Statements
 
@@ -356,6 +385,7 @@ The data requirements defined in this chapter are traceable to the following sou
 - **SRS Chapter 4** — Functional domains: project management, knowledge extraction, knowledge structuring, knowledge retrieval, author profile, project memory, drafting, review, evidence traceability
 - **SRS Chapter 6** — AI requirements: knowledge understanding, context construction, author profile integration, project memory integration, evidence grounding, traceability
 - **ADR-001** — Separation of requirements from architecture and implementation
+- **ADR-009** — Agent workspace introduction, Project narrowing, and Agent-scoping correction (§3.1, §3.8, §5)
 - **SRS Chapter 10** — MVP scope boundaries for data domain implementation
 - **SRS Chapter 11** — Future roadmap for data management capabilities beyond the MVP
 
@@ -363,7 +393,7 @@ The data requirements defined in this chapter are traceable to the following sou
 
 ## 10. Summary
 
-Chapter 7 defines the data requirements for ScholarOS. It establishes seven conceptual data domains that the system must manage: project data, source material data, knowledge data, author profile data, project memory data, draft and content data, and configuration and preference data.
+Chapter 7, as corrected by ADR-009, defines the data requirements for ScholarOS. It establishes eight conceptual data domains that the system must manage: agent data, project data, source material data, knowledge data, author profile data, project memory data, draft and content data, and configuration and preference data. Agent is the user's permanent workspace, owning exactly one Project and everything derived from or accumulated within it; Project retains identity, topic, and source-material ownership.
 
 Each domain is defined by its purpose, content description, and associated requirement statements. The chapter also describes data lifecycle stages, inter-domain relationships, data quality attributes, and constraints that govern the handling of project information.
 

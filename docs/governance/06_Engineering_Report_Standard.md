@@ -2,7 +2,7 @@
 
 **Document:** 06_Engineering_Report_Standard.md
 
-**Governance Framework:** Engineering Governance Framework v1.0
+**Governance Framework:** Engineering Governance Framework v2.0
 
 **Status:** Active. Supersedes `docs/governance/Engineering_Reporting_Standard.md`.
 
@@ -18,6 +18,8 @@ This document defines the mandatory structure and content requirements for Engin
 
 Every completed engineering task must conclude with an Engineering Report conforming to this standard. The report is treated as part of the engineering deliverable. No task is complete until the report has been produced.
 
+Report production is itself a standing engineering responsibility (RSP-006 per 11_Engineering_Responsibilities.md) and executes automatically at session completion in self-executing sessions.
+
 ---
 
 ## 2. Report Requirements
@@ -27,6 +29,8 @@ Every Engineering Report must include the following sections. Sections marked wi
 ### 2.1 Task Summary *
 
 Brief summary of the completed work. One to three paragraphs describing what was done and why.
+
+For teaching sessions (RSP-007), the Task Summary shall state the audience and the knowledge-transfer objective.
 
 ### 2.2 Pre-Implementation Analysis
 
@@ -176,11 +180,14 @@ The following template shall be used for all Engineering Reports:
 | 02_AI_Engineering_Contract.md | Contract requires compliance with this standard. |
 | 05_Definition_of_Done.md | DoD requires an Engineering Report conforming to this standard. |
 | 07_Review_Checklist.md | The report is reviewed as part of the validation process. |
+| 11_Engineering_Responsibilities.md | RSP-006 produces reports conforming to this standard. |
 
 ---
 
 ## 6. References
 
-- 02_AI_Engineering_Contract.md — Section 7 (Engineering Workflow, Step 5)
+- 02_AI_Engineering_Contract.md — Section 7 (Engineering Workflow)
 - 05_Definition_of_Done.md — Section 2.9
 - 07_Review_Checklist.md
+- 11_Engineering_Responsibilities.md — Section 3.6 (RSP-006)
+- 12_Master_Execution_Prompt.md

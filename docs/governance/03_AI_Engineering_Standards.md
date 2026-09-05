@@ -2,7 +2,7 @@
 
 **Document:** 03_AI_Engineering_Standards.md
 
-**Governance Framework:** Engineering Governance Framework v1.0
+**Governance Framework:** Engineering Governance Framework v2.0
 
 **Status:** Active
 
@@ -176,6 +176,7 @@ Vision → SRS → Architecture → Implementation → Testing → Documentation
 | 05_Definition_of_Done.md | Standards provide quality criteria used in the DoD. |
 | 07_Review_Checklist.md | Standards are verified during the review process. |
 | 09_Documentation_Standards.md | This document references 09 for detailed documentation conventions. |
+| 11_Engineering_Responsibilities.md | The standing responsibilities execute against the quality bar defined here. |
 
 ---
 
@@ -187,4 +188,5 @@ Vision → SRS → Architecture → Implementation → Testing → Documentation
 - 05_Definition_of_Done.md
 - 07_Review_Checklist.md
 - 09_Documentation_Standards.md
+- 11_Engineering_Responsibilities.md
 - ADR-001: Separation of Requirements, Architecture, and Implementation

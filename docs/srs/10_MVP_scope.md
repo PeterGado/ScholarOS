@@ -37,13 +37,14 @@ The following capabilities are included in the ScholarOS MVP scope.
 
 ### 3.1 Project Management
 
-- Create a single-user research project.
+**Extended by ADR-009:** the MVP's research project is created together with, and permanently nested inside, the user's Agent workspace (§3.11).
+
+- Create the user's Agent workspace, together with its one research project.
 - Define research topic and scope.
 - Store and retrieve project metadata.
-- List and select available projects.
-- Delete a project.
+- Delete the Agent's project (which, in the MVP, means archiving the Agent — see MVP-030).
 
-**Limitation:** No multi-user or collaborative project management.
+**Limitation:** No multi-user or collaborative project management. In the MVP, a user has exactly one Agent and exactly one project — "list and select available projects" does not apply, since there is only one (ADR-009; see §3.11).
 
 #### Requirement Statements
 
@@ -191,6 +192,22 @@ The following capabilities are included in the ScholarOS MVP scope.
 
 ---
 
+### 3.11 Agent Workspace
+
+**Added by ADR-009**, following a product clarification recorded in `docs/journal/2026-09-04.md`. Appended after §3.10 to preserve the numbering of the original ten MVP capability areas and their MVP-001 to MVP-028 requirement statements.
+
+- Create the user's Agent — a permanent workspace wrapping one research project, built from the supplied topic, reference documents, and writing-style samples.
+- Enforce exactly one Agent per user in the MVP.
+
+**Limitation:** Additional Agents per user (e.g., for a second thesis topic) are explicitly out of MVP scope — see §4. A future paid/premium tier may lift this limit; the MVP does not build toward it beyond keeping the constraint additive (ADR-009).
+
+#### Requirement Statements
+
+* MVP-029: The MVP shall support creation of exactly one Agent per authenticated user, created together with its one, permanent research project.
+* MVP-030: The MVP shall not support creating, transferring, or reassigning a second Agent, or repointing an Agent's Project, for any user.
+
+---
+
 ## 4. Out-of-Scope Capabilities
 
 The following capabilities are explicitly excluded from the MVP scope. They are documented here to prevent scope creep and to inform the Future Roadmap (Chapter 11).
@@ -207,6 +224,7 @@ The following capabilities are explicitly excluded from the MVP scope. They are 
 | Mobile or offline access | MVP assumes a desktop or server environment with network connectivity for AI service interaction. |
 | Full text export and formatting | MVP supports draft content retrieval. Advanced export to specific academic formats is deferred. |
 | Automated citation management | MVP supports citation awareness in drafts. Full citation management is deferred. |
+| Multiple Agents per user | MVP supports exactly one Agent (permanent workspace) per user. Additional Agents are a future, monetization-gated capability (ADR-009). |
 
 #### Requirement Statements
 
@@ -264,6 +282,7 @@ The MVP shall meet the following quality targets.
 | Author profile | Stylistic characteristics from samples | Cross-project profile sharing, automatic collection |
 | Version management | Draft version history | Full project state versioning |
 | Deployment | Personal/development environment | Institutional, cloud, or multi-tenant deployment |
+| Workspace | Exactly one Agent per user, wrapping one permanent project (ADR-009) | Multiple Agents per user (monetization-gated, deferred) |
 
 #### Requirement Statements
 
@@ -300,12 +319,13 @@ The MVP scope requirements defined in this chapter are traceable to the followin
 - **SRS Chapter 9** — API domains required to support in-scope workflow capabilities
 - **SRS Chapter 11** — Future Roadmap for out-of-scope capabilities
 - **ADR-001** — Separation of scope definition from implementation decisions
+- **ADR-009** — Agent workspace introduction and the one-Agent-per-user MVP constraint (§3.11)
 
 ---
 
 ## 10. Summary
 
-Chapter 10 defines the MVP scope for ScholarOS. It establishes ten in-scope capability areas (project management, document ingestion, knowledge extraction, knowledge retrieval, author profile creation, project memory, context assembly, draft generation, draft review, and version management) and explicitly documents excluded capabilities with rationale.
+Chapter 10, as corrected by ADR-009, defines the MVP scope for ScholarOS. It establishes eleven in-scope capability areas (project management, document ingestion, knowledge extraction, knowledge retrieval, author profile creation, project memory, context assembly, draft generation, draft review, version management, and the Agent workspace) and explicitly documents excluded capabilities with rationale, including multiple Agents per user.
 
 The chapter defines the MVP target workflow, quality targets, and scope boundaries that govern the first release. All decisions in this chapter are based on the approved product philosophy of correctness over completeness and the goal of establishing an extensible foundation for future capabilities.
 

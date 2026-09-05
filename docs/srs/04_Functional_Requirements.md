@@ -303,10 +303,12 @@ The major functional areas above shall later be decomposed into specific functio
 
 No functional area in this chapter is intended to introduce implementation detail, database design, or interface design. The purpose of this chapter is to provide a logical functional structure for later requirement specification.
 
+For acceptance purposes, the functional domains in this chapter are considered satisfied when they are traceable to the approved product vision, the architecture baseline, and the relevant SRS chapters without requiring implementation-specific language or premature design artifacts.
+
 **Forward traceability:** The functional domains defined in this chapter are further specified and scoped by later SRS chapters:
 
-- **Chapter 7 (Data Requirements)** — Defines the data domains that support each functional area.
-- **Chapter 8 (User Workflows)** — Operationalizes each functional area as user-facing workflow stages.
-- **Chapter 9 (API Requirements)** — Defines the service interfaces required to expose each functional area.
-- **Chapter 10 (MVP Scope)** — Identifies which functional areas are implemented in the first release and which are deferred.
-- **Chapter 11 (Future Roadmap)** — Schedules deferred functional areas into post-MVP release phases.
+* **Chapter 7 (Data Requirements)** — Defines the data domains that support each functional area.
+* **Chapter 8 (User Workflows)** — Operationalizes each functional area as user-facing workflow stages.
+* **Chapter 9 (API Requirements)** — Defines the service interfaces required to expose each functional area.
+* **Chapter 10 (MVP Scope)** — Identifies which functional areas are implemented in the first release and which are deferred.
+* **Chapter 11 (Future Roadmap)** — Schedules deferred functional areas into post-MVP release phases.

@@ -18,6 +18,8 @@ This Software Requirements Specification (SRS) defines the functional, non-funct
 
 The document serves as the authoritative reference for the design, implementation, testing, and future evolution of the platform.
 
+This SRS remains implementation-agnostic and is not itself the place for database design, API implementation details, or other future milestone artifacts. Those concerns are deferred to their own milestone documents and governed by the architecture and ADR set.
+
 Its purpose is to ensure that all engineering decisions remain aligned with the approved product vision while providing a clear and testable specification for developers, architects, AI assistants, and future contributors.
 
 This document is intentionally implementation-agnostic. It defines what the system must accomplish rather than prescribing how individual components should be implemented.
@@ -75,7 +77,7 @@ For the MVP, the primary user of ScholarOS is the project owner.
 ## 5. Definitions
 
 | Term | Definition |
-|------|------------|
+| ------ | ------------ |
 | ScholarOS | The research operating system described by this specification. |
 | Project | A single academic research workspace. |
 | Author Profile | A structured representation of an author's writing characteristics. |
@@ -90,7 +92,7 @@ For the MVP, the primary user of ScholarOS is the project owner.
 ## 6. Acronyms
 
 | Acronym | Meaning |
-|---------|---------|
+| --------- | --------- |
 | SRS | Software Requirements Specification |
 | MVP | Minimum Viable Product |
 | API | Application Programming Interface |
@@ -106,7 +108,7 @@ For the MVP, the primary user of ScholarOS is the project owner.
 The following requirement prefixes are used throughout the SRS.
 
 | Prefix | Description |
-|---------|-------------|
+| --------- | ----------- |
 | FR | Functional Requirement |
 | NFR | Non-Functional Requirement |
 | AIR | Artificial Intelligence Requirement |

@@ -2,7 +2,7 @@
 
 **Document:** 10_Prompting_Guidelines.md
 
-**Governance Framework:** Engineering Governance Framework v1.0
+**Governance Framework:** Engineering Governance Framework v2.0
 
 **Status:** Active
 
@@ -17,6 +17,8 @@
 This document defines the prompt engineering standards for interacting with AI Software Engineers within the ScholarOS project.
 
 While the other governance documents define *what* AI engineers must do, this document defines *how to instruct them effectively*. It is intended for both human contributors and AI agents that need to delegate work to other AI agents.
+
+Self-executing sessions are initiated with the Master Execution Prompt (12_Master_Execution_Prompt.md), which implements the principles in this document.
 
 ---
 
@@ -45,9 +47,11 @@ An AI provided with insufficient context will produce lower-quality results.
 When instructing an AI to perform engineering work:
 
 - Reference the relevant governance documents.
-- Remind the AI of the Engineering Workflow (02_AI_Engineering_Contract.md, Section 7).
-- Remind the AI of the Definition of Done (05).
-- Remind the AI of the Engineering Report requirement (06).
+- Reference the standing engineering responsibilities (11_Engineering_Responsibilities.md) instead of re-specifying their steps. In self-executing sessions, RSP-001 through RSP-006 execute automatically; the prompt supplies the task and boundaries only.
+- Boot self-executing sessions with the Master Execution Prompt (12_Master_Execution_Prompt.md).
+- For knowledge-transfer work, set the session type to Teaching (RSP-007).
+- Reference the Definition of Done (05) as the completion criteria.
+- Reference the Engineering Report requirement (06).
 
 ### 2.4 Boundary Definition
 
@@ -183,6 +187,14 @@ Find information about [topic].
 - Relevance assessment.
 ```
 
+### 4.5 Self-Executing Session (Master Execution Prompt)
+
+The master template for initiating self-executing engineering sessions is defined in **12_Master_Execution_Prompt.md**.
+
+Use it for any session that will produce or modify repository artifacts. Complete only the Session Title, Session Type, Task, and Task Boundaries fields; all other content is fixed governance text.
+
+The template relies on the governance framework for all operational behavior. Do not append operational steps to it: operational steps belong to the standing responsibilities (11_Engineering_Responsibilities.md) and execute automatically. Appending them creates duplication and split ownership.
+
 ---
 
 ## 5. Multi-AI Prompting
@@ -243,6 +255,8 @@ Before submitting a prompt to an AI engineer, verify:
 | 06_Engineering_Report_Standard.md | Prompts should require compliance with the report standard. |
 | 07_Review_Checklist.md | Review prompts shall reference the checklist. |
 | 08_AI_Roles_and_Responsibilities.md | Defines how to delegate work to different AI roles. |
+| 11_Engineering_Responsibilities.md | Prompts reference the standing responsibilities instead of repeating their steps. |
+| 12_Master_Execution_Prompt.md | The master template implements these prompting principles. |
 
 ---
 
@@ -254,3 +268,5 @@ Before submitting a prompt to an AI engineer, verify:
 - 06_Engineering_Report_Standard.md
 - 07_Review_Checklist.md
 - 08_AI_Roles_and_Responsibilities.md
+- 11_Engineering_Responsibilities.md
+- 12_Master_Execution_Prompt.md

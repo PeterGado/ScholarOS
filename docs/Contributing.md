@@ -18,7 +18,7 @@ Its purpose is to ensure that all contributions—whether made by humans or AI a
 
 ## Governance Framework
 
-ScholarOS is governed by the **Engineering Governance Framework v1.0**, located at `docs/governance/`. The framework consists of 10 documents that define permanent engineering standards.
+ScholarOS is governed by the **Engineering Governance Framework v2.0**, located at `docs/governance/`. The framework consists of 12 documents that define permanent engineering standards.
 
 All contributors must read the governance documents in order before beginning work:
 
@@ -34,6 +34,8 @@ All contributors must read the governance documents in order before beginning wo
 | 08 | AI Roles and Responsibilities | Multi-AI collaboration |
 | 09 | Documentation Standards | Documentation conventions |
 | 10 | Prompting Guidelines | Prompt engineering standards |
+| 11 | Engineering Responsibilities | Standing engineering responsibilities that execute automatically in self-executing sessions |
+| 12 | Master Execution Prompt | Standard session-initiation template for self-executing engineering sessions |
 
 ---
 
@@ -89,7 +91,7 @@ If multiple documents conflict, the following order applies:
 8. Architecture Decision Records (ADR)
 9. Source Code
 
-**Note:** Governance documents 05–14 (Definition of Done through Prompting Guidelines) sit between ADRs and Source Code in the full hierarchy. See `01_Project_Constitution.md` Section 5 for the complete, authoritative hierarchy.
+**Note:** The active governance framework consists of 12 documents (01–12), and the governance layer sits between the ADR layer and Source Code in the full hierarchy. See `01_Project_Constitution.md` Section 5 for the complete, authoritative hierarchy.
 
 Code shall never redefine requirements.
 
@@ -99,8 +101,8 @@ Code shall never redefine requirements.
 
 Every contribution should follow this workflow.
 
-1. Read the Documentation Index (`docs/README.md`).
-2. Read the Engineering Governance Framework (`docs/governance/`, 01–10 in order).
+1. Read the Documentation Index (`docs/READme.md`).
+2. Read the Engineering Governance Framework (`docs/governance/`, 01–12 in order).
 3. Review the relevant approved documentation.
 4. Identify the requirement(s) being implemented.
 5. Raise ambiguities before making assumptions.
@@ -187,6 +189,7 @@ Before beginning work, an AI assistant should:
 6. Explain uncertainties before implementation.
 7. Avoid introducing undocumented functionality.
 8. Recommend documentation updates when appropriate.
+9. Boot self-executing sessions with the Master Execution Prompt (12_Master_Execution_Prompt.md); the standing responsibilities (11_Engineering_Responsibilities.md) execute automatically.
 
 AI assistants should assist—not redefine—the project.
 
@@ -247,7 +250,7 @@ arch: define AI orchestration layer
 
 feat: implement document ingestion
 
-governance: adopt Engineering Governance Framework v1.0
+governance: adopt Engineering Governance Framework v2.0
 
 Avoid generic commit messages such as:
 
@@ -309,7 +312,7 @@ Before changing the software, first understand the system.
 
 # References
 
-- Engineering Governance Framework: `docs/governance/01` through `docs/governance/10`
+- Engineering Governance Framework: `docs/governance/01` through `docs/governance/12`
 - 01_Project_Constitution.md
 - 02_AI_Engineering_Contract.md
 - 05_Definition_of_Done.md

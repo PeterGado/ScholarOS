@@ -2,7 +2,7 @@
 
 **Document:** 05_Definition_of_Done.md
 
-**Governance Framework:** Engineering Governance Framework v1.0
+**Governance Framework:** Engineering Governance Framework v2.0
 
 **Status:** Active
 
@@ -81,10 +81,19 @@ A task is complete only when **all** of the following conditions are true:
 - [ ] The report documents all changes, justifications, and affected files.
 - [ ] Risks and technical debt are documented.
 
-### 2.10 Journal
+### 2.10 Journal (`docs/journal/`)
 
-- [ ] The Journal has been updated with a summary of the completed work.
+- [ ] The journal (`docs/journal/`) has been updated with a summary of the completed work.
 - [ ] Key decisions, lessons learned, and outstanding items are recorded.
+
+### 2.11 Self-Executing Session Compliance
+
+- [ ] The standing engineering responsibilities (11_Engineering_Responsibilities.md) applicable to the task were executed: repository review (RSP-001), dependency analysis (RSP-002), impacted-file detection (RSP-003), consistency validation (RSP-004), documentation synchronization (RSP-005), engineering reporting (RSP-006).
+- [ ] A self-executing session was booted with the Master Execution Prompt (12_Master_Execution_Prompt.md) where the framework requires it.
+- [ ] Teaching sessions complied with Teaching Mode (RSP-007).
+- [ ] Any responsibility skipped as not applicable is documented in the Engineering Report.
+
+**Bootstrap exception:** Framework-adoption sessions that create or modify the self-executing session machinery (11, 12) cannot boot with the Master Execution Prompt within the same session. Such sessions satisfy this criterion by documenting the exception in the Engineering Report.
 
 ---
 
@@ -98,7 +107,8 @@ Some tasks may have additional completion criteria beyond the standard DoD:
 | ADR | Accepted status. Alternatives documented. Rationale clear. |
 | Architecture Document | Traceable to SRS requirements. ADR references where decisions are recorded. |
 | Implementation | All tests passing. Code reviewed. No linting errors. |
-| Governance Document | Internal consistency verified. Cross-references validated. |
+| Governance Document | Internal consistency verified. Cross-references validated. Master Execution Prompt (12) synchronized. |
+| Teaching Session | Delivered in Teaching Mode (RSP-007). Teaching Report produced. |
 | Bug Fix | Root cause identified. Regression test added. |
 
 ---
@@ -109,7 +119,7 @@ If a task is submitted without satisfying the Definition of Done:
 
 1. The incomplete criteria shall be identified and communicated.
 2. The contributor shall address the gaps before the task is accepted.
-3. Repeated violations shall be documented in the Journal and may result in workflow adjustments.
+3. Repeated violations shall be documented in the journal (`docs/journal/`) and may result in workflow adjustments.
 
 ---
 
@@ -123,14 +133,18 @@ If a task is submitted without satisfying the Definition of Done:
 | 06_Engineering_Report_Standard.md | DoD requires compliance with the report standard. |
 | 07_Review_Checklist.md | DoD criteria are verified during the review process. |
 | 09_Documentation_Standards.md | DoD requires compliance with documentation conventions. |
+| 11_Engineering_Responsibilities.md | DoD §2.11 verifies that the standing responsibilities were executed. |
+| 12_Master_Execution_Prompt.md | Self-executing sessions are booted with this template. |
 
 ---
 
 ## 6. References
 
-- 02_AI_Engineering_Contract.md — Section 13 (Definition of Done)
+- 02_AI_Engineering_Contract.md — Section 14 (Relationship to Other Governance Documents)
 - 03_AI_Engineering_Standards.md — Testing Standards
 - 04_Repository_Governance.md — Repository Consistency Rules
 - 06_Engineering_Report_Standard.md
 - 07_Review_Checklist.md
 - 09_Documentation_Standards.md
+- 11_Engineering_Responsibilities.md — Section 3 (Standing Responsibilities)
+- 12_Master_Execution_Prompt.md

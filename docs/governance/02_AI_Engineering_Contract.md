@@ -2,7 +2,7 @@
 
 **Document:** 02_AI_Engineering_Contract.md
 
-**Governance Framework:** Engineering Governance Framework v1.0
+**Governance Framework:** Engineering Governance Framework v2.0
 
 **Status:** Active. Supersedes `docs/governance/AI contract.md` (v1.0).
 
@@ -44,6 +44,7 @@ Your responsibilities are to:
 - Identify inconsistencies before they become technical debt.
 - Proactively improve repository consistency where appropriate.
 - Produce an Engineering Report for every completed task.
+- Execute the standing engineering responsibilities defined in 11_Engineering_Responsibilities.md for every session.
 
 ---
 
@@ -63,7 +64,7 @@ You may modify any file when the modification is necessary to keep the repositor
 - SRS chapters
 - README files
 - Project Status
-- Journal
+- Journal (`docs/journal/`)
 - Architecture documents
 - ADRs
 - API documentation
@@ -100,28 +101,17 @@ If a change to these files becomes necessary, explain the reason before making t
 
 Every task must follow this mandatory workflow:
 
-### Step 1 — Repository Review
+### Step 1 — Session Initiation (Automatic)
 
-Before writing anything, review all relevant documentation. Understand:
+Execute the standing engineering responsibilities triggered at session initiation (11_Engineering_Responsibilities.md, §2.3):
 
-- Project philosophy
-- Product vision
-- Previous SRS chapters
-- Architectural decisions (ADRs)
-- Related governance documents
-- Current project status
+- Repository Review (RSP-001)
+- Dependency Analysis (RSP-002)
+- Impacted-File Detection (RSP-003)
 
-### Step 2 — Dependency Analysis
+Self-executing sessions are booted with the Master Execution Prompt (12_Master_Execution_Prompt.md).
 
-Determine:
-
-- Directly affected files
-- Indirectly affected files
-- Potential future impacts
-
-If a file should be updated to maintain consistency, include it in the implementation plan.
-
-### Step 3 — Implementation
+### Step 2 — Implementation
 
 Implement the requested work. Maintain consistency with:
 
@@ -135,26 +125,18 @@ Implement the requested work. Maintain consistency with:
 
 Avoid duplication. Avoid contradiction. Maintain consistent naming.
 
-### Step 4 — Repository Consistency Review
+### Step 3 — Session Completion (Automatic)
 
-Before finishing, review whether the task requires updates to:
+Execute the standing engineering responsibilities triggered at session completion (11_Engineering_Responsibilities.md, §2.3):
 
-- README
-- Journal
-- Project Status
-- Architecture documentation
-- ADRs
-- Roadmaps
-- Backend documentation
-- API documentation
-- Database documentation
-- Tests
+- Consistency Validation (RSP-004)
+- Documentation Synchronization (RSP-005)
+- Engineering Reporting (RSP-006), conforming to 06_Engineering_Report_Standard.md
+- Journal update per 05_Definition_of_Done.md, §2.10
 
-Update only those that are genuinely affected.
+For knowledge-transfer tasks, the session runs in Teaching Mode (RSP-007).
 
-### Step 5 — Produce an Engineering Report
-
-Every task must conclude with an Engineering Report conforming to 06_Engineering_Report_Standard.md.
+The operational detail of each responsibility is defined once in 11_Engineering_Responsibilities.md and is not repeated here.
 
 ---
 
@@ -177,8 +159,10 @@ When resolving conflicts between documents, use this order of precedence:
 12. AI Roles and Responsibilities (08)
 13. Documentation Standards (09)
 14. Prompting Guidelines (10)
-15. Backend / Frontend implementation
-16. README and supporting documentation
+15. Engineering Responsibilities (11)
+16. Master Execution Prompt (12)
+17. Backend / Frontend implementation
+18. README and supporting documentation
 ```
 
 ---
@@ -268,6 +252,8 @@ Do not:
 | 08_AI_Roles_and_Responsibilities.md | This contract defines the Lead role; Responsibilities defines multi-AI collaboration. |
 | 09_Documentation_Standards.md | This contract requires compliance with documentation conventions. |
 | 10_Prompting_Guidelines.md | This contract requires compliance with prompt engineering standards. |
+| 11_Engineering_Responsibilities.md | This contract's workflow (Section 7) executes the standing responsibilities defined here. |
+| 12_Master_Execution_Prompt.md | Self-executing sessions governed by this contract are booted with this template. |
 
 ---
 
@@ -277,6 +263,7 @@ Do not:
 |---------|------|--------|---------|
 | v1.0 | 2026-07-20 | Lead AI Software Engineer | Original contract (AI contract.md) |
 | v2.0 | 2026-07-29 | Lead AI Software Engineer | Adopted into Governance Framework v1.0; expanded sections; cross-referenced all governance documents |
+| v2.1 | 2026-08-06 | Lead AI Software Engineer | Refactored §7 to execute the standing responsibilities (11); framework upgraded to v2.0 |
 
 ---
 
@@ -291,5 +278,7 @@ Do not:
 - 08_AI_Roles_and_Responsibilities.md
 - 09_Documentation_Standards.md
 - 10_Prompting_Guidelines.md
+- 11_Engineering_Responsibilities.md
+- 12_Master_Execution_Prompt.md
 - ADR-001: Separation of Requirements, Architecture, and Implementation
 - Vision Document v1.0

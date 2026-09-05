@@ -162,7 +162,7 @@ Example:
 
 * docs/srs/06_AI_Requirements.md
 * docs/Project_Status.md
-* docs/Journal.md
+* docs/journal/ (see docs/journal/README.md)
 Files Reviewed
 
 List the important files reviewed before implementation.

@@ -243,7 +243,7 @@ The following capabilities, explicitly excluded from the MVP scope (Chapter 10),
 
 The following table describes how architectural characteristics are expected to evolve across future phases. This section is included to inform architectural planning and to ensure MVP design decisions remain compatible with long-term goals.
 
-**Note:** This table describes anticipated architectural evolution, not requirements. Per ADR-001 (Separation of Requirements, Architecture, and Implementation), detailed architectural descriptions belong in architecture documentation, not in the SRS. This section is included here only to establish directional alignment between the requirements roadmap and architectural planning. It shall be moved to architecture documentation when the `docs/architecture/` directory is created.
+**Note:** This table describes anticipated architectural evolution, not requirements. Per ADR-001 (Separation of Requirements, Architecture, and Implementation), detailed architectural descriptions belong in architecture documentation, not in the SRS. This section is included here only to establish directional alignment between the requirements roadmap and architectural planning. The architecture documentation set (`docs/architecture/01–07`) and ADR set (ADR-001 to ADR-007) now realize the architectural planning described here; this table remains as the directional reference for roadmap–architecture alignment.
 
 | Capability | MVP Approach | Future Evolution |
 |------------|-------------|------------------|
