@@ -12,6 +12,7 @@ from app.modules.project.application.use_cases import CreateProjectUseCase
 from app.modules.project.domain.exceptions import ProjectNotFoundError
 from app.modules.project.infrastructure.repositories import SqlAlchemyProjectRepository
 from app.storage.filesystem import FilesystemStorage
+from app.workers.repository import WorkItemRepository
 
 
 @pytest.fixture()
@@ -50,11 +51,13 @@ def test_upload_persists_document_and_writes_content_to_storage(session, storage
     workspace = _make_workspace(session)
     documents = SqlAlchemyDocumentRepository(session)
     projects = SqlAlchemyProjectRepository(session)
+    agents = SqlAlchemyAgentRepository(session)
     uow = SqlAlchemyUnitOfWork(session)
-    use_case = UploadResearchDocumentUseCase(documents, projects, storage, uow)
+    use_case = UploadResearchDocumentUseCase(documents, projects, agents, storage, uow, WorkItemRepository(session))
 
     document = use_case.execute(
         project_id=workspace.project.project_id,
+        user_id=workspace.agent.user_id,
         title="Baseline survey",
         format="pdf",
         content=b"survey content",
@@ -70,13 +73,15 @@ def test_upload_persists_document_and_writes_content_to_storage(session, storage
 
 
 def test_upload_against_a_nonexistent_project_writes_nothing(session, storage, tmp_path):
+    workspace = _make_workspace(session)
     documents = SqlAlchemyDocumentRepository(session)
     projects = SqlAlchemyProjectRepository(session)
+    agents = SqlAlchemyAgentRepository(session)
     uow = SqlAlchemyUnitOfWork(session)
-    use_case = UploadResearchDocumentUseCase(documents, projects, storage, uow)
+    use_case = UploadResearchDocumentUseCase(documents, projects, agents, storage, uow, WorkItemRepository(session))
 
     with pytest.raises(ProjectNotFoundError):
-        use_case.execute(project_id=999, title="Orphan", format="pdf", content=b"data")
+        use_case.execute(project_id=999, user_id=workspace.agent.user_id, title="Orphan", format="pdf", content=b"data")
 
     assert documents.list_by_project_id(999) == []
     assert list((tmp_path / "object-store").iterdir()) == []
@@ -86,11 +91,45 @@ def test_multiple_documents_can_be_uploaded_to_the_same_project(session, storage
     workspace = _make_workspace(session)
     documents = SqlAlchemyDocumentRepository(session)
     projects = SqlAlchemyProjectRepository(session)
+    agents = SqlAlchemyAgentRepository(session)
     uow = SqlAlchemyUnitOfWork(session)
-    use_case = UploadResearchDocumentUseCase(documents, projects, storage, uow)
+    use_case = UploadResearchDocumentUseCase(documents, projects, agents, storage, uow, WorkItemRepository(session))
 
-    use_case.execute(project_id=workspace.project.project_id, title="A", format="pdf", content=b"content A")
-    use_case.execute(project_id=workspace.project.project_id, title="B", format="docx", content=b"content B")
+    use_case.execute(
+        project_id=workspace.project.project_id, user_id=workspace.agent.user_id, title="A", format="pdf", content=b"content A"
+    )
+    use_case.execute(
+        project_id=workspace.project.project_id, user_id=workspace.agent.user_id, title="B", format="docx", content=b"content B"
+    )
 
     stored = documents.list_by_project_id(workspace.project.project_id)
     assert len(stored) == 2
+
+
+def test_upload_by_a_different_user_against_someone_elses_project_is_rejected(session, storage, tmp_path):
+    """Real SQLite persistence, two distinct provisioned users: proves the ownership check
+    reads genuinely persisted Agent.user_id, not just an in-memory fake (Stage 6).
+    """
+    workspace = _make_workspace(session)
+
+    other_user = User(username="someone-else")
+    session.add(other_user)
+    session.flush()
+
+    documents = SqlAlchemyDocumentRepository(session)
+    projects = SqlAlchemyProjectRepository(session)
+    agents = SqlAlchemyAgentRepository(session)
+    uow = SqlAlchemyUnitOfWork(session)
+    use_case = UploadResearchDocumentUseCase(documents, projects, agents, storage, uow, WorkItemRepository(session))
+
+    with pytest.raises(ProjectNotFoundError):
+        use_case.execute(
+            project_id=workspace.project.project_id,
+            user_id=other_user.user_id,
+            title="Intruding upload",
+            format="pdf",
+            content=b"data",
+        )
+
+    assert documents.list_by_project_id(workspace.project.project_id) == []
+    assert list((tmp_path / "object-store").iterdir()) == []

@@ -1,9 +1,9 @@
 # ScholarOS Documentation
 
-**Version:** 1.6.0  
+**Version:** 1.7.0  
 **Status:** Active  
-**Last Updated:** 2026-09-04  
-**Latest ADR:** ADR-009 — Agent and Project Domain Model Introduction
+**Last Updated:** 2026-09-10  
+**Latest ADR:** ADR-010 — Authentication Boundary, Single-User Session Model
 **Governance Framework:** Engineering Governance Framework v2.0 — Active
 
 ---
@@ -43,9 +43,11 @@ Higher-level documents always take precedence over lower-level documents.
 This repository now explicitly distinguishes between documentation/governance hardening and the future milestone artifacts that follow it.
 
 * Milestone 5: Database Design is **complete and frozen** as Database Baseline v1 (`docs/database/01`–`08`, recorded in [docs/Baseline_Register.md](Baseline_Register.md)).
-* An Independent Repository Audit (`docs/journal/2026-09-04.md`) concluded the repository is **READY FOR BACKEND IMPLEMENTATION**, and this was ratified as **[ADR-008](adr/ADR-008_API_Contract_Governance_During_Backend_Implementation.md)**: API Design is **not** a standalone documentation milestone. The next milestone is **Backend Implementation**, beginning with the vertical slice Agent Creation (with its one Project) → Document Upload (corrected 2026-09-04 by ADR-009).
+* An Independent Repository Audit (`docs/journal/2026-09-04.md`) concluded the repository is **READY FOR BACKEND IMPLEMENTATION**, and this was ratified as **[ADR-008](adr/ADR-008_API_Contract_Governance_During_Backend_Implementation.md)**: API Design is **not** a standalone documentation milestone. **Milestone 6 (Backend Implementation) is complete**, committed, and pushed to `origin/main` — the first vertical slice, Agent Creation (with its one Project) → Document Upload (corrected 2026-09-04 by ADR-009).
+* **Milestone 7 (Real Authentication Boundary) is in progress.** [ADR-010](adr/ADR-010_Authentication_Boundary_Single_User_Session_Model.md) (2026-09-10) authorizes a real Authentication Boundary for the MVP's single pre-provisioned user, realized via the Database Baseline's already-specified Session entity. Stages 2-6 are complete — login/logout are live over real HTTP, and `get_current_user_id` now resolves real authenticated identity, with `/agents` and document upload both requiring authentication and enforcing ownership; see `docs/Authentication_Implementation_Plan.md` for the full staged plan.
+* **Backend Slice 2 (Knowledge Processing Pipeline) is complete and validated (2026-09-11)**, built on Milestone 7's authentication boundary. Real document upload → mechanical extraction/chunking → AI semantic extraction → evidence-linked Knowledge Element/Chunk persistence → embedding → agent-scoped authenticated retrieval (`GET /knowledge/search`), verified with both fake providers (311 automated tests) and a real Gemini account end to end. One deliberate, flagged gap remains open: retrieval is vector-only, not yet the full hybrid (lexical + semantic, fused) design ADR-005 specifies — see `docs/Backend_Slice2_Implementation_Plan.md` and the 2026-09-11 journal entries for the full staged history and compliance review. The next milestone, Project Writing, is out of Slice 2's scope and not yet started.
 * The authoritative chain is now: Project Constitution → Governance Framework → Vision → SRS → Architecture and ADRs → Database design milestone documents (frozen baseline) → Implementation, with API contracts defined progressively during implementation as code (Pydantic/FastAPI models, per ADR-002 and ADR-008), remaining traceable to SRS Chapter 9 and `05_Backend_Architecture.md`.
-* The architecture set (01–07), the ADR set (ADR-001 to ADR-008), and the database set (01–08) remain the authoritative baseline for the current repository phase.
+* The architecture set (01–07), the ADR set (ADR-001 to ADR-010), and the database set (01–08) remain the authoritative baseline for the current repository phase.
 * API contracts are an engineering activity within implementation, not a prerequisite milestone (ADR-008); architecturally significant API decisions (authentication model, versioning scheme, protocol, service-boundary changes) still require a new ADR.
 * Frontend implementation, testing at scale, and deployment automation remain intentionally deferred.
 * A lightweight cross-reference index is maintained in [docs/Traceability_Index.md](Traceability_Index.md) to support navigation and traceability without creating a heavy maintenance burden.
@@ -128,7 +130,7 @@ Contains:
 * Operational Architecture (07)
 * Future architecture extensions and ADRs
 
-**Set status:** Architecture documents 01–07 were frozen at Milestone 4 (04_Repository_Governance.md, §4.4). The close-out audit (journal Session 4) passed on 2026-08-06, formally freezing the architecture set (01–07) and the ADR set (ADR-001 to ADR-007). Future architecture documents will be numbered sequentially (08, 09, …) and created only when a later milestone genuinely requires them; new architectural decisions are recorded as ADRs. **Corrected 2026-09-04 by ADR-009** (Agent workspace introduction; Agent/Agent Capability renamed to Capability/Capability Entry) — documents 02, 03, 04, 05 updated in place per the frozen-baseline correction discipline; the freeze itself is preserved, not lifted.
+**Set status:** Architecture documents 01–07 were frozen at Milestone 4 (04_Repository_Governance.md, §4.4). The close-out audit (journal Session 4) passed on 2026-08-06, formally freezing the architecture set (01–07) and the ADR set (ADR-001 to ADR-007). Future architecture documents will be numbered sequentially (08, 09, …) and created only when a later milestone genuinely requires them; new architectural decisions are recorded as ADRs. **Corrected 2026-09-04 by ADR-009** (Agent workspace introduction; Agent/Agent Capability renamed to Capability/Capability Entry) — documents 02, 03, 04, 05 updated in place per the frozen-baseline correction discipline; the freeze itself is preserved, not lifted. **Further corrected 2026-09-10 by ADR-010** (Authentication Boundary realized mechanism) — document 05 gained §15.4.
 
 ---
 
@@ -148,7 +150,7 @@ Contains:
 * 06_Physical_Design_Strategy.md — complete: mapping onto the approved storage categories; persistence, retention, archival, backup, recovery, growth strategies
 * 07_Database_Validation_and_Quality_Assurance.md — complete: review process, quality gates, acceptance criteria, defect catalog
 * 08_Database_Design_Review_and_Readiness_Assessment.md — complete: close-out, readiness verdict, freeze declaration, API design handoff
-* **Set status: COMPLETE AND FROZEN as Database Baseline v1** (recorded in [Baseline_Register.md](Baseline_Register.md)); **corrected 2026-09-04 by ADR-009** (Agent workspace introduction, Project narrowing, Capability rename) — see `08` §23 for the full correction record
+* **Set status: COMPLETE AND FROZEN as Database Baseline v1** (recorded in [Baseline_Register.md](Baseline_Register.md)); **corrected 2026-09-04 by ADR-009** (Agent workspace introduction, Project narrowing, Capability rename) — see `08` §23 for the full correction record; **further corrected 2026-09-10 by ADR-010** (`User.password_hash`) — see `08` §24
 * Every database document after 01 treats all previously completed database documents as authoritative sources and extends the design by adding the next level of detail, without duplicating content
 
 ---
@@ -200,6 +202,7 @@ Contains significant engineering decisions made throughout the project's lifecyc
 * ADR-007 — Deployment Strategy
 * ADR-008 — API Contract Governance During Backend Implementation
 * ADR-009 — Agent and Project Domain Model Introduction (corrects Database Baseline v1 and Architecture Baseline v1)
+* ADR-010 — Authentication Boundary, Single-User Session Model (further corrects Database Baseline v1 and Architecture Baseline v1; Milestone 7, Stage 6 of 8 complete — `get_current_user_id` resolves real authenticated identity; `/agents` and document upload require authentication and enforce ownership)
 
 ---
 

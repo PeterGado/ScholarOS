@@ -303,6 +303,7 @@ The integrity contract assumes the recovery posture of 07 §3.5 and ADR-006:
 * **No silent alteration.** Source material accuracy is preserved during processing (DR-029); content is never silently truncated (DR-030).
 * **Content validation at ingestion.** Document format families are validated at intake; processing failures are recorded, never swallowed (§5 transitions).
 * **Derived values are not stored redundantly.** Any stored status is a projection of the chain it represents (04 §8).
+* **Credential non-exposure (ADR-010).** `User.password_hash` is never included in an API response, log entry, or diagnostic output; it is a credential, not project data or knowledge (AIR-006's raw/interpreted/output distinction).
 
 ---
 
@@ -350,6 +351,7 @@ This document is traceable to the approved baseline as follows:
 * **ADR-004** — memory as a first-class domain; **ADR-005** — evidence links and project-scoped retrieval; **ADR-006** — durable outbox and idempotency; **ADR-002/ADR-003** — boundary enforcement.
 * **Database Overview (01)** — quality attributes (§10) and separation of concerns (§11); **Domain Model (02)** — vocabulary (§6 of 02); **Conceptual Data Model (03)** — business rules (§8 of 03); **Logical Data Model (04)** — constraints, nullability, integrity, and soft delete (§7–§10 of 04).
 * **ADR-009** — introduces Agent scoping and the Agent/Project isolation model (§13), renames Agent Ownership Rules to Capability Ownership Rules (§10), adds business rule 10 and domain invariants 14–15.
+* **ADR-010** — adds the credential non-exposure rule (§17) for `User.password_hash`, realizing the Authentication Boundary via the already-specified Session entity and its existing lifecycle transitions (§5).
 
 ---
 

@@ -18,3 +18,9 @@ class InvalidDocumentFormatError(DocumentDomainError):
 class EmptyDocumentContentError(DocumentDomainError):
     def __init__(self) -> None:
         super().__init__("Document content must not be empty.")
+
+
+class ResearchDocumentNotFoundError(DocumentDomainError):
+    def __init__(self, *, document_id: int) -> None:
+        super().__init__(f"Research Document not found (document_id={document_id}).")
+        self.document_id = document_id

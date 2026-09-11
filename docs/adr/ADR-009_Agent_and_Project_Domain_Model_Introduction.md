@@ -139,6 +139,7 @@ Verified through the standard processes: `07_Review_Checklist.md` (L3 architectu
 | ADR-001 (Separation of Concerns) | Accepted | This correction stays within the Architecture concern (per ADR-001's Development Lifecycle Integration table: Database Design is an architecture concern); it does not touch implementation. |
 | ADR-003 (Modular Monolith) | Accepted | Gains "Agent" as an eighth hard module boundary; its existing "Agent" boundary is renamed "Capability." The modular-monolith decision itself is unchanged. |
 | ADR-004 (Storage and Memory Strategy) | Accepted | Unaffected — Agent and its dependents use the same structured-core storage category and the same memory-persistence decision (Decision 6). |
+| ADR-010 (Authentication Boundary — Single-User Session Model) | Accepted | Unaffected by this ADR's Agent/Project correction — Authentication Boundary gates access to Agent but stays independent of its domain model (Architecture §15.3). |
 | ADR-005 (Retrieval and Search Strategy) | Accepted | Unaffected in mechanism; retrieval's project-scope filtering (ADR-005 §Decision 3) becomes agent-scope filtering, since Knowledge Chunk now scopes to `agent_id`. |
 | ADR-008 (API Contract Governance) | Accepted | Unaffected — API contracts realizing this corrected model are still defined progressively during implementation, per ADR-008. |
 

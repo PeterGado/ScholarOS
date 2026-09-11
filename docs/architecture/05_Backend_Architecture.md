@@ -340,6 +340,10 @@ The authentication boundary controls access to the backend.
 * Domain services receive authenticated, authorized requests only.
 * The authentication boundary is independent of domain logic so that future authentication schemes can be introduced without changing the workflow (NFR-024).
 
+### 15.4 Realized Mechanism (ADR-010)
+
+For the MVP's single pre-provisioned user, the boundary is realized as a DB-backed opaque session token, using the Session entity already specified in `04_Logical_Data_Model.md` §3.2: `POST /auth/login` verifies a bcrypt-hashed password and issues a `session_token`; subsequent requests present it as a bearer credential; `POST /auth/logout` ends the session. The single account's username and password hash are synced from configuration on every startup, never hard-coded and never created through a public registration endpoint. Domain services (Agent, Project, Document) remain unaware of this mechanism — they receive only a resolved `user_id`, exactly as the boundary model in §15.2 requires.
+
 ---
 
 ## 16. Infrastructure Boundary
@@ -470,12 +474,12 @@ The backend architecture is traceable to the approved requirements as follows:
 * Agent service (new domain, ADR-009): the user's workspace identity; owns Project (1:1, permanent) and scopes Knowledge, Memory, Conversation, Writing Profile, Draft, Review — see §22.
 * Review service: WR-022 to WR-025, DR-019, API-026 to API-028, MVP-018 to MVP-021.
 * AI service layer: AIR-001 to AIR-068, API-029 to API-031, AI Architecture (all sections).
-* Authentication boundary: NFR-009, NFR-010, API-036, API-037, WR-038.
+* Authentication boundary: NFR-009, NFR-010, API-036, API-037, WR-038; realized mechanism per ADR-010 — see §15.4.
 * Infrastructure boundary: API-032, API-033, NFR-023, NFR-024, NFR-027 to NFR-028, NFR-033 to NFR-034.
 * Configuration management: AIR-055 to AIR-057, DR-020 to DR-022, NFR-031 to NFR-032.
 * Error propagation: NFR-003 to NFR-006, NFR-027 to NFR-028, API-035, WR-036.
 * Scalability: NFR-001 to NFR-002, NFR-007 to NFR-008, API-038 to API-039.
-* ADR traceability: ADR-002 to ADR-007 govern the technology, service organization, storage, retrieval, async, and deployment decisions this architecture depends on; ADR-009 governs the Agent workspace domain introduced in §22 and the Capability rename in §13.
+* ADR traceability: ADR-002 to ADR-007 govern the technology, service organization, storage, retrieval, async, and deployment decisions this architecture depends on; ADR-009 governs the Agent workspace domain introduced in §22 and the Capability rename in §13; ADR-010 governs the Authentication Boundary's realized mechanism in §15.4.
 
 These traceability links ensure the backend organization remains accountable to the approved requirements.
 

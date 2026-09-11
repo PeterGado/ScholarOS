@@ -15,3 +15,15 @@ class AgentAlreadyExistsForUserError(AgentDomainError):
     def __init__(self, user_id: int) -> None:
         super().__init__(f"User {user_id} already owns an Agent (one Agent per user in the MVP).")
         self.user_id = user_id
+
+
+class AgentNotFoundForUserError(AgentDomainError):
+    """Raised when an authenticated user has no Agent yet (e.g. has never called
+    POST /agents). Distinct from "Agent exists but has no knowledge yet" - Stage 8's search
+    endpoint must not conflate the two (the API contract in Backend_Slice2_Implementation_
+    Plan.md §9 already called for this distinction).
+    """
+
+    def __init__(self, user_id: int) -> None:
+        super().__init__(f"User {user_id} does not have an Agent yet.")
+        self.user_id = user_id

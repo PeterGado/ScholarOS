@@ -105,6 +105,7 @@ Compliance is verified through the standard review and completion processes: **0
 | ADR-001 (Separation of Concerns) | Accepted | This ADR records technology decisions that remain out of requirements and architecture documents. |
 | ADR-004 (Storage and Memory Strategy) | Accepted | Persistence engines are decided there, behind the data access layer this ADR requires. |
 | ADR-006 (Async Processing and Event Coordination) | Accepted | The async-first framework supports the pipeline decisions recorded there. |
+| ADR-010 (Authentication Boundary — Single-User Session Model) | Accepted | Uses this ADR's stack (FastAPI/SQLAlchemy) unchanged; adds only a password-hashing library, no new stack element. |
 | ADR-007 (Deployment Strategy) | Accepted | Deployment topology complements this stack decision. |
 
 ## Future Considerations

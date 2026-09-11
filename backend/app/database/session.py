@@ -51,10 +51,18 @@ def init_db(target_engine: Engine | None = None) -> None:
     registered on the shared metadata before create_all runs - the model registration
     mechanism for this modular-monolith structure (ADR-003).
     """
+    from app.auth.models import AuthSession  # noqa: F401
     from app.database.base import Base
     from app.database.shared_models import User  # noqa: F401
     from app.modules.agent.infrastructure.models import Agent  # noqa: F401
     from app.modules.document.infrastructure.models import ResearchDocument  # noqa: F401
+    from app.modules.knowledge.infrastructure.models import (  # noqa: F401
+        ChunkEvidenceLink,
+        KnowledgeChunk,
+        KnowledgeElement,
+    )
+    from app.modules.knowledge.infrastructure.vector_models import KnowledgeChunkEmbedding  # noqa: F401
     from app.modules.project.infrastructure.models import Project  # noqa: F401
+    from app.workers.models import WorkItem  # noqa: F401
 
     Base.metadata.create_all(bind=target_engine if target_engine is not None else engine)

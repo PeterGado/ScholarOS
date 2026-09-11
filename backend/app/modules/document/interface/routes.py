@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 
 from app.api.exception_handlers import ErrorResponse
-from app.core.dependencies import get_upload_research_document_use_case
+from app.core.dependencies import get_current_user_id, get_upload_research_document_use_case
 from app.modules.document.application.use_cases import UploadResearchDocumentUseCase
 from app.modules.document.interface.schemas import ResearchDocumentResponse
 
@@ -15,7 +15,11 @@ router = APIRouter(prefix="/projects", tags=["documents"])
     response_model=ResearchDocumentResponse,
     status_code=status.HTTP_201_CREATED,
     responses={
-        404: {"model": ErrorResponse, "description": "The referenced Project does not exist."},
+        401: {"model": ErrorResponse, "description": "Missing, malformed, unknown, or ended session."},
+        404: {
+            "model": ErrorResponse,
+            "description": "The referenced Project does not exist, or does not belong to the authenticated user.",
+        },
         422: {
             "model": ErrorResponse,
             "description": "Invalid title/format/content. Malformed request bodies use FastAPI's own validation error shape instead.",
@@ -30,6 +34,7 @@ async def upload_research_document(
     format: str = Form(...),
     author: str | None = Form(None),
     source: str | None = Form(None),
+    user_id: int = Depends(get_current_user_id),
     use_case: UploadResearchDocumentUseCase = Depends(get_upload_research_document_use_case),
 ) -> ResearchDocumentResponse:
     """Upload a Research Document into an existing Project (§10.1; §10.2's documented
@@ -37,15 +42,20 @@ async def upload_research_document(
     agent_id, because the underlying use case and the Logical Data Model both scope
     ResearchDocument to Project directly - addressing it that way needs no extra lookup here.
 
-    No business logic lives here: existence checks, content-store writes, and persistence
-    happen in UploadResearchDocumentUseCase; exceptions are translated to HTTP responses by
-    the handlers registered in app.api.exception_handlers.
+    The authenticated identity (ADR-010, Stage 6) is resolved here and passed to the use
+    case as data, never as a client-supplied value - `user_id` participates in ownership
+    validation (Project -> Agent -> User), it does not come from the request body or query.
+
+    No business logic lives here: existence/ownership checks, content-store writes, and
+    persistence happen in UploadResearchDocumentUseCase; exceptions are translated to HTTP
+    responses by the handlers registered in app.api.exception_handlers.
     """
     content = await file.read()
     extension = Path(file.filename).suffix.lstrip(".") if file.filename else ""
 
     document = use_case.execute(
         project_id=project_id,
+        user_id=user_id,
         title=title,
         format=format,
         content=content,

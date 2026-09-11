@@ -2,8 +2,10 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from app.ai.exceptions import ProviderConfigurationError, ProviderRequestError
+from app.auth.exceptions import InvalidCredentialsError, InvalidSessionError
 from app.core.exceptions import ScholarOSError
-from app.modules.agent.domain.exceptions import AgentAlreadyExistsForUserError
+from app.modules.agent.domain.exceptions import AgentAlreadyExistsForUserError, AgentNotFoundForUserError
 from app.modules.document.domain.exceptions import (
     EmptyDocumentContentError,
     InvalidDocumentFormatError,
@@ -43,10 +45,25 @@ async def _handle_invalid_input(request: Request, exc: Exception) -> JSONRespons
     return _respond(status.HTTP_422_UNPROCESSABLE_CONTENT, type(exc).__name__, str(exc))
 
 
+async def _handle_unauthorized(request: Request, exc: Exception) -> JSONResponse:
+    return _respond(status.HTTP_401_UNAUTHORIZED, type(exc).__name__, str(exc))
+
+
 async def _handle_storage_failure(request: Request, exc: Exception) -> JSONResponse:
     # Deliberately does not forward str(exc): OSError messages can include filesystem paths,
     # which are a persistence implementation detail and must not reach the client.
     return _respond(status.HTTP_500_INTERNAL_SERVER_ERROR, "StorageError", "Storage operation failed.")
+
+
+async def _handle_provider_unavailable(request: Request, exc: Exception) -> JSONResponse:
+    # First route-reachable AI provider exceptions (Stage 8's search endpoint); never forward
+    # str(exc) for ProviderConfigurationError - it never contains a secret itself, but a
+    # generic message keeps failure modes indistinguishable to the client either way.
+    return _respond(status.HTTP_503_SERVICE_UNAVAILABLE, type(exc).__name__, "The AI provider is not available.")
+
+
+async def _handle_provider_request_failure(request: Request, exc: Exception) -> JSONResponse:
+    return _respond(status.HTTP_502_BAD_GATEWAY, type(exc).__name__, "The AI provider request failed.")
 
 
 async def _handle_domain_error(request: Request, exc: Exception) -> JSONResponse:
@@ -62,6 +79,7 @@ async def _handle_unexpected_error(request: Request, exc: Exception) -> JSONResp
 
 def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(AgentAlreadyExistsForUserError, _handle_conflict)
+    app.add_exception_handler(AgentNotFoundForUserError, _handle_not_found)
     app.add_exception_handler(ProjectAlreadyExistsForAgentError, _handle_conflict)
     app.add_exception_handler(ProjectNotFoundError, _handle_not_found)
     app.add_exception_handler(InvalidProjectTitleError, _handle_invalid_input)
@@ -69,6 +87,10 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(InvalidDocumentTitleError, _handle_invalid_input)
     app.add_exception_handler(InvalidDocumentFormatError, _handle_invalid_input)
     app.add_exception_handler(EmptyDocumentContentError, _handle_invalid_input)
+    app.add_exception_handler(InvalidCredentialsError, _handle_unauthorized)
+    app.add_exception_handler(InvalidSessionError, _handle_unauthorized)
+    app.add_exception_handler(ProviderConfigurationError, _handle_provider_unavailable)
+    app.add_exception_handler(ProviderRequestError, _handle_provider_request_failure)
     app.add_exception_handler(OSError, _handle_storage_failure)
     app.add_exception_handler(ScholarOSError, _handle_domain_error)
     app.add_exception_handler(Exception, _handle_unexpected_error)

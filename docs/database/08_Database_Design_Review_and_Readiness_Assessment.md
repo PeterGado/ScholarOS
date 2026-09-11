@@ -317,3 +317,21 @@ This section is appended after the original close-out (§1–§22, dated 2026-08
 **Outstanding technical debt and deferred decisions (§10–§11) are unaffected** by this correction, with one addition: multi-Agent-per-user (a monetization-gated future capability) joins §11's deferred-decisions list, deferred to a future ADR at the stage that requires it (`ADR-009` §Future Considerations).
 
 **Governance record:** this correction is recorded in the journal (`docs/journal/2026-09-04.md`) and in `docs/Baseline_Register.md`, per `04_Repository_Governance.md` §4.4 and §5.3.
+
+---
+
+## 24. Post-Freeze Correction: ADR-010 (2026-09-10)
+
+This section is appended after §23 to record a second, subsequent correction, per `04_Repository_Governance.md` §4.4. Sections 1–23 above remain the historical record and are not rewritten. This is a narrower correction than §23: it adds one attribute to one already-frozen entity and does not change any entity or domain count, so §3/§5's summary figures require no update.
+
+**What changed:** `ADR-010` adds a `password_hash` attribute to the `User` entity (`04_Logical_Data_Model.md` §3.1) and a credential non-exposure rule (`05_Constraints_and_Integrity.md` §17). No entity was added, removed, or renamed. The already-specified `Session` entity (§3.2, designed at this milestone's original close-out but never referenced by an authentication mechanism until now) is the vehicle ADR-010 uses to realize the Authentication Boundary — it required no schema change.
+
+**Why:** Milestone 6's backend implementation shipped with a disclosed placeholder identity (`get_current_user_id`), not real authentication. The project owner authorized a real Authentication Boundary as the next milestone; `ADR-010` records the resulting decision, which is realized through this database baseline rather than around it.
+
+**Documents corrected:** `04_Logical_Data_Model.md` (§3.1, §15, §16), `05_Constraints_and_Integrity.md` (§17, §20). `06_Physical_Design_Strategy.md`, `07_Database_Validation_and_Quality_Assurance.md` were reviewed and require no change — the correction adds an attribute within an already-mapped storage category, not a new physical concern.
+
+**Updated readiness verdict:** unaffected. **Verdict: STILL READY FOR BACKEND IMPLEMENTATION**, now additionally carrying the credential attribute a real Authentication Boundary requires. A Senior Backend Engineer implementing Milestone 7 should treat `User.password_hash` as never exposed in any API response or log (05 §17), and should be aware that the Logical Data Model's `Session` entity name collides with `sqlalchemy.orm.Session` — ADR-010 §Decision item 6 requires a distinct code-level name (e.g., `AuthSession`).
+
+**Outstanding technical debt and deferred decisions (§10–§11) are unaffected**, with two additions: idle/absolute session timeout policy (explicitly left undecided by ADR-010 — see its Decision item 2) and the operational mechanism for generating `AUTH_PASSWORD_HASH` (flagged in ADR-010 Decision item 1 as required before implementation, not yet specified) both join §11's deferred-decisions list.
+
+**Governance record:** this correction is recorded in the journal (`docs/journal/2026-09-10.md`) and in `docs/Baseline_Register.md`, per `04_Repository_Governance.md` §4.4 and §5.3.

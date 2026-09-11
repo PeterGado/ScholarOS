@@ -119,6 +119,7 @@ Verified via `07_Review_Checklist.md` (L1/L2 code review covers routine contract
 | ADR-001 (Separation of Requirements, Architecture, and Implementation) | Accepted | Classifies API Design under the Architecture concern; this ADR clarifies how that concern is realized for ScholarOS's stack and scale without contradicting the separation rule. |
 | ADR-002 (Technology Stack and Provider Abstraction) | Accepted | The FastAPI + Pydantic v2 code-first stack is the direct enabler of this decision. |
 | ADR-003 (Service Organization — Modular Monolith) | Accepted | Domain/service boundaries are the trigger for the Decision-item-5 escalation to a new ADR. |
+| ADR-010 (Authentication Boundary — Single-User Session Model) | Accepted | The authentication-model escalation this ADR's Decision item 5 requires — ADR-010 is that decision, not a silent code choice. |
 | ADR-007 (Deployment Strategy) | Accepted | Establishes the ADR-discipline precedent this ADR follows: record a decision when its trigger arrives, not before. |
 
 ---

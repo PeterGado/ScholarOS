@@ -70,12 +70,15 @@ Content payloads (document content, chunk content, draft content) are modeled as
 |-----------|--------------|-------------|-------------|
 | user_id | Identifier | Not null | Surrogate identifier. |
 | username | Short Text | Not null | Credential identifier (candidate key). |
+| password_hash | Short Text | Not null | Bcrypt hash of the account password. **Added by ADR-010.** Never exposed in an API response or log (05 §17). |
 | display_name | Short Text | Nullable | Human-readable name. |
 | status | Enumerated | Not null | active / suspended. |
 | created_at | Timestamp | Not null | Registration time. |
 | updated_at | Timestamp | Nullable | Last change. |
 
 **Keys:** primary key `user_id`; candidate key `username`.
+
+**Note (ADR-010):** for the MVP, `User` is seeded and kept in sync from configuration (`AUTH_USERNAME`, `AUTH_PASSWORD_HASH`) by the Authentication Boundary, not created through any public registration endpoint — consistent with the MVP's single-authenticated-user constraint (MVP-001) and its explicit exclusion of multi-user account complexity (10_MVP_scope.md, Out-of-Scope table).
 
 ### 3.2 Session
 
@@ -692,11 +695,12 @@ This logical data model is traceable to the approved baseline as follows:
 * **ADR-006** — durable outbox (Work Item) and idempotent processing.
 * **Database Overview (01)** — governing rules and document set (§8, §12, §13); **Domain Model (02)** — vocabulary (§6 of 02); **Conceptual Data Model (03)** — entities and relationships (§3, §4 of 03).
 * **ADR-009** — adds Agent (§3.21); narrows Project (§3.3); renames Agent/Agent Capability to Capability/Capability Entry (§3.13–§3.14); re-points Knowledge Element, Knowledge Chunk, Memory Record, Conversation, Writing Profile, and Draft from `project_id` to `agent_id`; renames Configuration Item's `project` scope to `agent`.
+* **ADR-010** — adds `password_hash` to User (§3.1), the Authentication Boundary's credential store, realized via the already-specified Session entity (§3.2) rather than a new mechanism.
 
 ---
 
 ## 16. Summary
 
-The logical data model, as corrected by ADR-009, refines the conceptual model into twenty-six logical entities — twenty-one core and system entities and five link entities — with logical attributes, surrogate identifiers, candidate keys, references, and integrity rules. Agent is the user's permanent workspace (1:1 with User in the MVP), owning exactly one Project (1:1, permanent) and everything derived from or accumulated within it (Knowledge Element, Knowledge Chunk, Memory Record, Conversation, Writing Profile, Draft); Project retains identity, topic, lifecycle, and Research Document ownership. The pre-existing capability registry is renamed Capability/Capability Entry to free the Agent name. The model resolves every conceptual relationship of Document 03: one-to-many via references, many-to-many and polymorphic associations via junction and exclusive-arc link entities, and supersession via self-references. It establishes normalization to 3NF with two documented deviations, nullability principles, integrity and soft-delete strategies that protect the evidence chain, versioning strategies for drafts, memory, knowledge, and configuration, an audit model grounded in immutability, and naming conventions binding on the physical schema and API payloads.
+The logical data model, as corrected by ADR-009 and ADR-010, refines the conceptual model into twenty-six logical entities — twenty-one core and system entities and five link entities — with logical attributes, surrogate identifiers, candidate keys, references, and integrity rules. User carries a `password_hash` (ADR-010) supporting the Authentication Boundary; Session, specified since Milestone 5 but previously unimplemented, is the credential mechanism ADR-010 realizes. Agent is the user's permanent workspace (1:1 with User in the MVP), owning exactly one Project (1:1, permanent) and everything derived from or accumulated within it (Knowledge Element, Knowledge Chunk, Memory Record, Conversation, Writing Profile, Draft); Project retains identity, topic, lifecycle, and Research Document ownership. The pre-existing capability registry is renamed Capability/Capability Entry to free the Agent name. The model resolves every conceptual relationship of Document 03: one-to-many via references, many-to-many and polymorphic associations via junction and exclusive-arc link entities, and supersession via self-references. It establishes normalization to 3NF with two documented deviations, nullability principles, integrity and soft-delete strategies that protect the evidence chain, versioning strategies for drafts, memory, knowledge, and configuration, an audit model grounded in immutability, and naming conventions binding on the physical schema and API payloads.
 
 This document is implementation-independent: no SQL, no DDL, no migrations, no engine selection, no ORM discussion. A Senior Backend Engineer can begin physical schema design from this contract. The next documents in the layered set — 05 (Constraints and Integrity) through 08 (Validation and Review) — will progressively refine and validate this design, and their own ADR-009 corrections follow in this same session.
