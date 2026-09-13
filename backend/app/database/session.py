@@ -63,6 +63,18 @@ def init_db(target_engine: Engine | None = None) -> None:
     )
     from app.modules.knowledge.infrastructure.vector_models import KnowledgeChunkEmbedding  # noqa: F401
     from app.modules.project.infrastructure.models import Project  # noqa: F401
+    from app.modules.writing.infrastructure.models import (  # noqa: F401
+        Draft,
+        DraftEvidenceLink,
+        DraftVersion,
+        MemoryProvenanceLink,
+        MemoryRecord,
+        ProfileCharacteristic,
+        ProfileCharacteristicSource,
+        Review,
+        ReviewDecision,
+        WritingProfile,
+    )
     from app.workers.models import WorkItem  # noqa: F401
 
     Base.metadata.create_all(bind=target_engine if target_engine is not None else engine)

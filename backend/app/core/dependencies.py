@@ -1,7 +1,7 @@
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
-from app.ai.providers.base import EmbeddingProvider
+from app.ai.providers.base import EmbeddingProvider, TextGenerationProvider
 from app.ai.providers.factory import create_provider
 from app.auth.dependencies import extract_bearer_token
 from app.auth.infrastructure import SqlAlchemyAuthSessionRepository, SqlAlchemyUserCredentialLookup
@@ -21,6 +21,13 @@ from app.modules.knowledge.infrastructure.repositories import (
 )
 from app.modules.project.application.use_cases import CreateProjectUseCase
 from app.modules.project.infrastructure.repositories import SqlAlchemyProjectRepository
+from app.modules.writing.application.style_extraction import ExtractWritingStyleProfileUseCase
+from app.modules.writing.application.style_ingestion import UploadWritingStyleDocumentUseCase
+from app.modules.writing.infrastructure.repositories import (
+    SqlAlchemyProfileCharacteristicRepository,
+    SqlAlchemyProfileCharacteristicSourceRepository,
+    SqlAlchemyWritingProfileRepository,
+)
 from app.storage.filesystem import FilesystemStorage
 from app.workers.repository import WorkItemRepository
 
@@ -116,6 +123,14 @@ def get_embedding_provider() -> EmbeddingProvider:
     return create_provider(get_settings())
 
 
+def get_text_generation_provider() -> TextGenerationProvider:
+    """Same factory call as `get_embedding_provider` - `create_provider` returns one object
+    satisfying both Protocols (ADR-002) - given its own typed accessor because callers that
+    only generate text (e.g. style extraction) should depend on the narrower Protocol.
+    """
+    return create_provider(get_settings())
+
+
 def get_knowledge_chunk_repository(db: Session = Depends(get_db)) -> SqlAlchemyKnowledgeChunkRepository:
     return SqlAlchemyKnowledgeChunkRepository(db)
 
@@ -126,6 +141,61 @@ def get_chunk_evidence_link_repository(db: Session = Depends(get_db)) -> SqlAlch
 
 def get_knowledge_chunk_embedding_repository(db: Session = Depends(get_db)) -> SqlAlchemyKnowledgeChunkEmbeddingRepository:
     return SqlAlchemyKnowledgeChunkEmbeddingRepository(db)
+
+
+def get_writing_profile_repository(db: Session = Depends(get_db)) -> SqlAlchemyWritingProfileRepository:
+    return SqlAlchemyWritingProfileRepository(db)
+
+
+def get_upload_writing_style_document_use_case(
+    document_repository: SqlAlchemyDocumentRepository = Depends(get_document_repository),
+    project_repository: SqlAlchemyProjectRepository = Depends(get_project_repository),
+    agent_repository: SqlAlchemyAgentRepository = Depends(get_agent_repository),
+    writing_profile_repository: SqlAlchemyWritingProfileRepository = Depends(get_writing_profile_repository),
+    content_store: FilesystemStorage = Depends(get_content_store),
+    unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
+) -> UploadWritingStyleDocumentUseCase:
+    return UploadWritingStyleDocumentUseCase(
+        document_repository, project_repository, agent_repository, writing_profile_repository, content_store, unit_of_work
+    )
+
+
+def get_profile_characteristic_repository(db: Session = Depends(get_db)) -> SqlAlchemyProfileCharacteristicRepository:
+    return SqlAlchemyProfileCharacteristicRepository(db)
+
+
+def get_profile_characteristic_source_repository(
+    db: Session = Depends(get_db),
+) -> SqlAlchemyProfileCharacteristicSourceRepository:
+    return SqlAlchemyProfileCharacteristicSourceRepository(db)
+
+
+def get_extract_writing_style_profile_use_case(
+    agent_repository: SqlAlchemyAgentRepository = Depends(get_agent_repository),
+    project_repository: SqlAlchemyProjectRepository = Depends(get_project_repository),
+    document_repository: SqlAlchemyDocumentRepository = Depends(get_document_repository),
+    content_store: FilesystemStorage = Depends(get_content_store),
+    writing_profile_repository: SqlAlchemyWritingProfileRepository = Depends(get_writing_profile_repository),
+    profile_characteristic_repository: SqlAlchemyProfileCharacteristicRepository = Depends(
+        get_profile_characteristic_repository
+    ),
+    profile_characteristic_source_repository: SqlAlchemyProfileCharacteristicSourceRepository = Depends(
+        get_profile_characteristic_source_repository
+    ),
+    text_provider: TextGenerationProvider = Depends(get_text_generation_provider),
+    unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
+) -> ExtractWritingStyleProfileUseCase:
+    return ExtractWritingStyleProfileUseCase(
+        agent_repository,
+        project_repository,
+        document_repository,
+        content_store,
+        writing_profile_repository,
+        profile_characteristic_repository,
+        profile_characteristic_source_repository,
+        text_provider,
+        unit_of_work,
+    )
 
 
 def get_search_knowledge_use_case(

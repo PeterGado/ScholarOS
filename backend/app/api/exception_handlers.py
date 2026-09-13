@@ -17,6 +17,12 @@ from app.modules.project.domain.exceptions import (
     ProjectAlreadyExistsForAgentError,
     ProjectNotFoundError,
 )
+from app.modules.writing.domain.exceptions import (
+    InvalidStyleSampleReferenceError,
+    NoUsableWritingStyleSamplesError,
+    UnusableWritingStyleSampleError,
+    WritingProfileAlreadyExtractedError,
+)
 
 
 class ErrorResponse(BaseModel):
@@ -87,6 +93,10 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(InvalidDocumentTitleError, _handle_invalid_input)
     app.add_exception_handler(InvalidDocumentFormatError, _handle_invalid_input)
     app.add_exception_handler(EmptyDocumentContentError, _handle_invalid_input)
+    app.add_exception_handler(InvalidStyleSampleReferenceError, _handle_not_found)
+    app.add_exception_handler(NoUsableWritingStyleSamplesError, _handle_invalid_input)
+    app.add_exception_handler(UnusableWritingStyleSampleError, _handle_invalid_input)
+    app.add_exception_handler(WritingProfileAlreadyExtractedError, _handle_conflict)
     app.add_exception_handler(InvalidCredentialsError, _handle_unauthorized)
     app.add_exception_handler(InvalidSessionError, _handle_unauthorized)
     app.add_exception_handler(ProviderConfigurationError, _handle_provider_unavailable)
