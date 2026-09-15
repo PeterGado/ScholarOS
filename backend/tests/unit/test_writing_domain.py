@@ -1,21 +1,27 @@
 import pytest
 
 from app.modules.writing.domain.entities import (
+    Conversation,
     Draft,
     DraftEvidenceLink,
     DraftVersion,
     MemoryProvenanceLink,
     MemoryRecord,
+    Message,
+    MessageContextLink,
     ProfileCharacteristic,
     Review,
     ReviewDecision,
     WritingProfile,
 )
 from app.modules.writing.domain.enums import (
+    ConversationStatus,
     DraftEvidenceTargetType,
     DraftStatus,
     MemoryProvenanceSourceType,
     MemoryRecordType,
+    MessageContextTargetType,
+    MessageDirection,
     ProfileCharacteristicType,
     ReviewOutcome,
     ReviewStatus,
@@ -26,9 +32,12 @@ from app.modules.writing.domain.exceptions import (
     InvalidDraftVersionContentError,
     InvalidDraftVersionNumberError,
     InvalidMemoryRecordContentError,
+    InvalidMessageContentError,
+    InvalidMessageSequenceError,
     InvalidProfileCharacteristicSignalError,
     InvalidWritingProfileNameError,
     MemoryProvenanceLinkTargetError,
+    MessageContextLinkTargetError,
 )
 
 
@@ -171,3 +180,36 @@ def test_memory_provenance_link_document_source_rejects_mismatched_reference():
 def test_memory_provenance_link_valid_document_reference():
     link = MemoryProvenanceLink(record_id=1, source_type=MemoryProvenanceSourceType.DOCUMENT, document_id=5)
     assert link.document_id == 5
+
+
+# --- Conversation / Message / Message Context Link -------------------------------------------------------------------
+
+
+def test_conversation_defaults_to_active_status():
+    conversation = Conversation(agent_id=1, title="draft:1:instructions")
+    assert conversation.status == ConversationStatus.ACTIVE
+
+
+def test_message_rejects_blank_content():
+    with pytest.raises(InvalidMessageContentError):
+        Message(conversation_id=1, sequence=1, direction=MessageDirection.USER_REQUEST, content=" ")
+
+
+def test_message_rejects_a_non_positive_sequence():
+    with pytest.raises(InvalidMessageSequenceError):
+        Message(conversation_id=1, sequence=0, direction=MessageDirection.USER_REQUEST, content="Write the intro.")
+
+
+def test_message_context_link_requires_exactly_one_target():
+    with pytest.raises(MessageContextLinkTargetError):
+        MessageContextLink(message_id=1, target_type=MessageContextTargetType.DRAFT_VERSION)
+
+
+def test_message_context_link_rejects_mismatched_reference():
+    with pytest.raises(MessageContextLinkTargetError):
+        MessageContextLink(message_id=1, target_type=MessageContextTargetType.DRAFT_VERSION, document_id=5)
+
+
+def test_message_context_link_valid_draft_version_reference():
+    link = MessageContextLink(message_id=1, target_type=MessageContextTargetType.DRAFT_VERSION, draft_version_id=7)
+    assert link.draft_version_id == 7

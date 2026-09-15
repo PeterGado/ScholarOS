@@ -75,3 +75,28 @@ class MemoryProvenanceSourceType(str, enum.Enum):
     KNOWLEDGE_ELEMENT = "knowledge_element"
     DOCUMENT = "document"
     DRAFT_VERSION = "draft_version"
+
+
+class ConversationStatus(str, enum.Enum):
+    """04_Logical_Data_Model.md §3.9."""
+
+    ACTIVE = "active"
+    SUMMARIZED = "summarized"
+    RETAINED = "retained"
+
+
+class MessageDirection(str, enum.Enum):
+    """04_Logical_Data_Model.md §3.10."""
+
+    USER_REQUEST = "user_request"
+    SYSTEM_RESPONSE = "system_response"
+
+
+class MessageContextTargetType(str, enum.Enum):
+    """04_Logical_Data_Model.md §4.4."""
+
+    RESEARCH_DOCUMENT = "research_document"
+    KNOWLEDGE_ELEMENT = "knowledge_element"
+    KNOWLEDGE_CHUNK = "knowledge_chunk"
+    DRAFT_VERSION = "draft_version"
+    MEMORY_RECORD = "memory_record"

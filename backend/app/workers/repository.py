@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
@@ -65,6 +65,44 @@ class WorkItemRepository:
             row.completed_at = datetime.now(timezone.utc)
         self._session.flush()
         return self._to_domain(row)
+
+    def requeue_stale_running(
+        self, *, stale_after: timedelta, max_attempts: int = DEFAULT_MAX_ATTEMPTS
+    ) -> int:
+        """Recovers Work Items stuck in `running` because the process that claimed them
+        (the MVP's single in-process executor, ADR-006 Decision 3) crashed or was killed
+        before recording an outcome. `claim_next_queued` only ever claims `state=queued` rows -
+        nothing else in this module ever moves a `running` row forward, so absent this method a
+        crash mid-processing left the item stuck forever, never retried (found during Project
+        Writing Stage 8 validation; general to every Work Item kind, not Writing-specific).
+
+        Intended to be called once, at executor startup, before polling begins - never mid-poll,
+        since a `running` row may simply belong to work the current process itself is still
+        doing (`executed_at` alone can't distinguish "still running" from "crashed while
+        running" without a time threshold, hence `stale_after`). Reuses `mark_failed`'s own
+        bounded-retry rule (attempts vs. `max_attempts`) so a poison item that keeps crashing
+        its worker still terminates in `failed` rather than looping forever.
+
+        Returns the number of rows recovered (requeued or terminally failed).
+        """
+        threshold = datetime.now(timezone.utc) - stale_after
+        rows = (
+            self._session.query(WorkItemModel)
+            .filter(WorkItemModel.state == WorkItemState.RUNNING, WorkItemModel.executed_at < threshold)
+            .all()
+        )
+        for row in rows:
+            row.attempts += 1
+            row.last_error = (
+                "Recovered stale running Work Item (executor restarted before recording an outcome)."
+            )
+            if row.attempts < max_attempts:
+                row.state = WorkItemState.QUEUED
+            else:
+                row.state = WorkItemState.FAILED
+                row.completed_at = datetime.now(timezone.utc)
+        self._session.flush()
+        return len(rows)
 
     @staticmethod
     def _to_domain(row: WorkItemModel) -> WorkItem:

@@ -14,6 +14,7 @@ from app.modules.writing.domain.exceptions import (
     InsufficientDraftEvidenceError,
 )
 from app.modules.agent.domain.entities import Agent
+from app.modules.agent.domain.exceptions import AgentNotFoundForUserError
 from app.modules.writing.application.use_cases import EnqueueDraftGenerationUseCase
 
 
@@ -121,6 +122,24 @@ class FakeWorkItemEnqueuer:
         return kwargs
 
 
+class FakeContentStore:
+    """In-memory ContentStore fake - matches tests/unit/test_workers_payloads.py's own."""
+
+    def __init__(self) -> None:
+        self._by_reference: dict[str, bytes] = {}
+
+    def save(self, content: bytes, *, extension: str = "") -> str:
+        reference = f"ref-{len(self._by_reference)}{('.' + extension) if extension else ''}"
+        self._by_reference[reference] = content
+        return reference
+
+    def read(self, reference: str) -> bytes:
+        return self._by_reference[reference]
+
+    def exists(self, reference: str) -> bool:
+        return reference in self._by_reference
+
+
 def _generation_context(*chunk_ids: int) -> ContextAssemblyInput:
     return ContextAssemblyInput(
         topic="Research topic",
@@ -151,13 +170,26 @@ def _generation_use_case(*, provider=None, evidence_links=None, versions=None, u
 def test_create_draft_use_case_persists_and_commits():
     drafts = FakeDraftRepository()
     uow = FakeUnitOfWork()
-    use_case = CreateDraftUseCase(drafts, uow)
+    use_case = CreateDraftUseCase(drafts, FakeAgentRepository(Agent(agent_id=1, user_id=9)), uow)
 
-    draft = use_case.execute(agent_id=1, title="Chapter 1 Draft")
+    draft = use_case.execute(user_id=9, title="Chapter 1 Draft")
 
     assert draft.draft_id == 1
+    assert draft.agent_id == 1
     assert uow.committed is True
     assert uow.rolled_back is False
+
+
+def test_create_draft_use_case_requires_an_existing_agent():
+    drafts = FakeDraftRepository()
+    uow = FakeUnitOfWork()
+    use_case = CreateDraftUseCase(drafts, FakeAgentRepository(None), uow)
+
+    with pytest.raises(AgentNotFoundForUserError):
+        use_case.execute(user_id=9, title="Chapter 1 Draft")
+
+    assert drafts.saved == []
+    assert uow.committed is False
 
 
 def test_create_draft_version_use_case_assigns_version_number_one_for_first_version():
@@ -280,8 +312,7 @@ def test_enqueue_generation_requires_authenticated_draft_owner():
     enqueuer = FakeWorkItemEnqueuer()
     uow = FakeUnitOfWork()
     use_case = EnqueueDraftGenerationUseCase(
-        drafts, FakeAgentRepository(
-            Agent(agent_id=4, user_id=9)), enqueuer, uow
+        drafts, FakeAgentRepository(Agent(agent_id=4, user_id=9)), enqueuer, FakeContentStore(), uow
     )
 
     work_item = use_case.execute(
@@ -294,3 +325,30 @@ def test_enqueue_generation_requires_authenticated_draft_owner():
     with pytest.raises(DraftNotFoundError):
         use_case.execute(user_id=10, draft_id=draft.draft_id,
                          context=_generation_context(1))
+
+
+def test_enqueue_generation_accepts_a_realistic_evidence_sized_context():
+    """Regression test for the fixed defect: enqueuing used to inline the full serialized
+    context into payload_reference and reject anything over 512 characters, which any context
+    with real evidence content would exceed. The context now goes through content_store.
+    """
+    drafts = FakeDraftRepository()
+    draft = drafts.add(Draft.create(agent_id=4, title="Owned Draft"))
+    enqueuer = FakeWorkItemEnqueuer()
+    uow = FakeUnitOfWork()
+    use_case = EnqueueDraftGenerationUseCase(
+        drafts, FakeAgentRepository(Agent(agent_id=4, user_id=9)), enqueuer, FakeContentStore(), uow
+    )
+    realistic_context = ContextAssemblyInput(
+        topic="Research topic",
+        instructions="Write a grounded paragraph.",
+        evidence=tuple(
+            ContextEvidence(chunk_id=index, content="Evidence paragraph. " * 100, summary=None, score=1.0)
+            for index in range(10)
+        ),
+    )
+
+    work_item = use_case.execute(user_id=9, draft_id=draft.draft_id, context=realistic_context)
+
+    assert len(work_item["payload_reference"]) < 200
+    assert uow.committed is True

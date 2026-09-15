@@ -1,17 +1,21 @@
 from abc import ABC, abstractmethod
 
 from app.modules.writing.domain.entities import (
+    Conversation,
     Draft,
     DraftEvidenceLink,
     DraftVersion,
     MemoryProvenanceLink,
     MemoryRecord,
+    Message,
+    MessageContextLink,
     ProfileCharacteristic,
     ProfileCharacteristicSource,
     Review,
     ReviewDecision,
     WritingProfile,
 )
+from app.modules.writing.domain.enums import DraftStatus
 
 
 class DraftRepository(ABC):
@@ -23,6 +27,14 @@ class DraftRepository(ABC):
 
     @abstractmethod
     def list_by_agent_id(self, agent_id: int) -> list[Draft]: ...
+
+    @abstractmethod
+    def update_status(self, draft_id: int, status: DraftStatus) -> None:
+        """Added Stage 7: the review-submission use case is the first caller that needs to
+        transition Draft.status (05_Constraints_and_Integrity.md lifecycle table:
+        in_review -> approved; in_review -> drafting on revisions_requested).
+        """
+        ...
 
 
 class DraftVersionRepository(ABC):
@@ -114,3 +126,39 @@ class MemoryProvenanceLinkRepository(ABC):
 
     @abstractmethod
     def list_by_record_id(self, record_id: int) -> list[MemoryProvenanceLink]: ...
+
+
+class ConversationRepository(ABC):
+    @abstractmethod
+    def add(self, conversation: Conversation) -> Conversation: ...
+
+    @abstractmethod
+    def get_by_id(self, conversation_id: int) -> Conversation | None: ...
+
+    @abstractmethod
+    def get_by_agent_id_and_title(self, agent_id: int, title: str) -> Conversation | None:
+        """The find-or-create lookup `RequestDraftGenerationUseCase` uses to resolve "the
+        Conversation for Draft N" without a `draft_id` column on the frozen Conversation shape.
+        """
+        ...
+
+
+class MessageRepository(ABC):
+    @abstractmethod
+    def add(self, message: Message) -> Message: ...
+
+    @abstractmethod
+    def get_by_id(self, message_id: int) -> Message | None: ...
+
+    @abstractmethod
+    def count_by_conversation_id(self, conversation_id: int) -> int:
+        """Used to compute the next `sequence` value for a new Message."""
+        ...
+
+
+class MessageContextLinkRepository(ABC):
+    @abstractmethod
+    def add(self, link: MessageContextLink) -> MessageContextLink: ...
+
+    @abstractmethod
+    def list_by_message_id(self, message_id: int) -> list[MessageContextLink]: ...

@@ -8,6 +8,7 @@ from app.database.session import build_engine, build_sessionmaker, init_db
 from app.database.shared_models import User
 from app.database.unit_of_work import SqlAlchemyUnitOfWork
 from app.modules.agent.infrastructure.models import Agent
+from app.modules.agent.infrastructure.repositories import SqlAlchemyAgentRepository
 from app.modules.writing.application.use_cases import (
     CreateDraftUseCase,
     CreateDraftVersionUseCase,
@@ -43,6 +44,13 @@ def _make_agent(session):
     session.add(agent)
     session.flush()
     return agent
+
+
+def _create_draft(session, agent, *, title="Chapter 1 Draft", target=None):
+    use_case = CreateDraftUseCase(
+        SqlAlchemyDraftRepository(session), SqlAlchemyAgentRepository(session), SqlAlchemyUnitOfWork(session)
+    )
+    return use_case.execute(user_id=agent.user_id, title=title, target=target)
 
 
 class FakeTextProvider:
@@ -83,11 +91,8 @@ def _generation_context(chunk_id: int) -> ContextAssemblyInput:
 
 def test_create_draft_use_case_persists_against_real_sqlite(session):
     agent = _make_agent(session)
-    use_case = CreateDraftUseCase(SqlAlchemyDraftRepository(
-        session), SqlAlchemyUnitOfWork(session))
 
-    draft = use_case.execute(agent_id=agent.agent_id,
-                             title="Chapter 1 Draft", target="Chapter 1")
+    draft = _create_draft(session, agent, title="Chapter 1 Draft", target="Chapter 1")
 
     session.expire_all()
     fetched = SqlAlchemyDraftRepository(session).get_by_id(draft.draft_id)
@@ -98,9 +103,7 @@ def test_create_draft_use_case_persists_against_real_sqlite(session):
 
 def test_create_draft_version_use_case_persists_sequential_versions_against_real_sqlite(session):
     agent = _make_agent(session)
-    draft = CreateDraftUseCase(SqlAlchemyDraftRepository(session), SqlAlchemyUnitOfWork(session)).execute(
-        agent_id=agent.agent_id, title="Chapter 1 Draft"
-    )
+    draft = _create_draft(session, agent)
 
     version_use_case = CreateDraftVersionUseCase(
         SqlAlchemyDraftVersionRepository(session), SqlAlchemyUnitOfWork(session))
@@ -120,9 +123,7 @@ def test_generate_draft_version_persists_content_and_evidence_links(session):
     agent = _make_agent(session)
     chunk = _make_knowledge_chunk(session, agent)
     chunk_id = chunk.chunk_id
-    draft = CreateDraftUseCase(SqlAlchemyDraftRepository(session), SqlAlchemyUnitOfWork(session)).execute(
-        agent_id=agent.agent_id, title="Chapter 1 Draft"
-    )
+    draft = _create_draft(session, agent)
     use_case = GenerateDraftVersionUseCase(
         SqlAlchemyDraftRepository(session),
         SqlAlchemyDraftVersionRepository(session),
@@ -153,9 +154,7 @@ def test_generate_draft_version_persists_content_and_evidence_links(session):
 def test_provider_failure_leaves_no_generated_rows(session):
     agent = _make_agent(session)
     chunk = _make_knowledge_chunk(session, agent)
-    draft = CreateDraftUseCase(SqlAlchemyDraftRepository(session), SqlAlchemyUnitOfWork(session)).execute(
-        agent_id=agent.agent_id, title="Chapter 1 Draft"
-    )
+    draft = _create_draft(session, agent)
     use_case = GenerateDraftVersionUseCase(
         SqlAlchemyDraftRepository(session),
         SqlAlchemyDraftVersionRepository(session),

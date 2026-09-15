@@ -18,10 +18,14 @@ from app.modules.project.domain.exceptions import (
     ProjectNotFoundError,
 )
 from app.modules.writing.domain.exceptions import (
+    DraftNotFoundError,
+    DraftVersionNotFoundError,
+    InsufficientDraftEvidenceError,
     InvalidStyleSampleReferenceError,
     NoUsableWritingStyleSamplesError,
     UnusableWritingStyleSampleError,
     WritingProfileAlreadyExtractedError,
+    WritingProfileNotFoundError,
 )
 
 
@@ -97,6 +101,10 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(NoUsableWritingStyleSamplesError, _handle_invalid_input)
     app.add_exception_handler(UnusableWritingStyleSampleError, _handle_invalid_input)
     app.add_exception_handler(WritingProfileAlreadyExtractedError, _handle_conflict)
+    app.add_exception_handler(DraftNotFoundError, _handle_not_found)
+    app.add_exception_handler(DraftVersionNotFoundError, _handle_not_found)
+    app.add_exception_handler(InsufficientDraftEvidenceError, _handle_invalid_input)
+    app.add_exception_handler(WritingProfileNotFoundError, _handle_not_found)
     app.add_exception_handler(InvalidCredentialsError, _handle_unauthorized)
     app.add_exception_handler(InvalidSessionError, _handle_unauthorized)
     app.add_exception_handler(ProviderConfigurationError, _handle_provider_unavailable)

@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
@@ -20,10 +20,14 @@ from app.modules.knowledge.infrastructure.repositories import (
 )
 from app.modules.project.infrastructure.repositories import SqlAlchemyProjectRepository
 from app.modules.writing.application.use_cases import GenerateDraftVersionUseCase
+from app.modules.writing.domain.entities import Message, MessageContextLink
+from app.modules.writing.domain.enums import MessageContextTargetType, MessageDirection
 from app.modules.writing.infrastructure.repositories import (
     SqlAlchemyDraftEvidenceLinkRepository,
     SqlAlchemyDraftRepository,
     SqlAlchemyDraftVersionRepository,
+    SqlAlchemyMessageContextLinkRepository,
+    SqlAlchemyMessageRepository,
 )
 from app.storage.filesystem import FilesystemStorage
 from app.workers.enums import WorkItemState
@@ -70,8 +74,8 @@ def process_one_work_item(
         work_kind = "document"
     except ValueError as exc:
         try:
-            draft_id, context, _request_id = parse_generate_draft_version_payload_reference(
-                item.payload_reference)
+            draft_id, context, _request_id, message_id = parse_generate_draft_version_payload_reference(
+                item.payload_reference, storage)
             work_kind = "writing"
         except ValueError as writing_exc:
             work_items.mark_failed(item.work_item_id, error=str(writing_exc))
@@ -82,7 +86,7 @@ def process_one_work_item(
 
     if work_kind == "writing":
         try:
-            GenerateDraftVersionUseCase(
+            generated_version = GenerateDraftVersionUseCase(
                 SqlAlchemyDraftRepository(session),
                 SqlAlchemyDraftVersionRepository(session),
                 SqlAlchemyDraftEvidenceLinkRepository(session),
@@ -96,6 +100,40 @@ def process_one_work_item(
             logger.warning("Work item %s failed (attempt %d): %s",
                            item.work_item_id, updated_item.attempts, exc)
             return True
+
+        if message_id is not None:
+            # Closes the instructions-contract gap (Project Writing Stage 8 finding): the
+            # instructions Message persisted at request time (RequestDraftGenerationUseCase)
+            # is linked here to the Draft Version it actually produced, via the frozen Message
+            # Context Link entity (04_Logical_Data_Model.md §4.4) - the same evidence-provenance
+            # discipline already applied to Draft Evidence Link, extended to instructions.
+            SqlAlchemyMessageContextLinkRepository(session).add(
+                MessageContextLink(
+                    message_id=message_id,
+                    target_type=MessageContextTargetType.DRAFT_VERSION,
+                    draft_version_id=generated_version.version_id,
+                )
+            )
+            messages = SqlAlchemyMessageRepository(session)
+            source_message = messages.get_by_id(message_id)
+            if source_message is not None:
+                response = messages.add(
+                    Message(
+                        conversation_id=source_message.conversation_id,
+                        sequence=messages.count_by_conversation_id(source_message.conversation_id) + 1,
+                        direction=MessageDirection.SYSTEM_RESPONSE,
+                        content=f"Draft Version {generated_version.version_number} generated.",
+                        origin=type(text_provider).__name__,
+                    )
+                )
+                SqlAlchemyMessageContextLinkRepository(session).add(
+                    MessageContextLink(
+                        message_id=response.message_id,
+                        target_type=MessageContextTargetType.DRAFT_VERSION,
+                        draft_version_id=generated_version.version_id,
+                    )
+                )
+            uow.commit()
 
         work_items.mark_succeeded(item.work_item_id)
         uow.commit()
@@ -161,6 +199,7 @@ class WorkItemExecutorLoop:
         storage: FilesystemStorage,
         *,
         poll_interval: float = 1.0,
+        stale_running_threshold: timedelta = timedelta(minutes=10),
     ) -> None:
         self._session_factory = session_factory
         self._text_provider = text_provider
@@ -168,11 +207,37 @@ class WorkItemExecutorLoop:
         self._embedding_model_version = embedding_model_version
         self._storage = storage
         self._poll_interval = poll_interval
+        self._stale_running_threshold = stale_running_threshold
         self._stop_event = asyncio.Event()
         self._task: asyncio.Task | None = None
 
     def start(self) -> None:
+        self._recover_stale_running_items()
         self._task = asyncio.create_task(self._run())
+
+    def _recover_stale_running_items(self) -> None:
+        """Runs once, synchronously, before polling begins - recovers Work Items a prior
+        process left stuck in `running` (see `WorkItemRepository.requeue_stale_running`'s
+        docstring for why this is needed at all). Safe to call unconditionally: on a clean
+        start there are no `running` rows left over, so this is a no-op query in the common
+        case, mirroring `sync_configured_user`'s own "cheap and idempotent every startup"
+        pattern in `main.py`.
+        """
+        session = self._session_factory()
+        try:
+            recovered = WorkItemRepository(session).requeue_stale_running(
+                stale_after=self._stale_running_threshold
+            )
+            session.commit()
+            if recovered:
+                logger.warning(
+                    "Recovered %d stale RUNNING work item(s) at executor startup", recovered)
+        except Exception:
+            session.rollback()
+            logger.exception(
+                "Failed to recover stale RUNNING work items at executor startup")
+        finally:
+            session.close()
 
     async def stop(self) -> None:
         self._stop_event.set()

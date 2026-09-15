@@ -70,6 +70,27 @@ class DraftNotFoundError(WritingDomainError):
         self.draft_id = draft_id
 
 
+class DraftVersionNotFoundError(WritingDomainError):
+    """Also raised when a version_id resolves to a real row that does not belong to the
+    draft_id in the request path - deliberately indistinguishable from a genuinely missing
+    version (non-enumeration), mirroring DraftNotFoundError's own precedent.
+    """
+
+    def __init__(self, *, version_id: int) -> None:
+        super().__init__(f"Draft Version {version_id} was not found.")
+        self.version_id = version_id
+
+
+class WritingProfileNotFoundError(WritingDomainError):
+    """The Agent has no active Writing Profile yet - a normal pre-Stage-3 state (no style
+    sample has ever been uploaded), not an ownership violation.
+    """
+
+    def __init__(self, *, agent_id: int) -> None:
+        super().__init__(f"Agent {agent_id} has no active Writing Profile yet.")
+        self.agent_id = agent_id
+
+
 class InsufficientDraftEvidenceError(WritingDomainError):
     def __init__(self, *, draft_id: int) -> None:
         super().__init__(
@@ -138,6 +159,28 @@ class MissingStoredStyleSampleError(WritingDomainError):
         super().__init__(
             f"Research Document {document_id}'s stored content was not found.")
         self.document_id = document_id
+
+
+class InvalidMessageContentError(WritingDomainError):
+    def __init__(self) -> None:
+        super().__init__("Message content must not be blank.")
+
+
+class InvalidMessageSequenceError(WritingDomainError):
+    def __init__(self, *, sequence: int) -> None:
+        super().__init__(f"Message sequence must be a positive integer, got {sequence}.")
+        self.sequence = sequence
+
+
+class MessageContextLinkTargetError(WritingDomainError):
+    """04_Logical_Data_Model.md §4.4 exclusive-arc rule: exactly one of the five target
+    references must be set, consistent with target_type.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Message Context Link must set exactly one target reference, consistent with target_type."
+        )
 
 
 class WritingProfileAlreadyExtractedError(WritingDomainError):

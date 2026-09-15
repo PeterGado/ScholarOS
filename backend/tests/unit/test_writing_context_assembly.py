@@ -69,16 +69,38 @@ def test_assembly_applies_evidence_limit_and_prompt_character_limit():
     assert "Evidence 2." not in assembled.prompt
 
 
-def test_truncation_prefers_sentence_boundaries():
+def test_grounding_rules_survive_truncation_under_realistic_evidence_pressure():
+    """Regression test for the fixed defect: GROUNDING RULES was rendered last, so any
+    context whose earlier sections (topic/instructions/evidence/style/memory) filled the
+    budget silently dropped it entirely - exactly when a reminder not to fabricate unsupported
+    claims matters most. It must now survive even under a tight budget with real evidence.
+    """
     context = ContextAssemblyInput(
         topic="Topic",
-        instructions="First instruction sentence. Second instruction sentence.",
-        max_characters=90,
+        instructions="Instructions",
+        evidence=tuple(
+            ContextEvidence(chunk_id=index, content=f"Evidence paragraph {index}.", summary=None, score=1.0)
+            for index in range(5)
+        ),
+        max_characters=180,
     )
 
     assembled = assemble_context(context)
 
-    assert len(assembled.prompt) <= 90
+    assert len(assembled.prompt) <= 180
+    assert "GROUNDING RULES" in assembled.prompt
+
+
+def test_truncation_prefers_sentence_boundaries():
+    context = ContextAssemblyInput(
+        topic="Topic",
+        instructions="First instruction sentence. Second instruction sentence.",
+        max_characters=260,
+    )
+
+    assembled = assemble_context(context)
+
+    assert len(assembled.prompt) <= 260
     assert "First instruction sentence." in assembled.prompt
     assert "Second instruction sentence" not in assembled.prompt
 

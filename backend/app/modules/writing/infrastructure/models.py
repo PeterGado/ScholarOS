@@ -5,12 +5,15 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
 from app.modules.writing.domain.enums import (
+    ConversationStatus,
     CreatedBy,
     DraftEvidenceTargetType,
     DraftStatus,
     MemoryProvenanceSourceType,
     MemoryRecordStatus,
     MemoryRecordType,
+    MessageContextTargetType,
+    MessageDirection,
     ProfileCharacteristicType,
     ReviewOutcome,
     ReviewStatus,
@@ -28,6 +31,9 @@ __all__ = [
     "ProfileCharacteristicSource",
     "MemoryRecord",
     "MemoryProvenanceLink",
+    "Conversation",
+    "Message",
+    "MessageContextLink",
 ]
 
 
@@ -268,11 +274,11 @@ class MemoryProvenanceLink(Base):
     """Traces a Memory Record to the artifact or activity that produced it
     (04_Logical_Data_Model.md §4.3; DR-015).
 
-    `conversation_id` deliberately carries no ForeignKey: Conversation is a frozen entity
-    (04_Logical_Data_Model.md §3.9) deferred out of Stage 2 (Stage 2 prompt §40) - see the
-    domain entity's docstring (domain/entities.py) for the full reasoning. The CHECK
-    constraint below encodes the same "user_input -> zero references, else exactly one"
-    interpretation implemented in the domain layer (domain/entities.py).
+    `conversation_id` now carries a real ForeignKey - Conversation was a frozen-but-deferred
+    entity out of Stage 2 (Stage 2 prompt §40) and now exists below, resolving the Stage 8
+    instructions-contract finding (see the domain entity's docstring, domain/entities.py, for
+    the full reasoning). The CHECK constraint below encodes the same "user_input -> zero
+    references, else exactly one" interpretation implemented in the domain layer.
     """
 
     __tablename__ = "memory_provenance_links"
@@ -300,8 +306,75 @@ class MemoryProvenanceLink(Base):
         _enum_column(MemoryProvenanceSourceType, 32), nullable=False
     )
     review_decision_id: Mapped[int | None] = mapped_column(ForeignKey("review_decisions.decision_id"), nullable=True)
-    conversation_id: Mapped[int | None] = mapped_column(nullable=True)
+    conversation_id: Mapped[int | None] = mapped_column(ForeignKey("conversations.conversation_id"), nullable=True)
     element_id: Mapped[int | None] = mapped_column(ForeignKey("knowledge_elements.element_id"), nullable=True)
     document_id: Mapped[int | None] = mapped_column(ForeignKey("research_documents.document_id"), nullable=True)
     draft_version_id: Mapped[int | None] = mapped_column(ForeignKey("draft_versions.version_id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class Conversation(Base):
+    """Project-scoped interaction history (04_Logical_Data_Model.md §3.9; WR-034)."""
+
+    __tablename__ = "conversations"
+
+    conversation_id: Mapped[int] = mapped_column(primary_key=True)
+    agent_id: Mapped[int] = mapped_column(ForeignKey("agents.agent_id"), nullable=False)
+    title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[ConversationStatus] = mapped_column(
+        _enum_column(ConversationStatus, 16), nullable=False, default=ConversationStatus.ACTIVE
+    )
+    started_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
+    summarized_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+
+class Message(Base):
+    """An individual exchange within a Conversation (04_Logical_Data_Model.md §3.10; AIR-006)."""
+
+    __tablename__ = "messages"
+    __table_args__ = (UniqueConstraint("conversation_id", "sequence", name="uq_message_conversation_sequence"),)
+
+    message_id: Mapped[int] = mapped_column(primary_key=True)
+    conversation_id: Mapped[int] = mapped_column(ForeignKey("conversations.conversation_id"), nullable=False)
+    sequence: Mapped[int] = mapped_column(nullable=False)
+    direction: Mapped[MessageDirection] = mapped_column(_enum_column(MessageDirection, 16), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    origin: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class MessageContextLink(Base):
+    """Reference from a Message to the project artifact it concerns
+    (04_Logical_Data_Model.md §4.4). Exclusive-arc CHECK constraint mirrors Draft Evidence
+    Link's and Memory Provenance Link's own pattern above.
+    """
+
+    __tablename__ = "message_context_links"
+    __table_args__ = (
+        CheckConstraint(
+            "(target_type = 'research_document' AND document_id IS NOT NULL AND element_id IS NULL "
+            "AND chunk_id IS NULL AND draft_version_id IS NULL AND memory_record_id IS NULL) OR "
+            "(target_type = 'knowledge_element' AND element_id IS NOT NULL AND document_id IS NULL "
+            "AND chunk_id IS NULL AND draft_version_id IS NULL AND memory_record_id IS NULL) OR "
+            "(target_type = 'knowledge_chunk' AND chunk_id IS NOT NULL AND document_id IS NULL "
+            "AND element_id IS NULL AND draft_version_id IS NULL AND memory_record_id IS NULL) OR "
+            "(target_type = 'draft_version' AND draft_version_id IS NOT NULL AND document_id IS NULL "
+            "AND element_id IS NULL AND chunk_id IS NULL AND memory_record_id IS NULL) OR "
+            "(target_type = 'memory_record' AND memory_record_id IS NOT NULL AND document_id IS NULL "
+            "AND element_id IS NULL AND chunk_id IS NULL AND draft_version_id IS NULL)",
+            name="ck_message_context_link_exclusive_target",
+        ),
+    )
+
+    link_id: Mapped[int] = mapped_column(primary_key=True)
+    message_id: Mapped[int] = mapped_column(ForeignKey("messages.message_id"), nullable=False)
+    target_type: Mapped[MessageContextTargetType] = mapped_column(
+        _enum_column(MessageContextTargetType, 32), nullable=False
+    )
+    document_id: Mapped[int | None] = mapped_column(ForeignKey("research_documents.document_id"), nullable=True)
+    element_id: Mapped[int | None] = mapped_column(ForeignKey("knowledge_elements.element_id"), nullable=True)
+    chunk_id: Mapped[int | None] = mapped_column(ForeignKey("knowledge_chunks.chunk_id"), nullable=True)
+    draft_version_id: Mapped[int | None] = mapped_column(ForeignKey("draft_versions.version_id"), nullable=True)
+    memory_record_id: Mapped[int | None] = mapped_column(ForeignKey("memory_records.record_id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)

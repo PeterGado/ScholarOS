@@ -21,11 +21,29 @@ from app.modules.knowledge.infrastructure.repositories import (
 )
 from app.modules.project.application.use_cases import CreateProjectUseCase
 from app.modules.project.infrastructure.repositories import SqlAlchemyProjectRepository
+from app.modules.writing.application.generation_request import RequestDraftGenerationUseCase
+from app.modules.writing.application.profile_view import GetWritingProfileUseCase
+from app.modules.writing.application.reviews import SubmitDraftReviewUseCase
 from app.modules.writing.application.style_extraction import ExtractWritingStyleProfileUseCase
 from app.modules.writing.application.style_ingestion import UploadWritingStyleDocumentUseCase
+from app.modules.writing.application.use_cases import (
+    CreateDraftUseCase,
+    EnqueueDraftGenerationUseCase,
+    GetDraftUseCase,
+    ListDraftsUseCase,
+    ListDraftVersionsUseCase,
+)
 from app.modules.writing.infrastructure.repositories import (
+    SqlAlchemyConversationRepository,
+    SqlAlchemyDraftEvidenceLinkRepository,
+    SqlAlchemyDraftRepository,
+    SqlAlchemyDraftVersionRepository,
+    SqlAlchemyMemoryRecordRepository,
+    SqlAlchemyMessageRepository,
     SqlAlchemyProfileCharacteristicRepository,
     SqlAlchemyProfileCharacteristicSourceRepository,
+    SqlAlchemyReviewDecisionRepository,
+    SqlAlchemyReviewRepository,
     SqlAlchemyWritingProfileRepository,
 )
 from app.storage.filesystem import FilesystemStorage
@@ -209,3 +227,139 @@ def get_search_knowledge_use_case(
     return SearchKnowledgeUseCase(
         agent_repository, embedding_provider, embedding_repository, chunk_repository, evidence_link_repository, document_repository
     )
+
+
+# --- Stage 7: Writing API -------------------------------------------------------------------
+
+
+def get_draft_repository(db: Session = Depends(get_db)) -> SqlAlchemyDraftRepository:
+    return SqlAlchemyDraftRepository(db)
+
+
+def get_draft_version_repository(db: Session = Depends(get_db)) -> SqlAlchemyDraftVersionRepository:
+    return SqlAlchemyDraftVersionRepository(db)
+
+
+def get_draft_evidence_link_repository(db: Session = Depends(get_db)) -> SqlAlchemyDraftEvidenceLinkRepository:
+    return SqlAlchemyDraftEvidenceLinkRepository(db)
+
+
+def get_review_repository(db: Session = Depends(get_db)) -> SqlAlchemyReviewRepository:
+    return SqlAlchemyReviewRepository(db)
+
+
+def get_review_decision_repository(db: Session = Depends(get_db)) -> SqlAlchemyReviewDecisionRepository:
+    return SqlAlchemyReviewDecisionRepository(db)
+
+
+def get_memory_record_repository(db: Session = Depends(get_db)) -> SqlAlchemyMemoryRecordRepository:
+    return SqlAlchemyMemoryRecordRepository(db)
+
+
+def get_conversation_repository(db: Session = Depends(get_db)) -> SqlAlchemyConversationRepository:
+    return SqlAlchemyConversationRepository(db)
+
+
+def get_message_repository(db: Session = Depends(get_db)) -> SqlAlchemyMessageRepository:
+    return SqlAlchemyMessageRepository(db)
+
+
+def get_create_draft_use_case(
+    draft_repository: SqlAlchemyDraftRepository = Depends(get_draft_repository),
+    agent_repository: SqlAlchemyAgentRepository = Depends(get_agent_repository),
+    unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
+) -> CreateDraftUseCase:
+    return CreateDraftUseCase(draft_repository, agent_repository, unit_of_work)
+
+
+def get_list_drafts_use_case(
+    draft_repository: SqlAlchemyDraftRepository = Depends(get_draft_repository),
+    agent_repository: SqlAlchemyAgentRepository = Depends(get_agent_repository),
+) -> ListDraftsUseCase:
+    return ListDraftsUseCase(draft_repository, agent_repository)
+
+
+def get_get_draft_use_case(
+    draft_repository: SqlAlchemyDraftRepository = Depends(get_draft_repository),
+    agent_repository: SqlAlchemyAgentRepository = Depends(get_agent_repository),
+) -> GetDraftUseCase:
+    return GetDraftUseCase(draft_repository, agent_repository)
+
+
+def get_list_draft_versions_use_case(
+    draft_repository: SqlAlchemyDraftRepository = Depends(get_draft_repository),
+    draft_version_repository: SqlAlchemyDraftVersionRepository = Depends(get_draft_version_repository),
+    evidence_link_repository: SqlAlchemyDraftEvidenceLinkRepository = Depends(get_draft_evidence_link_repository),
+    agent_repository: SqlAlchemyAgentRepository = Depends(get_agent_repository),
+) -> ListDraftVersionsUseCase:
+    return ListDraftVersionsUseCase(draft_repository, draft_version_repository, evidence_link_repository, agent_repository)
+
+
+def get_enqueue_draft_generation_use_case(
+    draft_repository: SqlAlchemyDraftRepository = Depends(get_draft_repository),
+    agent_repository: SqlAlchemyAgentRepository = Depends(get_agent_repository),
+    work_item_repository: WorkItemRepository = Depends(get_work_item_repository),
+    content_store: FilesystemStorage = Depends(get_content_store),
+    unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
+) -> EnqueueDraftGenerationUseCase:
+    return EnqueueDraftGenerationUseCase(
+        draft_repository, agent_repository, work_item_repository, content_store, unit_of_work
+    )
+
+
+def get_request_draft_generation_use_case(
+    draft_repository: SqlAlchemyDraftRepository = Depends(get_draft_repository),
+    project_repository: SqlAlchemyProjectRepository = Depends(get_project_repository),
+    agent_repository: SqlAlchemyAgentRepository = Depends(get_agent_repository),
+    writing_profile_repository: SqlAlchemyWritingProfileRepository = Depends(get_writing_profile_repository),
+    profile_characteristic_repository: SqlAlchemyProfileCharacteristicRepository = Depends(
+        get_profile_characteristic_repository
+    ),
+    memory_record_repository: SqlAlchemyMemoryRecordRepository = Depends(get_memory_record_repository),
+    conversation_repository: SqlAlchemyConversationRepository = Depends(get_conversation_repository),
+    message_repository: SqlAlchemyMessageRepository = Depends(get_message_repository),
+    search_knowledge_use_case: SearchKnowledgeUseCase = Depends(get_search_knowledge_use_case),
+    enqueue_generation_use_case: EnqueueDraftGenerationUseCase = Depends(get_enqueue_draft_generation_use_case),
+    unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
+) -> RequestDraftGenerationUseCase:
+    return RequestDraftGenerationUseCase(
+        draft_repository,
+        project_repository,
+        agent_repository,
+        writing_profile_repository,
+        profile_characteristic_repository,
+        memory_record_repository,
+        conversation_repository,
+        message_repository,
+        search_knowledge_use_case,
+        enqueue_generation_use_case,
+        unit_of_work,
+    )
+
+
+def get_submit_draft_review_use_case(
+    draft_repository: SqlAlchemyDraftRepository = Depends(get_draft_repository),
+    draft_version_repository: SqlAlchemyDraftVersionRepository = Depends(get_draft_version_repository),
+    review_repository: SqlAlchemyReviewRepository = Depends(get_review_repository),
+    review_decision_repository: SqlAlchemyReviewDecisionRepository = Depends(get_review_decision_repository),
+    agent_repository: SqlAlchemyAgentRepository = Depends(get_agent_repository),
+    unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
+) -> SubmitDraftReviewUseCase:
+    return SubmitDraftReviewUseCase(
+        draft_repository,
+        draft_version_repository,
+        review_repository,
+        review_decision_repository,
+        agent_repository,
+        unit_of_work,
+    )
+
+
+def get_get_writing_profile_use_case(
+    writing_profile_repository: SqlAlchemyWritingProfileRepository = Depends(get_writing_profile_repository),
+    profile_characteristic_repository: SqlAlchemyProfileCharacteristicRepository = Depends(
+        get_profile_characteristic_repository
+    ),
+    agent_repository: SqlAlchemyAgentRepository = Depends(get_agent_repository),
+) -> GetWritingProfileUseCase:
+    return GetWritingProfileUseCase(writing_profile_repository, profile_characteristic_repository, agent_repository)

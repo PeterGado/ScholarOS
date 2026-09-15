@@ -1,35 +1,46 @@
+from datetime import datetime, timezone
+
 from sqlalchemy.orm import Session
 
 from app.modules.writing.domain.entities import (
+    Conversation,
     Draft,
     DraftEvidenceLink,
     DraftVersion,
     MemoryProvenanceLink,
     MemoryRecord,
+    Message,
+    MessageContextLink,
     ProfileCharacteristic,
     ProfileCharacteristicSource,
     Review,
     ReviewDecision,
     WritingProfile,
 )
-from app.modules.writing.domain.enums import MemoryRecordStatus, ReviewStatus, WritingProfileStatus
+from app.modules.writing.domain.enums import DraftStatus, MemoryRecordStatus, ReviewStatus, WritingProfileStatus
 from app.modules.writing.domain.repositories import (
+    ConversationRepository,
     DraftEvidenceLinkRepository,
     DraftRepository,
     DraftVersionRepository,
     MemoryProvenanceLinkRepository,
     MemoryRecordRepository,
+    MessageContextLinkRepository,
+    MessageRepository,
     ProfileCharacteristicRepository,
     ProfileCharacteristicSourceRepository,
     ReviewDecisionRepository,
     ReviewRepository,
     WritingProfileRepository,
 )
+from app.modules.writing.infrastructure.models import Conversation as ConversationModel
 from app.modules.writing.infrastructure.models import Draft as DraftModel
 from app.modules.writing.infrastructure.models import DraftEvidenceLink as DraftEvidenceLinkModel
 from app.modules.writing.infrastructure.models import DraftVersion as DraftVersionModel
 from app.modules.writing.infrastructure.models import MemoryProvenanceLink as MemoryProvenanceLinkModel
 from app.modules.writing.infrastructure.models import MemoryRecord as MemoryRecordModel
+from app.modules.writing.infrastructure.models import Message as MessageModel
+from app.modules.writing.infrastructure.models import MessageContextLink as MessageContextLinkModel
 from app.modules.writing.infrastructure.models import ProfileCharacteristic as ProfileCharacteristicModel
 from app.modules.writing.infrastructure.models import ProfileCharacteristicSource as ProfileCharacteristicSourceModel
 from app.modules.writing.infrastructure.models import Review as ReviewModel
@@ -56,6 +67,12 @@ class SqlAlchemyDraftRepository(DraftRepository):
     def list_by_agent_id(self, agent_id: int) -> list[Draft]:
         rows = self._session.query(DraftModel).filter_by(agent_id=agent_id).all()
         return [self._to_domain(row) for row in rows]
+
+    def update_status(self, draft_id: int, status: DraftStatus) -> None:
+        row = self._session.get(DraftModel, draft_id)
+        row.status = status
+        row.updated_at = datetime.now(timezone.utc)
+        self._session.flush()
 
     @staticmethod
     def _to_domain(row: DraftModel) -> Draft:
@@ -127,11 +144,17 @@ class SqlAlchemyReviewRepository(ReviewRepository):
         self._session = session
 
     def add(self, review: Review) -> Review:
-        row = ReviewModel(draft_version_id=review.draft_version_id, status=review.status, notes=review.notes)
+        row = ReviewModel(
+            draft_version_id=review.draft_version_id,
+            status=review.status,
+            notes=review.notes,
+            decided_at=review.decided_at,
+        )
         self._session.add(row)
         self._session.flush()
         review.review_id = row.review_id
         review.opened_at = row.opened_at
+        review.decided_at = row.decided_at
         return review
 
     def get_by_id(self, review_id: int) -> Review | None:
@@ -411,5 +434,117 @@ class SqlAlchemyMemoryProvenanceLinkRepository(MemoryProvenanceLinkRepository):
             element_id=row.element_id,
             document_id=row.document_id,
             draft_version_id=row.draft_version_id,
+            created_at=row.created_at,
+        )
+
+
+class SqlAlchemyConversationRepository(ConversationRepository):
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(self, conversation: Conversation) -> Conversation:
+        row = ConversationModel(
+            agent_id=conversation.agent_id, title=conversation.title, status=conversation.status
+        )
+        self._session.add(row)
+        self._session.flush()
+        conversation.conversation_id = row.conversation_id
+        conversation.started_at = row.started_at
+        return conversation
+
+    def get_by_id(self, conversation_id: int) -> Conversation | None:
+        row = self._session.get(ConversationModel, conversation_id)
+        return self._to_domain(row) if row is not None else None
+
+    def get_by_agent_id_and_title(self, agent_id: int, title: str) -> Conversation | None:
+        row = self._session.query(ConversationModel).filter_by(agent_id=agent_id, title=title).one_or_none()
+        return self._to_domain(row) if row is not None else None
+
+    @staticmethod
+    def _to_domain(row: ConversationModel) -> Conversation:
+        return Conversation(
+            conversation_id=row.conversation_id,
+            agent_id=row.agent_id,
+            title=row.title,
+            status=row.status,
+            started_at=row.started_at,
+            summarized_at=row.summarized_at,
+            deleted_at=row.deleted_at,
+        )
+
+
+class SqlAlchemyMessageRepository(MessageRepository):
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(self, message: Message) -> Message:
+        row = MessageModel(
+            conversation_id=message.conversation_id,
+            sequence=message.sequence,
+            direction=message.direction,
+            content=message.content,
+            origin=message.origin,
+        )
+        self._session.add(row)
+        self._session.flush()
+        message.message_id = row.message_id
+        message.created_at = row.created_at
+        return message
+
+    def get_by_id(self, message_id: int) -> Message | None:
+        row = self._session.get(MessageModel, message_id)
+        return self._to_domain(row) if row is not None else None
+
+    def count_by_conversation_id(self, conversation_id: int) -> int:
+        return self._session.query(MessageModel).filter_by(conversation_id=conversation_id).count()
+
+    @staticmethod
+    def _to_domain(row: MessageModel) -> Message:
+        return Message(
+            message_id=row.message_id,
+            conversation_id=row.conversation_id,
+            sequence=row.sequence,
+            direction=row.direction,
+            content=row.content,
+            origin=row.origin,
+            created_at=row.created_at,
+        )
+
+
+class SqlAlchemyMessageContextLinkRepository(MessageContextLinkRepository):
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(self, link: MessageContextLink) -> MessageContextLink:
+        row = MessageContextLinkModel(
+            message_id=link.message_id,
+            target_type=link.target_type,
+            document_id=link.document_id,
+            element_id=link.element_id,
+            chunk_id=link.chunk_id,
+            draft_version_id=link.draft_version_id,
+            memory_record_id=link.memory_record_id,
+        )
+        self._session.add(row)
+        self._session.flush()
+        link.link_id = row.link_id
+        link.created_at = row.created_at
+        return link
+
+    def list_by_message_id(self, message_id: int) -> list[MessageContextLink]:
+        rows = self._session.query(MessageContextLinkModel).filter_by(message_id=message_id).all()
+        return [self._to_domain(row) for row in rows]
+
+    @staticmethod
+    def _to_domain(row: MessageContextLinkModel) -> MessageContextLink:
+        return MessageContextLink(
+            link_id=row.link_id,
+            message_id=row.message_id,
+            target_type=row.target_type,
+            document_id=row.document_id,
+            element_id=row.element_id,
+            chunk_id=row.chunk_id,
+            draft_version_id=row.draft_version_id,
+            memory_record_id=row.memory_record_id,
             created_at=row.created_at,
         )

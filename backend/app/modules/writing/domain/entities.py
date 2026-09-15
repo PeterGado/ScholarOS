@@ -2,12 +2,15 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from app.modules.writing.domain.enums import (
+    ConversationStatus,
     CreatedBy,
     DraftEvidenceTargetType,
     DraftStatus,
     MemoryProvenanceSourceType,
     MemoryRecordStatus,
     MemoryRecordType,
+    MessageContextTargetType,
+    MessageDirection,
     ProfileCharacteristicType,
     ReviewOutcome,
     ReviewStatus,
@@ -19,9 +22,12 @@ from app.modules.writing.domain.exceptions import (
     InvalidDraftVersionContentError,
     InvalidDraftVersionNumberError,
     InvalidMemoryRecordContentError,
+    InvalidMessageContentError,
+    InvalidMessageSequenceError,
     InvalidProfileCharacteristicSignalError,
     InvalidWritingProfileNameError,
     MemoryProvenanceLinkTargetError,
+    MessageContextLinkTargetError,
 )
 
 
@@ -254,12 +260,11 @@ class MemoryProvenanceLink:
     contradiction. Flagged as an implementation interpretation, not a frozen-model change
     (Stage 2 completion report §13).
 
-    `conversation_id` has no foreign-key constraint yet: Conversation is a frozen entity
-    (04_Logical_Data_Model.md §3.9) deliberately deferred out of Stage 2 (Stage 2 prompt §40;
-    Stage 1 plan §19.3 covers *why* a Draft-scoped Conversation will eventually exist, but
-    Stage 2's objective is Draft/Review/Evidence/Profile/Memory persistence, not a
-    conversational subsystem). The column is retained so the frozen shape is not silently
-    altered; source_type=conversation is not usable end-to-end until Conversation exists.
+    `conversation_id` carries a real foreign key as of the instructions-contract resolution
+    below (Project_Writing_Implementation_Plan.md §19 item 3 follow-up): Stage 2 deferred
+    Conversation entirely (Stage 2 prompt §40), so this column originally had none; Conversation
+    now exists (see `Conversation`/`Message`/`MessageContextLink` below), so source_type=
+    conversation is usable end-to-end.
     """
 
     record_id: int
@@ -299,3 +304,96 @@ class MemoryProvenanceLink:
         }
         if expected[self.source_type] is None:
             raise MemoryProvenanceLinkTargetError()
+
+
+@dataclass
+class Conversation:
+    """Project-scoped interaction history (04_Logical_Data_Model.md §3.9; WR-034). Agent-scoped
+    directly (ADR-009).
+
+    Realizes Stage 1 plan §19 item 3's decision - use the existing frozen Conversation/Message
+    entities to carry per-request Draft generation instructions, rather than inventing a new
+    field on Draft or ContextAssemblyInput. Deferred out of Stage 2 (Stage 2 prompt §40);
+    implemented resolving the Stage 8 validation finding that the decision had never actually
+    been realized (Stage 7 shipped a plain `instructions` string instead).
+
+    `title` doubles as the association key `RequestDraftGenerationUseCase` uses to find-or-
+    create "the Conversation for Draft N" (see that use case's docstring) - a deliberate reuse
+    of the frozen, genuinely free-form "Optional conversation label" field rather than adding a
+    `draft_id` column, which would modify the frozen Conversation shape.
+    """
+
+    agent_id: int
+    conversation_id: int | None = None
+    title: str | None = None
+    status: ConversationStatus = ConversationStatus.ACTIVE
+    started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    summarized_at: datetime | None = None
+    deleted_at: datetime | None = None
+
+
+@dataclass
+class Message:
+    """An individual exchange within a Conversation (04_Logical_Data_Model.md §3.10; AIR-006).
+    Ordered within its Conversation by `sequence`, strictly ascending from 1
+    (candidate key `(conversation_id, sequence)`).
+    """
+
+    conversation_id: int
+    sequence: int
+    direction: MessageDirection
+    content: str
+    message_id: int | None = None
+    origin: str | None = None
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+    def __post_init__(self) -> None:
+        if not self.content or not self.content.strip():
+            raise InvalidMessageContentError()
+        if self.sequence < 1:
+            raise InvalidMessageSequenceError(sequence=self.sequence)
+
+
+@dataclass
+class MessageContextLink:
+    """Reference from a Message to the project artifact it concerns
+    (04_Logical_Data_Model.md §4.4). Exactly one of the five target references is set,
+    consistent with `target_type` (exclusive arc) - same discipline as Draft Evidence Link and
+    Memory Provenance Link above.
+
+    First real use: linking a generation-request instructions Message (and the system's own
+    response Message) to the Draft Version it produced (`app/workers/executor.py`), closing the
+    provenance gap between "what was asked for" and "what was generated."
+    """
+
+    message_id: int
+    target_type: MessageContextTargetType
+    link_id: int | None = None
+    document_id: int | None = None
+    element_id: int | None = None
+    chunk_id: int | None = None
+    draft_version_id: int | None = None
+    memory_record_id: int | None = None
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+    def __post_init__(self) -> None:
+        targets = (
+            self.document_id,
+            self.element_id,
+            self.chunk_id,
+            self.draft_version_id,
+            self.memory_record_id,
+        )
+        targets_set = sum(1 for value in targets if value is not None)
+        if targets_set != 1:
+            raise MessageContextLinkTargetError()
+
+        expected = {
+            MessageContextTargetType.RESEARCH_DOCUMENT: self.document_id,
+            MessageContextTargetType.KNOWLEDGE_ELEMENT: self.element_id,
+            MessageContextTargetType.KNOWLEDGE_CHUNK: self.chunk_id,
+            MessageContextTargetType.DRAFT_VERSION: self.draft_version_id,
+            MessageContextTargetType.MEMORY_RECORD: self.memory_record_id,
+        }
+        if expected[self.target_type] is None:
+            raise MessageContextLinkTargetError()
