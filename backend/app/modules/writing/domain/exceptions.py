@@ -70,6 +70,18 @@ class DraftNotFoundError(WritingDomainError):
         self.draft_id = draft_id
 
 
+class InsufficientDraftEvidenceError(WritingDomainError):
+    def __init__(self, *, draft_id: int) -> None:
+        super().__init__(
+            f"Draft {draft_id} cannot be generated because no supporting evidence was found.")
+        self.draft_id = draft_id
+
+
+class EmptyGeneratedDraftContentError(WritingDomainError):
+    def __init__(self) -> None:
+        super().__init__("The generation provider returned empty draft content.")
+
+
 class StyleExtractionError(WritingDomainError):
     """The AI provider's response could not be parsed into valid Profile Characteristics -
     not valid JSON, missing a required field, or `characteristic_type` outside the frozen

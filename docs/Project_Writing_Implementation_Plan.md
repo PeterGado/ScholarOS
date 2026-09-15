@@ -359,27 +359,27 @@ Derived from the architecture above, not copied from the brief's example — eac
 **Acceptance:** complete — the function returns both the assembled prompt and the exact evidence value objects selected for later evidence-linking.
 **Non-goals:** no LLM call, persistence, HTTP route, retrieval invocation, or Work Item integration.
 
-### Stage 5 — Generation Gateway & Writing Service
+### Stage 5 — Generation Gateway & Writing Service — Complete
 
-**Objective:** wire Context Assembly → `TextGenerationProvider.generate()` → new Draft Version + Draft Evidence Links, as a directly-callable use case (mirrors `ExtractDocumentKnowledgeUseCase` 's shape and atomicity exactly).
-**Files:** `app/modules/writing/application/use_cases.py` ( `GenerateDraftVersionUseCase` ).
-**New entities:** none (uses Stage 2's entities).
-**New APIs:** none yet — called directly in tests, exactly how `ProcessDocumentUseCase` was proven before Stage 6 wired it to the outbox.
-**Dependencies:** Stage 4's assembly, `TextGenerationProvider` .
-**Tests:** unit (fake provider, atomicity on failure) + integration (real SQLite, real evidence links persisted).
-**Acceptance:** a real generation produces a real, evidence-linked Draft Version; a failure leaves nothing partially written (mirrors Stage 5 of Slice 2's own atomicity guarantee).
-**Non-goals:** no async wiring yet, no API yet.
+**Objective:** wire Context Assembly → `TextGenerationProvider.generate()` → new Draft Version + Draft Evidence Links, as a directly-callable use case.
+**Files:** `app/modules/writing/application/use_cases.py` ( `GenerateDraftVersionUseCase` ); `app/modules/writing/domain/exceptions.py` (empty-output and insufficient-evidence errors).
+**Boundary:** the caller supplies already-resolved `ContextAssemblyInput` ; Stage 5 does not perform repository retrieval, Conversation/Message loading, HTTP handling, or background execution. This resolves the current repository gap without silently inventing the still-unimplemented Conversation/Message subsystem.
+**Behavior:** validates the Draft exists, rejects generation without selected evidence, calls only the injected `TextGenerationProvider` , creates the next immutable `DraftVersion` with `CreatedBy.SYSTEM` , creates one `DraftEvidenceLink` per selected Knowledge Chunk, and commits the complete result through the existing `UnitOfWork` .
+**Tests:** unit tests use fake repositories/provider for success, evidence mapping, version increments, empty output, no-evidence rejection, and rollback signaling; integration tests use real SQLite and separate-session verification for success and provider-failure atomicity.
+**Acceptance:** complete — successful generation persists a real evidence-linked Draft Version; provider or persistence failure leaves no committed generated result.
+**Non-goals:** no async wiring, Work Items, HTTP routes, frontend, schema changes, or real-provider test calls.
 
-### Stage 6 — Async Generation
+### Stage 6 — Async Generation — Audited Complete
 
-**Objective:** wire Stage 5's use case into the Work Item/executor, exactly mirroring Stage 6 of Slice 2.
-**Files:** `app/workers/executor.py` (one new `payload_reference` case), `app/workers/payloads.py` .
-**New entities:** none — reuses the existing `Work Item` entity, no schema change.
-**New APIs:** none yet.
-**Dependencies:** Stage 5, existing `WorkItemRepository` .
-**Tests:** integration (real SQLite, claim→execute→status-transition, failure/retry path — mirrors Stage 6 of Slice 2's own test suite).
-**Acceptance:** a queued generation request is processed by the same executor loop already running for knowledge extraction, with the same durability/retry guarantees.
-**Non-goals:** no API yet.
+**Objective:** wire Stage 5's use case into the existing Work Item/executor without creating a second queue or worker mechanism.
+**Files:** `app/workers/executor.py`, `app/workers/payloads.py`, plus Stage 6 worker integration tests.
+**Work Item contract:** `kind=pipeline_stage`; `payload_reference` is `generate_draft_version:<compact JSON>` containing the server-created `draft_id`, request ID, and serialized resolved `ContextAssemblyInput`; `idempotency_key` is `generate_draft_version:<request_id>`. The existing 512-character payload limit is enforced; oversized contexts are rejected.
+**Identity:** enqueue requires the authenticated `user_id` and verifies Draft → Agent → User ownership. The executor trusts only persisted Work Items and does not accept client identity fields.
+**Execution:** the executor parses the payload and invokes `GenerateDraftVersionUseCase`; it does not duplicate generation or persistence logic. Stage 5 commits DraftVersion plus DraftEvidenceLink rows atomically before the Work Item is marked succeeded.
+**Retry:** provider or generation failures use the existing bounded Work Item retry policy: attempts 1-2 requeue, attempt 3 becomes terminal `failed`; success records `succeeded` and `completed_at`.
+**Tests:** real SQLite worker tests prove queued/claimed execution, DraftVersion/evidence persistence, persisted success and terminal-failure states, retry behavior, no partial generation persistence, and unchanged document-worker behavior. Full suite: 455 passed.
+**Acceptance:** verified for the implemented flow and retry semantics. Known limitation: if the process crashes after Stage 5 commits but before the Work Item success marker commits, a retry can create another DraftVersion; the current frozen schema has no generation-request reference to close that crash window. Resolving that would require a later authorized schema/design decision.
+**Non-goals:** no HTTP API, frontend, new queue, new Work Item kind, or provider abstraction.
 
 ### Stage 7 — API
 
@@ -416,7 +416,7 @@ All six items below were open at the end of Stage 1 review and have since been d
 
 ## 20. Recommended Order
 
-Stage 2 → Stage 3 → Stage 4 → Stage 5 → Stage 6 → Stage 7 → Stage 8, exactly as numbered in §18 — each stage is a strict prerequisite for the next (persistence before context assembly, context assembly before generation, generation before async wiring, async wiring before API, API before end-to-end validation). Stages 2-4 are complete; Stage 5 is the next implementation target. All six items in §19 are resolved (2026-09-12); the two implementation-level style-profile questions remain explicitly handled by the decisions recorded in the project status and journal.
+Stage 2 → Stage 3 → Stage 4 → Stage 5 → Stage 6 → Stage 7 → Stage 8, exactly as numbered in §18 — each stage is a strict prerequisite for the next (persistence before context assembly, context assembly before generation, generation before async wiring, async wiring before API, API before end-to-end validation). Stages 2-6 are implemented; Stage 6 has been audited against its engineering prompt. Stage 7 is the next implementation target. All six items in §19 are resolved (2026-09-12); the crash-window generation idempotency limitation is recorded above rather than silently redesigned.
 
 ---
 

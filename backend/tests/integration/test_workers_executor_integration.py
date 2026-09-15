@@ -4,18 +4,28 @@ from app.database.session import build_engine, build_sessionmaker, init_db
 from app.database.shared_models import User
 from app.database.unit_of_work import SqlAlchemyUnitOfWork
 from app.modules.agent.application.use_cases import CreateAgentWorkspaceUseCase
+from app.modules.agent.domain.entities import Agent
 from app.modules.agent.infrastructure.repositories import SqlAlchemyAgentRepository
 from app.modules.document.application.use_cases import UploadResearchDocumentUseCase
 from app.modules.document.domain.enums import DocumentProcessingStatus
 from app.modules.document.infrastructure.repositories import SqlAlchemyDocumentRepository
 from app.modules.knowledge.infrastructure.models import ChunkEvidenceLink, KnowledgeChunk, KnowledgeElement
+from app.modules.knowledge.domain.enums import CreatedBy as KnowledgeCreatedBy, KnowledgeElementType
 from app.modules.knowledge.infrastructure.vector_models import KnowledgeChunkEmbedding
 from app.modules.project.application.use_cases import CreateProjectUseCase
 from app.modules.project.infrastructure.repositories import SqlAlchemyProjectRepository
+from app.modules.writing.application.use_cases import CreateDraftUseCase
+from app.modules.writing.domain.context_assembly import ContextAssemblyInput, ContextEvidence
+from app.modules.writing.infrastructure.repositories import (
+    SqlAlchemyDraftRepository,
+    SqlAlchemyDraftVersionRepository,
+)
+from app.modules.writing.infrastructure.models import DraftEvidenceLink
 from app.storage.filesystem import FilesystemStorage
 from app.workers.enums import WorkItemKind, WorkItemState
 from app.workers.executor import process_one_work_item
-from app.workers.payloads import build_process_document_payload_reference
+from app.workers.models import WorkItem as WorkItemModel
+from app.workers.payloads import build_generate_draft_version_payload_reference, build_process_document_payload_reference
 from app.workers.repository import WorkItemRepository
 
 
@@ -94,6 +104,45 @@ def _upload_document(session, storage, content: bytes = b"Some real document con
     return document.document_id
 
 
+def _enqueue_writing_generation(session, *, request_id="writing-request-1"):
+    user = User(username=f"writer-{request_id}")
+    session.add(user)
+    session.flush()
+    agent = SqlAlchemyAgentRepository(session).add(Agent(user_id=user.user_id))
+    session.flush()
+    element = KnowledgeElement(
+        agent_id=agent.agent_id,
+        element_type=KnowledgeElementType.CONCEPT,
+        label="Evidence",
+        created_by=KnowledgeCreatedBy.SYSTEM,
+    )
+    session.add(element)
+    session.flush()
+    chunk = KnowledgeChunk(agent_id=agent.agent_id,
+                           element_id=element.element_id, content="Evidence content.")
+    session.add(chunk)
+    session.flush()
+    draft = CreateDraftUseCase(SqlAlchemyDraftRepository(session), SqlAlchemyUnitOfWork(session)).execute(
+        agent_id=agent.agent_id, title="Generated Draft"
+    )
+    context = ContextAssemblyInput(
+        topic="Research topic",
+        instructions="Write a grounded paragraph.",
+        evidence=(ContextEvidence(chunk_id=chunk.chunk_id,
+                  content=chunk.content, summary=None, score=1.0),),
+    )
+    payload, idempotency_key = build_generate_draft_version_payload_reference(
+        draft.draft_id, context, request_id=request_id
+    )
+    WorkItemRepository(session).enqueue(
+        kind=WorkItemKind.PIPELINE_STAGE,
+        payload_reference=payload,
+        idempotency_key=idempotency_key,
+    )
+    SqlAlchemyUnitOfWork(session).commit()
+    return draft.draft_id, chunk.chunk_id, request_id
+
+
 # --- WorkItemRepository, directly ------------------------------------------------------
 
 
@@ -105,7 +154,8 @@ def test_upload_enqueues_exactly_one_queued_work_item(session, storage):
 
     assert item is not None
     assert item.kind == WorkItemKind.PIPELINE_STAGE
-    assert item.payload_reference == build_process_document_payload_reference(document_id)
+    assert item.payload_reference == build_process_document_payload_reference(
+        document_id)
     assert item.state == WorkItemState.RUNNING  # claim_next_queued transitions it
     assert work_items.claim_next_queued() is None  # nothing else queued
 
@@ -124,12 +174,14 @@ def test_mark_failed_requeues_until_max_attempts_then_terminates(session, storag
     assert updated.attempts == 1
 
     reclaimed = work_items.claim_next_queued()
-    updated = work_items.mark_failed(reclaimed.work_item_id, error="boom again")
+    updated = work_items.mark_failed(
+        reclaimed.work_item_id, error="boom again")
     assert updated.state == WorkItemState.QUEUED
     assert updated.attempts == 2
 
     reclaimed = work_items.claim_next_queued()
-    updated = work_items.mark_failed(reclaimed.work_item_id, error="final failure")
+    updated = work_items.mark_failed(
+        reclaimed.work_item_id, error="final failure")
     assert updated.state == WorkItemState.FAILED
     assert updated.attempts == 3
     assert updated.completed_at is not None
@@ -144,9 +196,11 @@ def test_process_one_work_item_returns_false_on_an_empty_queue(session, storage)
 
 
 def test_process_one_work_item_succeeds_and_transitions_document_to_processed(session, storage):
-    document_id = _upload_document(session, storage, content=b"Paragraph one.\n\nParagraph two.")
+    document_id = _upload_document(
+        session, storage, content=b"Paragraph one.\n\nParagraph two.")
     provider = FakeTextGenerationProvider(
-        responses=['{"element_type": "theme", "label": "Overview", "description": "d"}']
+        responses=[
+            '{"element_type": "theme", "label": "Overview", "description": "d"}']
     )
 
     claimed = _process_one(session, storage, text_provider=provider)
@@ -164,7 +218,8 @@ def test_process_one_work_item_succeeds_and_transitions_document_to_processed(se
     assert session.query(KnowledgeChunkEmbedding).count() == 1
 
     work_items = WorkItemRepository(session)
-    assert work_items.claim_next_queued() is None  # the item is now succeeded, not queued
+    # the item is now succeeded, not queued
+    assert work_items.claim_next_queued() is None
 
 
 def test_process_one_work_item_embedding_failure_requeues_like_any_other_pipeline_failure(session, storage):
@@ -172,7 +227,8 @@ def test_process_one_work_item_embedding_failure_requeues_like_any_other_pipelin
     provider = FakeTextGenerationProvider()
     embedding_provider = FakeEmbeddingProvider(always_fail=True)
 
-    _process_one(session, storage, text_provider=provider, embedding_provider=embedding_provider)
+    _process_one(session, storage, text_provider=provider,
+                 embedding_provider=embedding_provider)
 
     session.expire_all()
     documents = SqlAlchemyDocumentRepository(session)
@@ -193,7 +249,8 @@ def test_process_one_work_item_failure_sets_document_pending_while_retry_is_poss
     session.expire_all()
     documents = SqlAlchemyDocumentRepository(session)
     document = documents.get_by_id(document_id)
-    assert document.processing_status == DocumentProcessingStatus.PENDING  # requeued, not yet exhausted
+    # requeued, not yet exhausted
+    assert document.processing_status == DocumentProcessingStatus.PENDING
 
     assert session.query(KnowledgeElement).count() == 0
     assert session.query(KnowledgeChunk).count() == 0
@@ -222,3 +279,42 @@ def test_a_second_process_one_work_item_call_after_success_finds_nothing_to_clai
 
     assert _process_one(session, storage, text_provider=provider) is True
     assert _process_one(session, storage, text_provider=provider) is False
+
+
+def test_process_one_writing_work_item_generates_version_and_succeeds(session, storage):
+    draft_id, chunk_id, request_id = _enqueue_writing_generation(
+        session, request_id="writing-success")
+    provider = FakeTextGenerationProvider(responses=["Generated writing."])
+
+    assert _process_one(session, storage, text_provider=provider) is True
+
+    versions = SqlAlchemyDraftVersionRepository(
+        session).list_by_draft_id(draft_id)
+    assert len(versions) == 1
+    assert versions[0].content == "Generated writing."
+    links = session.query(DraftEvidenceLink).all()
+    assert len(links) == 1
+    assert links[0].chunk_id == chunk_id
+    assert WorkItemRepository(session).claim_next_queued() is None
+    assert provider.call_count == 1
+    succeeded = session.query(WorkItemModel).filter_by(idempotency_key=f"generate_draft_version:{request_id}").one()
+    assert succeeded.state == WorkItemState.SUCCEEDED
+    assert succeeded.attempts == 0
+    assert succeeded.completed_at is not None
+
+
+def test_process_one_writing_failure_retries_and_preserves_atomicity(session, storage):
+    draft_id, _, _ = _enqueue_writing_generation(
+        session, request_id="writing-failure")
+    provider = FakeTextGenerationProvider(always_fail=True)
+
+    for attempt in range(3):
+        assert _process_one(session, storage, text_provider=provider) is True
+
+    assert SqlAlchemyDraftVersionRepository(
+        session).list_by_draft_id(draft_id) == []
+    assert WorkItemRepository(session).claim_next_queued() is None
+    failed = session.query(WorkItemModel).filter_by(idempotency_key="generate_draft_version:writing-failure").one()
+    assert failed.state == WorkItemState.FAILED
+    assert failed.attempts == 3
+    assert failed.completed_at is not None

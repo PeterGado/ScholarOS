@@ -19,9 +19,18 @@ from app.modules.knowledge.infrastructure.repositories import (
     SqlAlchemyKnowledgeElementRepository,
 )
 from app.modules.project.infrastructure.repositories import SqlAlchemyProjectRepository
+from app.modules.writing.application.use_cases import GenerateDraftVersionUseCase
+from app.modules.writing.infrastructure.repositories import (
+    SqlAlchemyDraftEvidenceLinkRepository,
+    SqlAlchemyDraftRepository,
+    SqlAlchemyDraftVersionRepository,
+)
 from app.storage.filesystem import FilesystemStorage
 from app.workers.enums import WorkItemState
-from app.workers.payloads import parse_process_document_payload_reference
+from app.workers.payloads import (
+    parse_generate_draft_version_payload_reference,
+    parse_process_document_payload_reference,
+)
 from app.workers.repository import WorkItemRepository
 
 logger = logging.getLogger(__name__)
@@ -56,20 +65,51 @@ def process_one_work_item(
         return False
 
     try:
-        document_id = parse_process_document_payload_reference(item.payload_reference)
+        document_id = parse_process_document_payload_reference(
+            item.payload_reference)
+        work_kind = "document"
     except ValueError as exc:
-        work_items.mark_failed(item.work_item_id, error=str(exc))
+        try:
+            draft_id, context, _request_id = parse_generate_draft_version_payload_reference(
+                item.payload_reference)
+            work_kind = "writing"
+        except ValueError as writing_exc:
+            work_items.mark_failed(item.work_item_id, error=str(writing_exc))
+            uow.commit()
+            logger.warning(
+                "Work item %s has an unrecognized payload reference: %s", item.work_item_id, writing_exc)
+            return True
+
+    if work_kind == "writing":
+        try:
+            GenerateDraftVersionUseCase(
+                SqlAlchemyDraftRepository(session),
+                SqlAlchemyDraftVersionRepository(session),
+                SqlAlchemyDraftEvidenceLinkRepository(session),
+                text_provider,
+                uow,
+            ).execute(draft_id=draft_id, context=context)
+        except Exception as exc:  # noqa: BLE001 - worker routes all failures through bounded retry
+            updated_item = work_items.mark_failed(
+                item.work_item_id, error=str(exc))
+            uow.commit()
+            logger.warning("Work item %s failed (attempt %d): %s",
+                           item.work_item_id, updated_item.attempts, exc)
+            return True
+
+        work_items.mark_succeeded(item.work_item_id)
         uow.commit()
-        logger.warning("Work item %s has an unrecognized payload reference: %s", item.work_item_id, exc)
         return True
 
-    documents.update_processing_status(document_id, DocumentProcessingStatus.PROCESSING)
+    documents.update_processing_status(
+        document_id, DocumentProcessingStatus.PROCESSING)
     uow.commit()
 
     try:
         projects = SqlAlchemyProjectRepository(session)
         agents = SqlAlchemyAgentRepository(session)
-        process_document = ProcessDocumentUseCase(documents, storage, PlainTextExtractor())
+        process_document = ProcessDocumentUseCase(
+            documents, storage, PlainTextExtractor())
         extract_knowledge = ExtractDocumentKnowledgeUseCase(
             documents,
             projects,
@@ -86,7 +126,8 @@ def process_one_work_item(
         )
         extract_knowledge.execute(document_id=document_id)
     except Exception as exc:  # noqa: BLE001 - any pipeline failure is a retryable work-item failure
-        updated_item = work_items.mark_failed(item.work_item_id, error=str(exc))
+        updated_item = work_items.mark_failed(
+            item.work_item_id, error=str(exc))
         next_status = (
             DocumentProcessingStatus.PENDING
             if updated_item.state == WorkItemState.QUEUED
@@ -94,11 +135,13 @@ def process_one_work_item(
         )
         documents.update_processing_status(document_id, next_status)
         uow.commit()
-        logger.warning("Work item %s failed (attempt %d): %s", item.work_item_id, updated_item.attempts, exc)
+        logger.warning("Work item %s failed (attempt %d): %s",
+                       item.work_item_id, updated_item.attempts, exc)
         return True
 
     work_items.mark_succeeded(item.work_item_id)
-    documents.update_processing_status(document_id, DocumentProcessingStatus.PROCESSED, processed_at=datetime.now(timezone.utc))
+    documents.update_processing_status(
+        document_id, DocumentProcessingStatus.PROCESSED, processed_at=datetime.now(timezone.utc))
     uow.commit()
     return True
 
@@ -156,7 +199,8 @@ class WorkItemExecutorLoop:
                 storage=self._storage,
             )
         except Exception:
-            logger.exception("Work item executor encountered an unexpected error")
+            logger.exception(
+                "Work item executor encountered an unexpected error")
             return False
         finally:
             session.close()
