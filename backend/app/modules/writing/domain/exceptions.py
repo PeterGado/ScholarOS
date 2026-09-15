@@ -5,6 +5,11 @@ class WritingDomainError(ScholarOSError):
     """Base class for Writing domain errors."""
 
 
+class InvalidContextAssemblyInputError(WritingDomainError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(f"Context assembly input is invalid: {reason}.")
+
+
 class InvalidDraftTitleError(WritingDomainError):
     def __init__(self) -> None:
         super().__init__("Draft title must not be blank.")
@@ -17,7 +22,8 @@ class InvalidDraftVersionContentError(WritingDomainError):
 
 class InvalidDraftVersionNumberError(WritingDomainError):
     def __init__(self, *, version_number: int) -> None:
-        super().__init__(f"Draft Version version_number must be a positive integer, got {version_number}.")
+        super().__init__(
+            f"Draft Version version_number must be a positive integer, got {version_number}.")
         self.version_number = version_number
 
 
@@ -92,7 +98,8 @@ class InvalidStyleSampleReferenceError(WritingDomainError):
     """
 
     def __init__(self, *, document_id: int) -> None:
-        super().__init__(f"Research Document {document_id} is not a usable writing-style sample for this Agent.")
+        super().__init__(
+            f"Research Document {document_id} is not a usable writing-style sample for this Agent.")
         self.document_id = document_id
 
 
@@ -104,7 +111,8 @@ class UnusableWritingStyleSampleError(WritingDomainError):
     """
 
     def __init__(self, *, document_id: int) -> None:
-        super().__init__(f"Research Document {document_id}'s stored content could not be used as a writing sample.")
+        super().__init__(
+            f"Research Document {document_id}'s stored content could not be used as a writing sample.")
         self.document_id = document_id
 
 
@@ -115,7 +123,8 @@ class MissingStoredStyleSampleError(WritingDomainError):
     """
 
     def __init__(self, *, document_id: int) -> None:
-        super().__init__(f"Research Document {document_id}'s stored content was not found.")
+        super().__init__(
+            f"Research Document {document_id}'s stored content was not found.")
         self.document_id = document_id
 
 
