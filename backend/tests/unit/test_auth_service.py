@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from sqlalchemy.exc import OperationalError
 
 from app.auth.entities import AuthSession
 from app.auth.exceptions import InvalidCredentialsError, InvalidSessionError
@@ -51,6 +52,23 @@ class FakeAuthSessionRepository(AuthSessionRepository):
     def touch(self, session: AuthSession) -> None:
         self.touch_calls += 1
         session.last_active_at = datetime.now(timezone.utc)
+
+
+class LockedOnCommitUnitOfWork:
+    """Simulates SQLite's real "database is locked" failure mode - a genuinely concurrent
+    writer (another authenticated request's own `touch`+commit, arriving at the same moment;
+    the frontend routinely fires several authenticated requests in parallel) holding the
+    single SQLite writer slot at the exact instant this commit is attempted.
+    """
+
+    def __init__(self) -> None:
+        self.rolled_back = False
+
+    def commit(self):
+        raise OperationalError("UPDATE sessions SET last_active_at=?", (), Exception("database is locked"))
+
+    def rollback(self):
+        self.rolled_back = True
 
 
 class FakeUnitOfWork:
@@ -167,6 +185,30 @@ def test_verify_token_touches_the_session_for_activity_metadata():
     service.verify_token(token)
 
     assert sessions.touch_calls == 1
+
+
+def test_verify_token_survives_a_transient_lock_on_the_activity_touch():
+    """`last_active_at` is documented as activity metadata only, "MUST NOT affect whether a
+    session is considered valid" (AuthSessionRepository.touch's own docstring) - but until this
+    fix, a transient failure committing that write (e.g. SQLite's single writer slot lost to a
+    genuinely concurrent request - found via the Frontend milestone's real manual workflow,
+    where the frontend fires several authenticated requests in parallel) took the whole
+    authenticated request down with it. A session must still verify successfully even when this
+    best-effort write fails.
+    """
+    user = FakeUserCredential(user_id=7, username="researcher", password_hash=hash_password("s3cret"))
+    sessions = FakeAuthSessionRepository()
+    login_uow = FakeUnitOfWork()
+    login_service = AuthService(sessions, FakeUserCredentialLookup(user), login_uow)
+    token = login_service.login(username="researcher", password="s3cret")
+
+    locked_uow = LockedOnCommitUnitOfWork()
+    service = AuthService(sessions, FakeUserCredentialLookup(user), locked_uow)
+
+    identity = service.verify_token(token)
+
+    assert identity.user_id == 7
+    assert locked_uow.rolled_back is True
 
 
 def test_a_session_with_a_very_stale_last_active_at_is_still_valid():

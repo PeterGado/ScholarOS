@@ -1,3 +1,7 @@
+import logging
+
+from sqlalchemy.exc import OperationalError
+
 from app.auth.entities import AuthSession
 from app.auth.exceptions import InvalidCredentialsError, InvalidSessionError
 from app.auth.hashing import verify_password
@@ -5,6 +9,8 @@ from app.auth.identity import AuthenticatedIdentity
 from app.auth.repository import AuthSessionRepository, UserCredentialLookup
 from app.auth.tokens import generate_session_token, hash_session_token
 from app.core.unit_of_work import UnitOfWork
+
+logger = logging.getLogger(__name__)
 
 
 class AuthService:
@@ -60,6 +66,17 @@ class AuthService:
         try:
             self._sessions.touch(session)
             self._uow.commit()
+        except OperationalError:
+            # `last_active_at` is activity metadata only (AuthSessionRepository.touch's own
+            # docstring: "MUST NOT affect whether a session is considered valid") - it was
+            # already documented as non-critical, but the *failure handling* here didn't match
+            # that until now: every authenticated request commits this write, so two requests
+            # arriving genuinely concurrently (the frontend routinely fires several in parallel,
+            # e.g. DraftDetailPage's two simultaneous queries) can race for SQLite's single
+            # writer slot. A transient lock on this best-effort write must not fail the whole
+            # authenticated request - found via the Frontend milestone's real manual workflow.
+            logger.warning("Failed to update session activity timestamp (non-critical); continuing.")
+            self._uow.rollback()
         except Exception:
             self._uow.rollback()
             raise

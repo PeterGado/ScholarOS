@@ -17,11 +17,59 @@ def build_engine(database_url: str) -> Engine:
 
     if is_sqlite:
 
+        is_memory_sqlite = ":memory:" in database_url
+
         @event.listens_for(engine, "connect")
         def _enable_sqlite_foreign_keys(dbapi_connection, connection_record):  # noqa: ANN001, ARG001
             cursor = dbapi_connection.cursor()
             cursor.execute("PRAGMA foreign_keys=ON")
+            # SQLite allows only one writer at a time; without a busy timeout, a writer that
+            # finds the database locked (e.g. the background Work Item executor committing at
+            # the same moment as an incoming HTTP request's own commit - a real, expected
+            # occurrence once transactions are correctly demarcated, see the explicit-BEGIN fix
+            # below) fails immediately with "database is locked" instead of waiting briefly for
+            # the other writer to finish. Found via the Frontend milestone's real manual
+            # workflow the moment the explicit-BEGIN fix made this app's first genuine
+            # concurrent-writer scenario possible; 30s comfortably covers a single Work Item
+            # commit, which is never AI-call-bound (the AI call happens before persistence
+            # begins - see ExtractDocumentKnowledgeUseCase's own docstring).
+            cursor.execute("PRAGMA busy_timeout=30000")
+            if not is_memory_sqlite:
+                # busy_timeout alone was not enough: every authenticated request also writes
+                # (AuthService.verify_token's session-activity "touch", committed on every
+                # request - app/auth/service.py), so two genuinely concurrent authenticated
+                # requests (the frontend routinely fires several in parallel, e.g.
+                # DraftDetailPage's two simultaneous queries) are two real, concurrent writers.
+                # In SQLite's default rollback-journal mode that can surface as "database is
+                # locked" (SQLITE_LOCKED) even with a busy_timeout set - that PRAGMA only backs
+                # off SQLITE_BUSY, a different condition, so it does not reliably help here.
+                # WAL mode is the standard, documented fix for exactly this "many small
+                # concurrent writers" pattern: readers never block writers and vice versa, and
+                # writer-vs-writer contention becomes genuine SQLITE_BUSY, which busy_timeout
+                # does correctly resolve. Skipped for `:memory:` databases (tests only), which
+                # cannot use WAL at all (it requires a real file for the separate -wal file).
+                cursor.execute("PRAGMA journal_mode=WAL")
             cursor.close()
+
+        # pysqlite's own implicit transaction handling is well-documented to interfere with
+        # SQLAlchemy's transaction demarcation (see SQLAlchemy's SQLite dialect docs, "Serializable
+        # isolation / Savepoints / Transactional DDL"): left at its default, a pooled connection
+        # that previously only read can keep an old implicit transaction open indefinitely, so a
+        # later query on that same connection can miss a write another connection already
+        # committed - found via the Frontend milestone's real manual workflow (real AI processing
+        # completing and committing, immediately followed by a real search on a different pooled
+        # connection returning stale/empty results; never surfaced by any fake-provider automated
+        # test, which never has enough real wall-clock time between the write and the read for two
+        # different pooled connections to be involved). Disabling pysqlite's own isolation_level
+        # and issuing BEGIN explicitly on SQLAlchemy's own "begin" hook makes every new
+        # SQLAlchemy-level transaction start a fresh read view, eliminating the staleness.
+        @event.listens_for(engine, "connect")
+        def _disable_pysqlite_implicit_transactions(dbapi_connection, connection_record):  # noqa: ANN001, ARG001
+            dbapi_connection.isolation_level = None
+
+        @event.listens_for(engine, "begin")
+        def _emit_explicit_sqlite_begin(conn):  # noqa: ANN001
+            conn.exec_driver_sql("BEGIN")
 
     return engine
 
