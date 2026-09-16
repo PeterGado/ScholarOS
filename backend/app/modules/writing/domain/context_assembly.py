@@ -40,8 +40,8 @@ class ContextMemory:
 @dataclass(frozen=True)
 class ContextAssemblyInput:
     topic: str
-    project_description: str | None = None
     instructions: str
+    project_description: str | None = None
     evidence: tuple[ContextEvidence, ...] = ()
     style_signals: tuple[ContextStyleSignal, ...] = ()
     memories: tuple[ContextMemory, ...] = ()
