@@ -11,8 +11,8 @@ from app.modules.writing.domain.context_assembly import (
     ContextStyleSignal,
 )
 from app.modules.writing.domain.entities import Conversation, Message
-from app.modules.writing.domain.enums import MessageDirection
-from app.modules.writing.domain.exceptions import DraftNotFoundError, InsufficientDraftEvidenceError
+from app.modules.writing.domain.enums import MessageDirection, ProfileCharacteristicType
+from app.modules.writing.domain.exceptions import DraftNotFoundError
 from app.modules.writing.domain.repositories import (
     ConversationRepository,
     DraftRepository,
@@ -30,6 +30,15 @@ def _draft_conversation_title(draft_id: int) -> str:
     the frozen Conversation shape (see `Conversation`'s own docstring, domain/entities.py).
     """
     return f"draft:{draft_id}:instructions"
+
+
+_BUILT_IN_STYLE_SIGNALS = (
+    ContextStyleSignal(ProfileCharacteristicType.STRUCTURE, "Clear, coherent structure with explicit sectioning."),
+    ContextStyleSignal(ProfileCharacteristicType.VOCABULARY, "Precise, natural academic vocabulary; avoid unnecessary jargon."),
+    ContextStyleSignal(ProfileCharacteristicType.TRANSITIONS, "Use smooth transitions that make the argument easy to follow."),
+    ContextStyleSignal(ProfileCharacteristicType.EXPLANATION, "Explain claims clearly and proportionately to the intended audience."),
+    ContextStyleSignal(ProfileCharacteristicType.CITATION, "Use evidence-aware academic prose; never invent citations."),
+)
 
 
 class RequestDraftGenerationUseCase:
@@ -95,8 +104,6 @@ class RequestDraftGenerationUseCase:
         assert project is not None, f"Agent {agent.agent_id} has no Project (invariant 15 violated)"
 
         search_results = self._search_knowledge.execute(user_id=user_id, query=instructions)
-        if not search_results:
-            raise InsufficientDraftEvidenceError(draft_id=draft_id)
         evidence = tuple(
             ContextEvidence(
                 chunk_id=result.chunk_id,
@@ -122,7 +129,7 @@ class RequestDraftGenerationUseCase:
                 for characteristic in self._profile_characteristics.list_by_profile_id(profile.profile_id)
             )
             if profile is not None
-            else ()
+            else _BUILT_IN_STYLE_SIGNALS
         )
 
         memories = tuple(
@@ -132,6 +139,7 @@ class RequestDraftGenerationUseCase:
 
         context = ContextAssemblyInput(
             topic=project.topic,
+            project_description=project.description,
             instructions=instructions,
             evidence=evidence,
             style_signals=style_signals,
