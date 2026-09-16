@@ -158,3 +158,50 @@ def test_multiple_documents_can_be_uploaded_to_the_same_project(client, auth_hea
     assert first.status_code == 201
     assert second.status_code == 201
     assert first.json()["document_id"] != second.json()["document_id"]
+
+
+def test_list_documents_returns_every_uploaded_document(client, auth_headers):
+    workspace = _create_workspace(client, auth_headers)
+    project_id = workspace["project"]["project_id"]
+    client.post(
+        f"/projects/{project_id}/documents",
+        files={"file": ("a.pdf", io.BytesIO(b"content A"), "application/pdf")},
+        data={"title": "A", "format": "pdf"},
+        headers=auth_headers,
+    )
+    client.post(
+        f"/projects/{project_id}/documents",
+        files={"file": ("b.pdf", io.BytesIO(b"content B"), "application/pdf")},
+        data={"title": "B", "format": "pdf"},
+        headers=auth_headers,
+    )
+
+    response = client.get(f"/projects/{project_id}/documents", headers=auth_headers)
+
+    assert response.status_code == 200
+    titles = {doc["title"] for doc in response.json()["documents"]}
+    assert titles == {"A", "B"}
+
+
+def test_list_documents_for_a_project_with_none_yet_returns_an_empty_list(client, auth_headers):
+    workspace = _create_workspace(client, auth_headers)
+    project_id = workspace["project"]["project_id"]
+
+    response = client.get(f"/projects/{project_id}/documents", headers=auth_headers)
+
+    assert response.status_code == 200
+    assert response.json()["documents"] == []
+
+
+def test_list_documents_against_a_nonexistent_project_returns_404(client, auth_headers):
+    response = client.get("/projects/999/documents", headers=auth_headers)
+    assert response.status_code == 404
+    assert response.json()["error_type"] == "ProjectNotFoundError"
+
+
+def test_list_documents_without_authentication_returns_401(client, auth_headers):
+    workspace = _create_workspace(client, auth_headers)
+    project_id = workspace["project"]["project_id"]
+
+    response = client.get(f"/projects/{project_id}/documents")
+    assert response.status_code == 401

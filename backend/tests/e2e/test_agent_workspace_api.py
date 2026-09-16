@@ -108,6 +108,32 @@ def test_created_agent_belongs_to_the_authenticated_provisioned_user(client, db_
         session.close()
 
 
+def test_get_agent_workspace_returns_the_callers_existing_workspace(client, auth_headers):
+    created = client.post(
+        "/agents", json={"project_title": "Thesis", "project_topic": "Coastal erosion"}, headers=auth_headers
+    ).json()
+
+    response = client.get("/agents", headers=auth_headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["agent"]["agent_id"] == created["agent"]["agent_id"]
+    assert body["project"]["project_id"] == created["project"]["project_id"]
+    assert body["project"]["topic"] == "Coastal erosion"
+
+
+def test_get_agent_workspace_without_one_yet_returns_404(client, auth_headers):
+    response = client.get("/agents", headers=auth_headers)
+
+    assert response.status_code == 404
+    assert response.json()["error_type"] == "AgentNotFoundForUserError"
+
+
+def test_get_agent_workspace_without_authentication_returns_401(client):
+    response = client.get("/agents")
+    assert response.status_code == 401
+
+
 def test_no_bootstrap_user_is_created_by_an_authenticated_request(client, db_engine, auth_headers):
     """Stage 6: the only User row in existence after this flow is the provisioned account -
     no second, implicitly-created 'default-user' row.

@@ -1,8 +1,8 @@
 import pytest
 
-from app.modules.agent.application.use_cases import CreateAgentWorkspaceUseCase
+from app.modules.agent.application.use_cases import CreateAgentWorkspaceUseCase, GetAgentWorkspaceUseCase
 from app.modules.agent.domain.entities import Agent
-from app.modules.agent.domain.exceptions import AgentAlreadyExistsForUserError
+from app.modules.agent.domain.exceptions import AgentAlreadyExistsForUserError, AgentNotFoundForUserError
 from app.modules.agent.domain.repositories import AgentRepository
 from app.modules.project.application.use_cases import CreateProjectUseCase
 from app.modules.project.domain.entities import Project
@@ -113,3 +113,24 @@ def test_project_creation_failure_rolls_back_and_does_not_leave_a_committed_agen
 
     assert uow.rolled_back
     assert not uow.committed
+
+
+# --- GetAgentWorkspaceUseCase -------------------------------------------------------------------
+
+
+def test_get_workspace_returns_the_callers_existing_agent_and_project():
+    create_use_case, agent_repo, project_repo, _ = _build_use_case()
+    created = create_use_case.execute(user_id=1, project_title="Thesis", project_topic="Coastal erosion")
+
+    get_use_case = GetAgentWorkspaceUseCase(agent_repo, project_repo)
+    workspace = get_use_case.execute(user_id=1)
+
+    assert workspace.agent.agent_id == created.agent.agent_id
+    assert workspace.project.project_id == created.project.project_id
+
+
+def test_get_workspace_requires_an_existing_agent():
+    get_use_case = GetAgentWorkspaceUseCase(FakeAgentRepository(), FakeProjectRepository())
+
+    with pytest.raises(AgentNotFoundForUserError):
+        get_use_case.execute(user_id=1)

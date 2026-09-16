@@ -64,6 +64,20 @@ AI_EMBEDDING_MODEL=gemini-embedding-001
 To use the OpenAI-compatible shim instead (e.g. against OpenAI itself, or another
 OpenAI-compatible endpoint), set `AI_PROVIDER=openai_compatible` and `AI_BASE_URL` accordingly.
 
+## Frontend / CORS Setup
+
+A browser-based frontend on a different origin (e.g. the Vite dev server) cannot reach this API
+at all unless its origin is explicitly allowed — every cross-origin browser request is blocked
+by default, unlike `TestClient`/curl-based checks, which don't enforce CORS. Defaults already
+cover the Vite dev server's default port (`http://localhost:5173` / `http://127.0.0.1:5173`); to
+allow a different origin, set:
+
+```env
+CORS_ALLOWED_ORIGINS=["http://localhost:5173", "https://your-deployed-frontend.example"]
+```
+
+(a JSON array — pydantic-settings' own default parsing for a list-typed setting).
+
 ## Layout
 
 ```

@@ -33,3 +33,11 @@ class ResearchDocumentResponse(BaseModel):
             processing_status=document.processing_status.value,
             ingested_at=document.ingested_at,
         )
+
+
+class ResearchDocumentListResponse(BaseModel):
+    documents: list[ResearchDocumentResponse]
+
+    @classmethod
+    def from_domain(cls, documents: list[ResearchDocument]) -> "ResearchDocumentListResponse":
+        return cls(documents=[ResearchDocumentResponse.from_domain(document) for document in documents])

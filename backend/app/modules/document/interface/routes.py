@@ -3,9 +3,13 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 
 from app.api.exception_handlers import ErrorResponse
-from app.core.dependencies import get_current_user_id, get_upload_research_document_use_case
-from app.modules.document.application.use_cases import UploadResearchDocumentUseCase
-from app.modules.document.interface.schemas import ResearchDocumentResponse
+from app.core.dependencies import (
+    get_current_user_id,
+    get_list_project_documents_use_case,
+    get_upload_research_document_use_case,
+)
+from app.modules.document.application.use_cases import ListProjectDocumentsUseCase, UploadResearchDocumentUseCase
+from app.modules.document.interface.schemas import ResearchDocumentListResponse, ResearchDocumentResponse
 
 router = APIRouter(prefix="/projects", tags=["documents"])
 
@@ -64,3 +68,29 @@ async def upload_research_document(
         extension=extension,
     )
     return ResearchDocumentResponse.from_domain(document)
+
+
+@router.get(
+    "/{project_id}/documents",
+    response_model=ResearchDocumentListResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"model": ErrorResponse, "description": "Missing, malformed, unknown, or ended session."},
+        404: {
+            "model": ErrorResponse,
+            "description": "The referenced Project does not exist, or does not belong to the authenticated user.",
+        },
+    },
+)
+def list_project_documents(
+    project_id: int,
+    user_id: int = Depends(get_current_user_id),
+    use_case: ListProjectDocumentsUseCase = Depends(get_list_project_documents_use_case),
+) -> ResearchDocumentListResponse:
+    """List a Project's Research Documents, most recently used to observe `processing_status`
+    (see ListProjectDocumentsUseCase's docstring for why this endpoint was added). A Project
+    with no documents yet returns an empty list (200), not a 404 - the Project itself still
+    exists and is owned by the caller, mirroring GET /writing/drafts's own precedent.
+    """
+    documents = use_case.execute(project_id=project_id, user_id=user_id)
+    return ResearchDocumentListResponse.from_domain(documents)

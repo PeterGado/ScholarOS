@@ -2,7 +2,7 @@ import pytest
 
 from app.modules.agent.domain.entities import Agent
 from app.modules.agent.domain.repositories import AgentRepository
-from app.modules.document.application.use_cases import UploadResearchDocumentUseCase
+from app.modules.document.application.use_cases import ListProjectDocumentsUseCase, UploadResearchDocumentUseCase
 from app.modules.document.domain.entities import ResearchDocument
 from app.modules.document.domain.exceptions import EmptyDocumentContentError
 from app.modules.document.domain.repositories import DocumentRepository
@@ -177,3 +177,46 @@ def test_upload_when_the_owning_agent_cannot_be_found_is_rejected():
     assert content_store.saved == []
     assert not uow.committed
     assert work_items.enqueued == []
+
+
+# --- ListProjectDocumentsUseCase -------------------------------------------------------------------
+
+
+def test_list_documents_returns_the_projects_uploaded_documents():
+    upload_use_case, documents, _content_store, _uow, _work_items = _build_use_case(project_id=1)
+    upload_use_case.execute(project_id=1, user_id=OWNER_USER_ID, title="Source A", format="pdf", content=b"hello")
+    upload_use_case.execute(project_id=1, user_id=OWNER_USER_ID, title="Source B", format="txt", content=b"world")
+
+    list_use_case = ListProjectDocumentsUseCase(
+        documents, FakeProjectRepository(existing_project_id=1), FakeAgentRepository()
+    )
+
+    result = list_use_case.execute(project_id=1, user_id=OWNER_USER_ID)
+
+    assert {d.title for d in result} == {"Source A", "Source B"}
+
+
+def test_list_documents_against_a_project_not_owned_by_the_caller_is_rejected_as_not_found():
+    list_use_case = ListProjectDocumentsUseCase(
+        FakeDocumentRepository(), FakeProjectRepository(existing_project_id=1), FakeAgentRepository()
+    )
+
+    with pytest.raises(ProjectNotFoundError):
+        list_use_case.execute(project_id=1, user_id=OTHER_USER_ID)
+
+
+def test_list_documents_against_a_missing_project_is_rejected_as_not_found():
+    list_use_case = ListProjectDocumentsUseCase(
+        FakeDocumentRepository(), FakeProjectRepository(existing_project_id=1), FakeAgentRepository()
+    )
+
+    with pytest.raises(ProjectNotFoundError):
+        list_use_case.execute(project_id=999, user_id=OWNER_USER_ID)
+
+
+def test_list_documents_for_a_project_with_none_yet_returns_an_empty_list():
+    list_use_case = ListProjectDocumentsUseCase(
+        FakeDocumentRepository(), FakeProjectRepository(existing_project_id=1), FakeAgentRepository()
+    )
+
+    assert list_use_case.execute(project_id=1, user_id=OWNER_USER_ID) == []

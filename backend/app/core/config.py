@@ -25,6 +25,13 @@ class Settings(BaseSettings):
     ai_api_key: str | None = None
     ai_model: str = "gemini-3.6-flash"
     ai_embedding_model: str = "gemini-embedding-001"
+    # Frontend milestone (2026-09-16): a browser-based frontend on its own origin (the Vite
+    # dev server) cannot reach this API at all without CORS headers - not a design choice,
+    # every cross-origin browser request is blocked by default. Defaults cover the Vite dev
+    # server's default port on both loopback forms; override via the CORS_ALLOWED_ORIGINS env
+    # var (a JSON array of origins, e.g. ["http://localhost:5173"] - pydantic-settings' own
+    # default parsing for a list field) for any other deployment origin.
+    cors_allowed_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 
 @lru_cache

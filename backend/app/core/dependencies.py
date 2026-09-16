@@ -9,9 +9,9 @@ from app.auth.service import AuthService
 from app.core.config import get_settings
 from app.database.session import get_db
 from app.database.unit_of_work import SqlAlchemyUnitOfWork
-from app.modules.agent.application.use_cases import CreateAgentWorkspaceUseCase
+from app.modules.agent.application.use_cases import CreateAgentWorkspaceUseCase, GetAgentWorkspaceUseCase
 from app.modules.agent.infrastructure.repositories import SqlAlchemyAgentRepository
-from app.modules.document.application.use_cases import UploadResearchDocumentUseCase
+from app.modules.document.application.use_cases import ListProjectDocumentsUseCase, UploadResearchDocumentUseCase
 from app.modules.document.infrastructure.repositories import SqlAlchemyDocumentRepository
 from app.modules.knowledge.application.retrieval import SearchKnowledgeUseCase
 from app.modules.knowledge.infrastructure.repositories import (
@@ -84,6 +84,13 @@ def get_create_agent_workspace_use_case(
     return CreateAgentWorkspaceUseCase(agent_repository, create_project, unit_of_work)
 
 
+def get_get_agent_workspace_use_case(
+    agent_repository: SqlAlchemyAgentRepository = Depends(get_agent_repository),
+    project_repository: SqlAlchemyProjectRepository = Depends(get_project_repository),
+) -> GetAgentWorkspaceUseCase:
+    return GetAgentWorkspaceUseCase(agent_repository, project_repository)
+
+
 def get_work_item_repository(db: Session = Depends(get_db)) -> WorkItemRepository:
     return WorkItemRepository(db)
 
@@ -99,6 +106,14 @@ def get_upload_research_document_use_case(
     return UploadResearchDocumentUseCase(
         document_repository, project_repository, agent_repository, content_store, unit_of_work, work_item_repository
     )
+
+
+def get_list_project_documents_use_case(
+    document_repository: SqlAlchemyDocumentRepository = Depends(get_document_repository),
+    project_repository: SqlAlchemyProjectRepository = Depends(get_project_repository),
+    agent_repository: SqlAlchemyAgentRepository = Depends(get_agent_repository),
+) -> ListProjectDocumentsUseCase:
+    return ListProjectDocumentsUseCase(document_repository, project_repository, agent_repository)
 
 
 def get_auth_session_repository(db: Session = Depends(get_db)) -> SqlAlchemyAuthSessionRepository:

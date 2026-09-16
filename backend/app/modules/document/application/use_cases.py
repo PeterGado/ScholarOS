@@ -88,3 +88,34 @@ class UploadResearchDocumentUseCase:
             raise
 
         return document
+
+
+class ListProjectDocumentsUseCase:
+    """Lists a Project's Research Documents, most recently used to observe `processing_status`
+    transitioning from `pending` -> `processing` -> `processed`/`failed`. Added resolving a
+    Frontend milestone Stage 1 finding: `POST /projects/{id}/documents` never had a matching
+    read endpoint, even though `DocumentRepository.list_by_project_id` already existed -
+    exposing it required no new persistence, only the same ownership-checked read pattern
+    `UploadResearchDocumentUseCase` already applies.
+    """
+
+    def __init__(
+        self,
+        document_repository: DocumentRepository,
+        project_repository: ProjectRepository,
+        agent_repository: AgentRepository,
+    ) -> None:
+        self._documents = document_repository
+        self._projects = project_repository
+        self._agents = agent_repository
+
+    def execute(self, *, project_id: int, user_id: int) -> list[ResearchDocument]:
+        project = self._projects.get_by_id(project_id)
+        if project is None:
+            raise ProjectNotFoundError(project_id=project_id)
+
+        owning_agent = self._agents.get_by_id(project.agent_id)
+        if owning_agent is None or owning_agent.user_id != user_id:
+            raise ProjectNotFoundError(project_id=project_id)
+
+        return self._documents.list_by_project_id(project_id)
