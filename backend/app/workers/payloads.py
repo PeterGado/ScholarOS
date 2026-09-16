@@ -118,6 +118,7 @@ def parse_generate_draft_version_payload_reference(
 def _context_to_dict(context: ContextAssemblyInput) -> dict:
     return {
         "topic": context.topic,
+        "project_description": context.project_description,
         "instructions": context.instructions,
         "max_characters": context.max_characters,
         "max_evidence": context.max_evidence,
@@ -156,6 +157,7 @@ def _context_from_dict(payload: dict) -> ContextAssemblyInput:
         raise ValueError
     return ContextAssemblyInput(
         topic=payload["topic"],
+        project_description=payload.get("project_description"),
         instructions=payload["instructions"],
         max_characters=payload["max_characters"],
         max_evidence=payload["max_evidence"],
