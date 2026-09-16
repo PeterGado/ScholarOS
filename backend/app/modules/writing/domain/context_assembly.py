@@ -40,6 +40,7 @@ class ContextMemory:
 @dataclass(frozen=True)
 class ContextAssemblyInput:
     topic: str
+    project_description: str | None = None
     instructions: str
     evidence: tuple[ContextEvidence, ...] = ()
     style_signals: tuple[ContextStyleSignal, ...] = ()
@@ -60,6 +61,7 @@ def assemble_context(context: ContextAssemblyInput) -> AssembledContext:
     evidence = _unique_evidence(context.evidence)[: context.max_evidence]
     sections = [
         ("PROJECT TOPIC", context.topic),
+        ("PROJECT DESCRIPTION", context.project_description or "No additional project description was provided."),
         ("WRITING INSTRUCTIONS", context.instructions),
         ("RESEARCH EVIDENCE", _format_evidence(evidence)),
         ("WRITING STYLE SIGNALS", _format_style_signals(context.style_signals)),
@@ -67,8 +69,10 @@ def assemble_context(context: ContextAssemblyInput) -> AssembledContext:
     ]
     grounding_rules = (
         "GROUNDING RULES",
-        "Use research evidence for factual claims. Treat style signals as writing guidance, "
-        "not facts. If the evidence is insufficient, say so explicitly.",
+        "Use supplied research evidence for factual claims when available. If no research "
+        "evidence is supplied, use general model knowledge only for non-project-specific "
+        "scaffolding and reasoning; do not invent citations, sources, findings, or project-specific facts. "
+        "Treat style signals as writing guidance, not facts.",
     )
 
     prompt = _fit_sections_reserving_tail(sections, grounding_rules, context.max_characters)
