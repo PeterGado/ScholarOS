@@ -11,7 +11,6 @@ from app.modules.writing.domain.enums import CreatedBy
 from app.modules.writing.domain.exceptions import (
     DraftNotFoundError,
     EmptyGeneratedDraftContentError,
-    InsufficientDraftEvidenceError,
 )
 from app.modules.writing.domain.repositories import (
     DraftEvidenceLinkRepository,
@@ -198,9 +197,6 @@ class GenerateDraftVersionUseCase:
             raise DraftNotFoundError(draft_id=draft_id)
 
         assembled = assemble_context(context)
-        if not assembled.evidence:
-            raise InsufficientDraftEvidenceError(draft_id=draft_id)
-
         generated_content = self._text_provider.generate(assembled.prompt)
         if not generated_content or not generated_content.strip():
             raise EmptyGeneratedDraftContentError()
