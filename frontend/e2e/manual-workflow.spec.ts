@@ -9,8 +9,8 @@ import { test, expect } from "@playwright/test";
 // of deliberately tiny manual real-provider checks against a fresh, isolated environment"
 // discipline (see docs/Project_Writing_Implementation_Plan.md Stage 8).
 
-const USERNAME = "manual-workflow-user";
-const PASSWORD = "test-password-123";
+const USERNAME = process.env.PLAYWRIGHT_AUTH_USERNAME ?? "manual-workflow-user";
+const PASSWORD = process.env.PLAYWRIGHT_AUTH_PASSWORD ?? "test-password-123";
 
 test.setTimeout(300_000);
 
