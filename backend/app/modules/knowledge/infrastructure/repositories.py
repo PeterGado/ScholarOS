@@ -1,14 +1,17 @@
 import json
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.modules.knowledge.domain.entities import ChunkEmbedding, ChunkEvidenceLink, KnowledgeChunk, KnowledgeElement
 from app.modules.knowledge.domain.enums import KnowledgeElementStatus
+from app.modules.knowledge.domain.lexical_query import build_fts_match_query, build_postgres_tsquery
 from app.modules.knowledge.domain.repositories import (
     ChunkEvidenceLinkRepository,
     KnowledgeChunkEmbeddingRepository,
     KnowledgeChunkRepository,
     KnowledgeElementRepository,
+    LexicalSearchRepository,
 )
 from app.modules.knowledge.infrastructure.models import ChunkEvidenceLink as ChunkEvidenceLinkModel
 from app.modules.knowledge.infrastructure.models import KnowledgeChunk as KnowledgeChunkModel
@@ -52,6 +55,17 @@ class SqlAlchemyKnowledgeChunkRepository(KnowledgeChunkRepository):
         self._session.flush()
         chunk.chunk_id = row.chunk_id
         chunk.created_at = row.created_at
+
+        # Keeps the ADR-005 lexical index (knowledge_chunk_fts) in sync with the real Knowledge
+        # Chunk row on write - there is no delete/update path for chunks anywhere in this
+        # codebase (append-only, like the structured core generally), so an insert-only sync is
+        # complete, not a partial implementation. `rowid` is set explicitly to `chunk_id` (see
+        # init_db's own comment) so a lexical hit maps straight back with no join.
+        if self._session.get_bind().dialect.name == "sqlite":
+            self._session.execute(
+                text("INSERT INTO knowledge_chunk_fts(rowid, content, agent_id) VALUES (:rowid, :content, :agent_id)"),
+                {"rowid": row.chunk_id, "content": row.content, "agent_id": row.agent_id},
+            )
         return chunk
 
     def get_by_id(self, chunk_id: int) -> KnowledgeChunk | None:
@@ -145,3 +159,79 @@ class SqlAlchemyKnowledgeChunkEmbeddingRepository(KnowledgeChunkEmbeddingReposit
             embedding_model_version=row.embedding_model_version,
             created_at=row.created_at,
         )
+
+
+class SqlAlchemyLexicalSearchRepository(LexicalSearchRepository):
+    """ADR-005 Decision 1's lexical branch. Dialect-aware: SQLite FTS5 (`knowledge_chunk_fts`,
+    kept in sync by `SqlAlchemyKnowledgeChunkRepository.add`) or Postgres `tsvector`/GIN (the
+    `knowledge_chunks.search_vector` generated column, maintained by Postgres itself on every
+    write - no application-side sync needed on that dialect, unlike SQLite's shadow table).
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def search(self, *, agent_id: int, query: str, limit: int) -> list[int]:
+        if self._session.get_bind().dialect.name == "postgresql":
+            return self._search_postgres(agent_id=agent_id, query=query, limit=limit)
+        return self._search_sqlite(agent_id=agent_id, query=query, limit=limit)
+
+    def _search_sqlite(self, *, agent_id: int, query: str, limit: int) -> list[int]:
+        match_query = build_fts_match_query(query)
+        if not match_query:
+            return []
+
+        # Joined against the real knowledge_chunks table (not just the FTS5 index's own
+        # agent_id column) to apply the same `status = current` filter the semantic branch
+        # already applies (KnowledgeChunkEmbeddingRepository.list_by_agent_id) - without this,
+        # lexical search could surface a superseded chunk the semantic branch would never
+        # return, a real inconsistency between the two branches of one "hybrid" result set.
+        # `KnowledgeElementStatus.CURRENT.name` (not `.value`) matches this column's actual
+        # stored representation - SQLAlchemy's default Enum column stores the member name, a
+        # pre-existing, flagged deviation in this module (see KnowledgeChunkModel's own status
+        # column), not something this query should silently get wrong by assuming `.value`.
+        # The FTS5 MATCH is isolated in its own subquery, then joined against the real table -
+        # bm25()/MATCH resolved against an aliased FTS5 table in the same top-level FROM/JOIN as
+        # another table raises "no such column" on SQLite's query planner; this form sidesteps
+        # that entirely rather than depending on alias-resolution quirks.
+        rows = self._session.execute(
+            text(
+                "SELECT c.chunk_id AS chunk_id FROM ("
+                "  SELECT rowid, bm25(knowledge_chunk_fts) AS score FROM knowledge_chunk_fts "
+                "  WHERE knowledge_chunk_fts MATCH :match_query AND agent_id = :agent_id"
+                ") AS m "
+                "JOIN knowledge_chunks AS c ON c.chunk_id = m.rowid "
+                "WHERE c.status = :status "
+                "ORDER BY m.score "  # bm25(): lower is a better match
+                "LIMIT :limit"
+            ),
+            {
+                "match_query": match_query,
+                "agent_id": agent_id,
+                "status": KnowledgeElementStatus.CURRENT.name,
+                "limit": limit,
+            },
+        )
+        return [row.chunk_id for row in rows]
+
+    def _search_postgres(self, *, agent_id: int, query: str, limit: int) -> list[int]:
+        tsquery = build_postgres_tsquery(query)
+        if not tsquery:
+            return []
+
+        rows = self._session.execute(
+            text(
+                "SELECT chunk_id FROM knowledge_chunks "
+                "WHERE agent_id = :agent_id AND status = :status "
+                "AND search_vector @@ to_tsquery('english', :tsquery) "
+                "ORDER BY ts_rank(search_vector, to_tsquery('english', :tsquery)) DESC "  # higher is better
+                "LIMIT :limit"
+            ),
+            {
+                "tsquery": tsquery,
+                "agent_id": agent_id,
+                "status": KnowledgeElementStatus.CURRENT.name,
+                "limit": limit,
+            },
+        )
+        return [row.chunk_id for row in rows]

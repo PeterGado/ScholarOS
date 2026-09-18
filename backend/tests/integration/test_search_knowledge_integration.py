@@ -15,6 +15,7 @@ from app.modules.knowledge.infrastructure.repositories import (
     SqlAlchemyKnowledgeChunkEmbeddingRepository,
     SqlAlchemyKnowledgeChunkRepository,
     SqlAlchemyKnowledgeElementRepository,
+    SqlAlchemyLexicalSearchRepository,
 )
 from app.modules.project.application.use_cases import CreateProjectUseCase
 from app.modules.project.infrastructure.repositories import SqlAlchemyProjectRepository
@@ -24,7 +25,7 @@ from app.workers.repository import WorkItemRepository
 
 class FakeTextGenerationProvider:
     def generate(self, prompt: str) -> str:
-        return '{"element_type": "concept", "label": "L", "description": "d"}'
+        return '[{"element_type": "concept", "label": "L", "description": "d"}]'
 
 
 class FakeEmbeddingProvider:
@@ -33,6 +34,9 @@ class FakeEmbeddingProvider:
 
     def embed(self, text: str) -> list[float]:
         return self._vectors_by_text.get(text, [0.0, 0.0])
+
+    def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        return [self.embed(text) for text in texts]
 
 
 @pytest.fixture()
@@ -101,6 +105,7 @@ def _build_search_use_case(session, embedding_provider):
         SqlAlchemyKnowledgeChunkRepository(session),
         SqlAlchemyChunkEvidenceLinkRepository(session),
         SqlAlchemyDocumentRepository(session),
+        SqlAlchemyLexicalSearchRepository(session),
     )
 
 
@@ -118,7 +123,11 @@ def test_full_pipeline_to_search_with_real_persistence(session, storage):
     assert len(results) == 1
     assert results[0].content == "About coastal erosion research."
     assert results[0].evidence[0].document_id == document_id
-    assert results[0].score == pytest.approx(1.0)
+    # The score is now an RRF fusion score (ADR-005 Decision 2), not a raw cosine similarity -
+    # 2/61 confirms this single chunk was found and ranked first by *both* branches (a perfect
+    # embedding match and a real lexical match on "coastal erosion"), the real, intended
+    # behavior of hybrid retrieval, not a regression from the old vector-only score.
+    assert results[0].score == pytest.approx(2 / 61)
 
 
 def test_search_against_an_empty_knowledge_base_returns_no_results(session, storage):

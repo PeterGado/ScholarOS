@@ -25,10 +25,13 @@ class FakeEmbeddingProvider:
     def embed(self, text: str) -> list[float]:
         return self._VECTORS.get(text, [0.0, 0.0])
 
+    def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        return [self.embed(text) for text in texts]
+
 
 class FakeTextGenerationProvider:
     def generate(self, prompt: str) -> str:
-        return '{"element_type": "concept", "label": "L", "description": "d"}'
+        return '[{"element_type": "concept", "label": "L", "description": "d"}]'
 
 
 @pytest.fixture(autouse=True)
@@ -162,3 +165,30 @@ def test_agent_a_cannot_retrieve_agent_bs_knowledge_over_real_http(client, auth_
     # User B's own search (even with an unrelated query) must only ever surface user B's own
     # content, never user A's - confirms scoping is symmetric, not just A-favored.
     assert all(r["content"] != "Coastal erosion methodology and findings." for r in results_b)
+
+
+# --- ADR-005 Decision 1: hybrid retrieval closes the exact-term gap pure vector search has ---
+
+
+def test_an_exact_term_the_embedding_would_miss_is_still_found_via_the_lexical_branch(
+    client, auth_headers, db_engine, tmp_path
+):
+    """ADR-005's own stated rationale for hybrid retrieval, proven over real HTTP: a citation
+    the (fake, deliberately orthogonal) embedding ranks at zero semantic similarity is still
+    found, because the lexical branch matches the literal text regardless of embedding quality.
+    Before this stage this was a real, acknowledged gap (Project_Status.md's own Risks table) -
+    a pure vector-only search would have returned nothing here.
+    """
+    _upload_and_process(
+        client, db_engine, tmp_path, auth_headers, b"See Rimamshung et al., 2023 for the full methodology."
+    )
+
+    # The fake embedding provider maps any text it doesn't recognize to [0.0, 0.0] - a genuine
+    # zero-similarity vector (cosine_similarity's own defensive floor), simulating an embedding
+    # model that simply doesn't capture this query well. Only the lexical branch can find it.
+    response = client.get("/knowledge/search", params={"q": "Rimamshung"}, headers=auth_headers)
+
+    assert response.status_code == 200
+    results = response.json()["results"]
+    assert len(results) == 1
+    assert "Rimamshung" in results[0]["content"]

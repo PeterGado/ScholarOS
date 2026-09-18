@@ -44,3 +44,20 @@ class KnowledgeChunkEmbeddingRepository(ABC):
         carries no agent_id (it is keyed only by chunk_id, 04_Logical_Data_Model.md §3.7 note).
         """
         ...
+
+
+class LexicalSearchRepository(ABC):
+    """ADR-005 Decision 1's lexical branch - BM25-style keyword search over the FTS5 index
+    (`knowledge_chunk_fts`, kept in sync by `KnowledgeChunkRepository.add`). Separate from
+    `KnowledgeChunkRepository` itself: this is a read-only, index-backed capability with a
+    fundamentally different query shape (a MATCH expression, not a primary-key lookup), the
+    same separation-of-concerns `KnowledgeChunkEmbeddingRepository` already established for the
+    semantic branch.
+    """
+
+    @abstractmethod
+    def search(self, *, agent_id: int, query: str, limit: int) -> list[int]:
+        """Returns matching chunk_ids, best match first, scoped to the caller's own Agent.
+        Never raises on a query with no lexical matches or no word characters at all - both
+        return an empty list, letting the semantic branch carry the result on its own."""
+        ...
