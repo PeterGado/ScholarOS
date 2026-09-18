@@ -43,3 +43,14 @@ class UserCredential(Protocol):
 
 class UserCredentialLookup(Protocol):
     def get_by_username(self, username: str) -> UserCredential | None: ...
+
+
+class UserRegistrationRepository(Protocol):
+    """A separate, narrow write capability (ADR-011) - deliberately not added to
+    UserCredentialLookup, which SqlAlchemyUserCredentialLookup's own docstring documents as
+    read-only by design. Mirrors the WorkItemEnqueuer/WorkItemOutcomeLookup precedent
+    (app.workers.ports) of splitting read and write capabilities into separate narrow ports
+    rather than growing one interface to cover both.
+    """
+
+    def create(self, *, username: str, password_hash: str) -> UserCredential: ...

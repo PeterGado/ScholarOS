@@ -3,17 +3,21 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { WorkspaceGate } from "@/components/WorkspaceGate";
 import { AppShell } from "@/components/AppShell";
 import { LoginPage } from "@/pages/LoginPage";
+import { RegisterPage } from "@/pages/RegisterPage";
 import { OnboardingPage } from "@/pages/OnboardingPage";
 import { DocumentsPage } from "@/pages/DocumentsPage";
 import { StyleProfilePage } from "@/pages/StyleProfilePage";
-import { DraftsPage } from "@/pages/DraftsPage";
-import { DraftDetailPage } from "@/pages/DraftDetailPage";
+import { ChatPage } from "@/pages/ChatPage";
+import { ChatDetailPage } from "@/pages/ChatDetailPage";
+import { MemoryPage } from "@/pages/MemoryPage";
+import { SettingsPage } from "@/pages/SettingsPage";
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
         <Route
           path="/onboarding"
           element={
@@ -30,13 +34,15 @@ function App() {
           }
         >
           <Route element={<AppShell />}>
+            <Route path="/chat" element={<ChatPage />} />
+            <Route path="/chat/:conversationId" element={<ChatDetailPage />} />
             <Route path="/documents" element={<DocumentsPage />} />
             <Route path="/style-profile" element={<StyleProfilePage />} />
-            <Route path="/drafts" element={<DraftsPage />} />
-            <Route path="/drafts/:draftId" element={<DraftDetailPage />} />
+            <Route path="/memory" element={<MemoryPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
           </Route>
         </Route>
-        <Route path="*" element={<Navigate to="/drafts" replace />} />
+        <Route path="*" element={<Navigate to="/chat" replace />} />
       </Routes>
     </BrowserRouter>
   );

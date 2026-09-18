@@ -4,7 +4,12 @@ from sqlalchemy.orm import Session
 
 from app.auth.entities import AuthSession
 from app.auth.models import AuthSession as AuthSessionModel
-from app.auth.repository import AuthSessionRepository, UserCredential, UserCredentialLookup
+from app.auth.repository import (
+    AuthSessionRepository,
+    UserCredential,
+    UserCredentialLookup,
+    UserRegistrationRepository,
+)
 from app.database.shared_models import User
 
 
@@ -63,3 +68,19 @@ class SqlAlchemyUserCredentialLookup(UserCredentialLookup):
         # User structurally satisfies UserCredential (user_id, username, password_hash) -
         # returned directly, no separate DTO needed.
         return self._session.query(User).filter_by(username=username).one_or_none()
+
+
+class SqlAlchemyUserRegistrationRepository(UserRegistrationRepository):
+    """Concrete UserRegistrationRepository (app.auth.repository, ADR-011) - the write
+    counterpart SqlAlchemyUserCredentialLookup's own docstring explicitly excludes. Separate
+    class, not an addition to that one, so its "read-only" documentation stays true.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def create(self, *, username: str, password_hash: str) -> UserCredential:
+        row = User(username=username, password_hash=password_hash)
+        self._session.add(row)
+        self._session.flush()
+        return row

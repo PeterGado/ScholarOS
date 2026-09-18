@@ -6,6 +6,19 @@ export async function login(username: string, password: string): Promise<TokenRe
   return tokenResponseSchema.parse(response.data);
 }
 
+export async function register(
+  username: string,
+  password: string,
+  inviteCode: string,
+): Promise<TokenResponse> {
+  const response = await apiClient.post("/auth/register", {
+    username,
+    password,
+    invite_code: inviteCode || null,
+  });
+  return tokenResponseSchema.parse(response.data);
+}
+
 export async function logout(): Promise<void> {
   await apiClient.post("/auth/logout");
 }

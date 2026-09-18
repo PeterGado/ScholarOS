@@ -9,9 +9,9 @@ from app.api.exception_handlers import register_exception_handlers
 from app.api.router import api_router
 from app.auth.provisioning import sync_configured_user
 from app.core.config import get_settings
+from app.core.dependencies import get_content_store
 from app.database import session as db_session_module
 from app.database.session import init_db
-from app.storage.filesystem import FilesystemStorage
 from app.workers.executor import WorkItemExecutorLoop
 
 
@@ -43,7 +43,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     executor_loop: WorkItemExecutorLoop | None = None
     if settings.ai_api_key:
         text_provider = create_provider(settings)
-        storage = FilesystemStorage(settings.storage_root)
+        # get_content_store() (not a hardcoded FilesystemStorage) - a real bug found live
+        # during the S3-compatible storage rollout (2026-09-18): the executor previously always
+        # wrote/read against local disk regardless of STORAGE_BACKEND, while the upload route
+        # (already wired through this same factory) correctly used S3 - a document uploaded
+        # under STORAGE_BACKEND=s3 would upload fine, then fail processing with "stored content
+        # not found" the moment the executor tried to read it back from the wrong backend.
+        storage = get_content_store()
         executor_loop = WorkItemExecutorLoop(
             lambda: db_session_module.SessionLocal(),
             text_provider,

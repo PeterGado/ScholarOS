@@ -1,13 +1,17 @@
 import { useState, type FormEvent } from "react";
 import { Link, Navigate } from "react-router-dom";
-import { login } from "@/api/auth";
+import { register } from "@/api/auth";
 import { ApiError } from "@/lib/apiClient";
 import { useAuth } from "@/lib/AuthContext";
 
-export function LoginPage() {
+// The invite_code field is always rendered, even though it's only enforced when the backend
+// has REGISTRATION_INVITE_CODE configured (ADR-011) - the frontend never needs to know whether
+// one is required; an unconfigured backend simply ignores whatever's typed here (or nothing).
+export function RegisterPage() {
   const { isAuthenticated, setToken } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -20,10 +24,10 @@ export function LoginPage() {
     setError(null);
     setIsSubmitting(true);
     try {
-      const { access_token } = await login(username, password);
+      const { access_token } = await register(username, password, inviteCode);
       setToken(access_token);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Login failed. Check the backend is running.");
+      setError(err instanceof ApiError ? err.message : "Registration failed. Check the backend is running.");
     } finally {
       setIsSubmitting(false);
     }
@@ -32,7 +36,7 @@ export function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background">
       <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4 rounded-lg border border-border p-6">
-        <h1 className="text-lg font-semibold">Sign in to ScholarOS</h1>
+        <h1 className="text-lg font-semibold">Create your ScholarOS account</h1>
         <div className="space-y-1">
           <label htmlFor="username" className="text-sm font-medium">
             Username
@@ -56,8 +60,21 @@ export function LoginPage() {
             className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
+            autoComplete="new-password"
+            minLength={8}
             required
+          />
+        </div>
+        <div className="space-y-1">
+          <label htmlFor="invite-code" className="text-sm font-medium">
+            Invite code (if you have one)
+          </label>
+          <input
+            id="invite-code"
+            className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+            value={inviteCode}
+            onChange={(e) => setInviteCode(e.target.value)}
+            autoComplete="off"
           />
         </div>
         {error && <p className="text-sm text-destructive">{error}</p>}
@@ -66,12 +83,12 @@ export function LoginPage() {
           disabled={isSubmitting}
           className="w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
         >
-          {isSubmitting ? "Signing in..." : "Sign in"}
+          {isSubmitting ? "Creating account..." : "Create account"}
         </button>
         <p className="text-center text-sm text-muted-foreground">
-          Don&apos;t have an account?{" "}
-          <Link to="/register" className="font-medium text-primary underline-offset-4 hover:underline">
-            Register
+          Already have an account?{" "}
+          <Link to="/login" className="font-medium text-primary underline-offset-4 hover:underline">
+            Sign in
           </Link>
         </p>
       </form>
