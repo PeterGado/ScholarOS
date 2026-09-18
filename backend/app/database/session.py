@@ -1,9 +1,22 @@
 from collections.abc import Generator
 
-from sqlalchemy import Engine, create_engine, event
+from sqlalchemy import Engine, create_engine, event, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import get_settings
+
+
+def normalize_database_url(database_url: str) -> str:
+    """A bare "postgresql://" resolves to SQLAlchemy's default driver, psycopg2 - not installed
+    here (only psycopg/v3 is, per pyproject.toml). Normalized so DATABASE_URL can be written
+    the plain, standard way (what every Postgres host's own connection-string docs show)
+    without every caller needing to remember this project's specific driver choice. Used by
+    both `build_engine` (real app runtime) and `alembic/env.py` (migrations) - the two must
+    never resolve a given DATABASE_URL to different drivers.
+    """
+    if database_url.startswith("postgresql://"):
+        return database_url.replace("postgresql://", "postgresql+psycopg://", 1)
+    return database_url
 
 
 def build_engine(database_url: str) -> Engine:
@@ -11,6 +24,7 @@ def build_engine(database_url: str) -> Engine:
     enforcement (off by default in SQLite); other dialects (PostgreSQL, per ADR-004's
     migration path) get their normal driver defaults.
     """
+    database_url = normalize_database_url(database_url)
     is_sqlite = database_url.startswith("sqlite")
     connect_args = {"check_same_thread": False} if is_sqlite else {}
     engine = create_engine(database_url, connect_args=connect_args)
@@ -112,17 +126,53 @@ def init_db(target_engine: Engine | None = None) -> None:
     from app.modules.knowledge.infrastructure.vector_models import KnowledgeChunkEmbedding  # noqa: F401
     from app.modules.project.infrastructure.models import Project  # noqa: F401
     from app.modules.writing.infrastructure.models import (  # noqa: F401
-        Draft,
-        DraftEvidenceLink,
-        DraftVersion,
         MemoryProvenanceLink,
         MemoryRecord,
         ProfileCharacteristic,
         ProfileCharacteristicSource,
-        Review,
-        ReviewDecision,
         WritingProfile,
     )
     from app.workers.models import WorkItem  # noqa: F401
 
     Base.metadata.create_all(bind=target_engine if target_engine is not None else engine)
+
+    # ADR-005 Decision 1's lexical branch: on SQLite, an FTS5 virtual table, not representable
+    # as an ORM model (no Python-side row class - the real Knowledge Chunk row is the source of
+    # truth, this is a derived index kept in sync on write, see SqlAlchemyKnowledgeChunkRepository.
+    # add). `rowid` is explicitly set to `chunk_id` on insert (not FTS5's own auto-rowid) so a
+    # search hit maps straight back to its Knowledge Chunk with no join table. IF NOT EXISTS
+    # mirrors create_all's own idempotency. On Postgres, a generated `search_vector` tsvector
+    # column + GIN index (maintained automatically by Postgres itself on every write - no
+    # application-side sync needed, unlike the FTS5 branch). This mirrors, and is deliberately
+    # kept parallel to (not DRY against), the equivalent DDL in the baseline Alembic migration -
+    # this path exists for ephemeral test/dev databases that bootstrap via create_all() rather
+    # than a real migration; see that migration's own comment for why both exist.
+    active_engine = target_engine if target_engine is not None else engine
+    if active_engine.dialect.name == "sqlite":
+        with active_engine.connect() as connection:
+            connection.execute(
+                text(
+                    "CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_chunk_fts "
+                    "USING fts5(content, agent_id UNINDEXED)"
+                )
+            )
+            connection.commit()
+    elif active_engine.dialect.name == "postgresql":
+        with active_engine.connect() as connection:
+            has_column = connection.execute(
+                text(
+                    "SELECT 1 FROM information_schema.columns "
+                    "WHERE table_name = 'knowledge_chunks' AND column_name = 'search_vector'"
+                )
+            ).first()
+            if has_column is None:
+                connection.execute(
+                    text(
+                        "ALTER TABLE knowledge_chunks ADD COLUMN search_vector tsvector "
+                        "GENERATED ALWAYS AS (to_tsvector('english', content)) STORED"
+                    )
+                )
+                connection.execute(
+                    text("CREATE INDEX knowledge_chunks_search_vector_idx ON knowledge_chunks USING GIN (search_vector)")
+                )
+            connection.commit()

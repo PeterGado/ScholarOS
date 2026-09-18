@@ -28,6 +28,10 @@ Health check: `GET /health`
 pytest
 ```
 
+Real-Postgres compatibility tests (`tests/integration/test_postgres_dialect_compatibility.py`)
+are skipped unless `POSTGRES_TEST_URL` is set to a real, reachable connection string - see
+"Database (SQLite / PostgreSQL)" below.
+
 ## Authentication Setup
 
 The backend has exactly one pre-provisioned user account (ADR-010) — no registration, no
@@ -63,6 +67,48 @@ AI_EMBEDDING_MODEL=gemini-embedding-001
 
 To use the OpenAI-compatible shim instead (e.g. against OpenAI itself, or another
 OpenAI-compatible endpoint), set `AI_PROVIDER=openai_compatible` and `AI_BASE_URL` accordingly.
+
+## Database (SQLite / PostgreSQL)
+
+SQLite is the default (`DATABASE_URL=sqlite:///./scholaros.db`) and needs no setup. To run
+against PostgreSQL instead (ADR-004's named eventual path, realized 2026-09-18):
+
+```env
+DATABASE_URL=postgresql://user:password@localhost:5432/scholaros
+```
+
+(a bare `postgresql://` is normalized to the installed driver, psycopg3, automatically - no
+need to write `postgresql+psycopg://` yourself). Schema changes are managed by
+[Alembic](https://alembic.sqlalchemy.org/), not `create_all()`, against a real database:
+
+```bash
+alembic upgrade head      # apply every migration up to the latest
+alembic revision --autogenerate -m "describe the change"   # after changing an ORM model
+```
+
+`create_all()` (via `init_db()`) remains in place for ephemeral test/dev databases that
+bootstrap fresh on every run (the entire pytest suite's own fixtures) - it and Alembic are
+deliberately parallel paths for two different purposes, not meant to replace each other.
+
+The lexical retrieval index (ADR-005 Decision 1) is dialect-specific: SQLite FTS5, or a
+generated `tsvector` column + GIN index on Postgres - both are created automatically by either
+`init_db()` or `alembic upgrade head`, whichever bootstraps the database.
+
+## Object Storage (local filesystem / S3-compatible)
+
+Local filesystem is the default (`STORAGE_BACKEND=filesystem`, `STORAGE_ROOT=./data/documents`).
+To use an S3-compatible backend instead (any real S3-compatible endpoint - AWS S3, Cloudflare
+R2, or a local mock such as `moto`'s server - selected by configuration alone, never a code
+change):
+
+```env
+STORAGE_BACKEND=s3
+S3_BUCKET=your-bucket-name
+S3_ENDPOINT_URL=https://your-endpoint.example   # omit for real AWS S3
+S3_REGION=auto
+S3_ACCESS_KEY_ID=...
+S3_SECRET_ACCESS_KEY=...
+```
 
 ## Frontend / CORS Setup
 
@@ -101,7 +147,5 @@ app/
 └── workers/                 # Durable outbox / Work Item executor (ADR-006)
 ```
 
-`modules/author_profile` is not present yet - writing-style ingestion belongs to the Project
-Writing milestone, not Slice 2. Retrieval (`GET /knowledge/search`) is currently vector-only,
-not the full hybrid (lexical + semantic, fused) design ADR-005 specifies - a known, flagged,
-deliberate gap, not an oversight; see the 2026-09-11 journal entries.
+Retrieval (`GET /knowledge/search`) is hybrid (lexical + semantic, fused via Reciprocal Rank
+Fusion) per ADR-005, realized 2026-09-18 - see `docs/Project_Status.md`'s Risks table.

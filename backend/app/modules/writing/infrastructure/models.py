@@ -7,25 +7,16 @@ from app.database.base import Base
 from app.modules.writing.domain.enums import (
     ConversationStatus,
     CreatedBy,
-    DraftEvidenceTargetType,
-    DraftStatus,
     MemoryProvenanceSourceType,
     MemoryRecordStatus,
     MemoryRecordType,
     MessageContextTargetType,
     MessageDirection,
     ProfileCharacteristicType,
-    ReviewOutcome,
-    ReviewStatus,
     WritingProfileStatus,
 )
 
 __all__ = [
-    "Draft",
-    "DraftVersion",
-    "Review",
-    "ReviewDecision",
-    "DraftEvidenceLink",
     "WritingProfile",
     "ProfileCharacteristic",
     "ProfileCharacteristicSource",
@@ -52,140 +43,6 @@ def _enum_column(enum_cls: type, length: int):
     return Enum(enum_cls, native_enum=False, length=length, values_callable=lambda x: [member.value for member in x])
 
 
-class Draft(Base):
-    """Writing Service persistence (04_Logical_Data_Model.md §3.15; DR-016 to DR-019).
-    Realizes an already-frozen entity that had no prior implementation (Project_Writing_
-    Implementation_Plan.md §4/§13).
-    """
-
-    __tablename__ = "drafts"
-
-    draft_id: Mapped[int] = mapped_column(primary_key=True)
-    agent_id: Mapped[int] = mapped_column(ForeignKey("agents.agent_id"), nullable=False)
-    title: Mapped[str] = mapped_column(String(255), nullable=False)
-    target: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    status: Mapped[DraftStatus] = mapped_column(
-        _enum_column(DraftStatus, 16), nullable=False, default=DraftStatus.DRAFTING
-    )
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
-    updated_at: Mapped[datetime | None] = mapped_column(nullable=True)
-    deleted_at: Mapped[datetime | None] = mapped_column(nullable=True)
-
-
-class DraftVersion(Base):
-    """An immutable state of a Draft (04_Logical_Data_Model.md §3.16; DR-017; MVP-021;
-    AIR-035). No update path is exposed anywhere in this module - immutability is enforced by
-    the absence of a mutating repository method, matching the existing convention for
-    Knowledge Element / Chunk Evidence Link (app/modules/knowledge/infrastructure/models.py).
-    """
-
-    __tablename__ = "draft_versions"
-    __table_args__ = (UniqueConstraint("draft_id", "version_number", name="uq_draft_version_draft_number"),)
-
-    version_id: Mapped[int] = mapped_column(primary_key=True)
-    draft_id: Mapped[int] = mapped_column(ForeignKey("drafts.draft_id"), nullable=False)
-    version_number: Mapped[int] = mapped_column(nullable=False)
-    content: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
-    created_by: Mapped[CreatedBy] = mapped_column(_enum_column(CreatedBy, 16), nullable=False)
-
-
-class Review(Base):
-    """An evaluation round applied to a Draft Version (04_Logical_Data_Model.md §3.17;
-    DR-019; WR-022 to WR-025).
-
-    The partial unique index enforces invariant 7 ("at most one open Review per Draft
-    Version") at the database layer, not only in application logic
-    (05_Constraints_and_Integrity.md invariant 7).
-    """
-
-    __tablename__ = "reviews"
-    __table_args__ = (
-        Index(
-            "uq_review_one_open_per_draft_version",
-            "draft_version_id",
-            unique=True,
-            sqlite_where=text("status = 'open'"),
-        ),
-    )
-
-    review_id: Mapped[int] = mapped_column(primary_key=True)
-    draft_version_id: Mapped[int] = mapped_column(ForeignKey("draft_versions.version_id"), nullable=False)
-    status: Mapped[ReviewStatus] = mapped_column(
-        _enum_column(ReviewStatus, 16), nullable=False, default=ReviewStatus.OPEN
-    )
-    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    opened_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
-    decided_at: Mapped[datetime | None] = mapped_column(nullable=True)
-
-
-class ReviewDecision(Base):
-    """The recorded outcome of a Review, preserved for audit (04_Logical_Data_Model.md
-    §3.18; DR-019; AIR-054; MVP-018 to MVP-020). `review_id` is unique - one decision per
-    review (invariant 7).
-    """
-
-    __tablename__ = "review_decisions"
-
-    decision_id: Mapped[int] = mapped_column(primary_key=True)
-    review_id: Mapped[int] = mapped_column(ForeignKey("reviews.review_id"), nullable=False, unique=True)
-    outcome: Mapped[ReviewOutcome] = mapped_column(_enum_column(ReviewOutcome, 32), nullable=False)
-    rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
-    decided_by: Mapped[int] = mapped_column(ForeignKey("users.user_id"), nullable=False)
-    decided_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
-
-
-class DraftEvidenceLink(Base):
-    """Evidence annotation connecting a Draft Version to the Knowledge Chunk or Research
-    Document that supports it (04_Logical_Data_Model.md §4.2; DR-018; AIR-027). Immutable and
-    non-cascading (05_Constraints_and_Integrity.md line 199) - no update method is exposed.
-
-    References the existing Knowledge/Document entities by table name only (no cross-module
-    Python import), the same pattern already used by Chunk Evidence Link
-    (app/modules/knowledge/infrastructure/models.py) - Writing does not duplicate Knowledge
-    Element/Chunk/Chunk Evidence Link (Project_Writing_Implementation_Plan.md §17).
-    """
-
-    __tablename__ = "draft_evidence_links"
-    __table_args__ = (
-        # A plain UniqueConstraint on (draft_version_id, target_type, chunk_id, document_id)
-        # would NOT catch duplicates: SQL treats NULL <> NULL, so two rows sharing the same
-        # chunk_id but both with document_id=NULL are never considered equal by a composite
-        # UNIQUE constraint. Partial unique indexes, one per exclusive-arc branch, are the
-        # correct way to enforce "no duplicate evidence statements"
-        # (05_Constraints_and_Integrity.md line 315) here.
-        Index(
-            "uq_draft_evidence_link_chunk_target",
-            "draft_version_id",
-            "chunk_id",
-            unique=True,
-            sqlite_where=text("chunk_id IS NOT NULL"),
-        ),
-        Index(
-            "uq_draft_evidence_link_document_target",
-            "draft_version_id",
-            "document_id",
-            unique=True,
-            sqlite_where=text("document_id IS NOT NULL"),
-        ),
-        CheckConstraint(
-            "(target_type = 'knowledge_chunk' AND chunk_id IS NOT NULL AND document_id IS NULL) OR "
-            "(target_type = 'research_document' AND document_id IS NOT NULL AND chunk_id IS NULL)",
-            name="ck_draft_evidence_link_exclusive_target",
-        ),
-    )
-
-    link_id: Mapped[int] = mapped_column(primary_key=True)
-    draft_version_id: Mapped[int] = mapped_column(ForeignKey("draft_versions.version_id"), nullable=False)
-    target_type: Mapped[DraftEvidenceTargetType] = mapped_column(
-        _enum_column(DraftEvidenceTargetType, 32), nullable=False
-    )
-    chunk_id: Mapped[int | None] = mapped_column(ForeignKey("knowledge_chunks.chunk_id"), nullable=True)
-    document_id: Mapped[int | None] = mapped_column(ForeignKey("research_documents.document_id"), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
-    created_by: Mapped[CreatedBy] = mapped_column(_enum_column(CreatedBy, 16), nullable=False)
-
-
 class WritingProfile(Base):
     """The author's preserved writing characteristics (04_Logical_Data_Model.md §3.11;
     DR-010 to DR-012). The partial unique index enforces invariant 8 ("at most one active
@@ -198,7 +55,15 @@ class WritingProfile(Base):
             "uq_writing_profile_one_active_per_agent",
             "agent_id",
             unique=True,
+            # A real dialect-compatibility gap found during the Postgres migration (2026-09-18):
+            # only sqlite_where was ever set. SQLAlchemy's partial-index `_where` kwargs are
+            # dialect-namespaced - on Postgres, an index with only sqlite_where silently becomes
+            # a *full* unique index (no WHERE clause at all), wrongly enforcing "at most one
+            # WritingProfile per Agent ever" instead of invariant 8's actual rule ("at most one
+            # *active* Writing Profile per Agent") - it would have rejected a second profile
+            # after the first was deactivated, a real behavior difference between dialects.
             sqlite_where=text("status = 'active'"),
+            postgresql_where=text("status = 'active'"),
         ),
     )
 
@@ -274,28 +139,25 @@ class MemoryProvenanceLink(Base):
     """Traces a Memory Record to the artifact or activity that produced it
     (04_Logical_Data_Model.md §4.3; DR-015).
 
-    `conversation_id` now carries a real ForeignKey - Conversation was a frozen-but-deferred
-    entity out of Stage 2 (Stage 2 prompt §40) and now exists below, resolving the Stage 8
-    instructions-contract finding (see the domain entity's docstring, domain/entities.py, for
-    the full reasoning). The CHECK constraint below encodes the same "user_input -> zero
-    references, else exactly one" interpretation implemented in the domain layer.
+    Deviation from the frozen model: `review_decision_id`/`draft_version_id` were dropped along
+    with the Drafts/Review pipeline's removal (see the domain entity's docstring,
+    domain/entities.py, and docs/Project_Writing_Implementation_Plan.md for the full
+    reasoning). The CHECK constraint below encodes the same "user_input -> zero references,
+    else exactly one" interpretation implemented in the domain layer, over the remaining
+    reference columns.
     """
 
     __tablename__ = "memory_provenance_links"
     __table_args__ = (
         CheckConstraint(
-            "(source_type = 'user_input' AND review_decision_id IS NULL AND conversation_id IS NULL "
-            "AND element_id IS NULL AND document_id IS NULL AND draft_version_id IS NULL) OR "
-            "(source_type = 'review_decision' AND review_decision_id IS NOT NULL AND conversation_id IS NULL "
-            "AND element_id IS NULL AND document_id IS NULL AND draft_version_id IS NULL) OR "
-            "(source_type = 'conversation' AND conversation_id IS NOT NULL AND review_decision_id IS NULL "
-            "AND element_id IS NULL AND document_id IS NULL AND draft_version_id IS NULL) OR "
-            "(source_type = 'knowledge_element' AND element_id IS NOT NULL AND review_decision_id IS NULL "
-            "AND conversation_id IS NULL AND document_id IS NULL AND draft_version_id IS NULL) OR "
-            "(source_type = 'document' AND document_id IS NOT NULL AND review_decision_id IS NULL "
-            "AND conversation_id IS NULL AND element_id IS NULL AND draft_version_id IS NULL) OR "
-            "(source_type = 'draft_version' AND draft_version_id IS NOT NULL AND review_decision_id IS NULL "
-            "AND conversation_id IS NULL AND element_id IS NULL AND document_id IS NULL)",
+            "(source_type = 'user_input' AND conversation_id IS NULL "
+            "AND element_id IS NULL AND document_id IS NULL) OR "
+            "(source_type = 'conversation' AND conversation_id IS NOT NULL "
+            "AND element_id IS NULL AND document_id IS NULL) OR "
+            "(source_type = 'knowledge_element' AND element_id IS NOT NULL "
+            "AND conversation_id IS NULL AND document_id IS NULL) OR "
+            "(source_type = 'document' AND document_id IS NOT NULL "
+            "AND conversation_id IS NULL AND element_id IS NULL)",
             name="ck_memory_provenance_link_exclusive_target",
         ),
     )
@@ -305,11 +167,9 @@ class MemoryProvenanceLink(Base):
     source_type: Mapped[MemoryProvenanceSourceType] = mapped_column(
         _enum_column(MemoryProvenanceSourceType, 32), nullable=False
     )
-    review_decision_id: Mapped[int | None] = mapped_column(ForeignKey("review_decisions.decision_id"), nullable=True)
     conversation_id: Mapped[int | None] = mapped_column(ForeignKey("conversations.conversation_id"), nullable=True)
     element_id: Mapped[int | None] = mapped_column(ForeignKey("knowledge_elements.element_id"), nullable=True)
     document_id: Mapped[int | None] = mapped_column(ForeignKey("research_documents.document_id"), nullable=True)
-    draft_version_id: Mapped[int | None] = mapped_column(ForeignKey("draft_versions.version_id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
 
 
@@ -346,23 +206,22 @@ class Message(Base):
 
 class MessageContextLink(Base):
     """Reference from a Message to the project artifact it concerns
-    (04_Logical_Data_Model.md §4.4). Exclusive-arc CHECK constraint mirrors Draft Evidence
-    Link's and Memory Provenance Link's own pattern above.
+    (04_Logical_Data_Model.md §4.4). Exclusive-arc CHECK constraint mirrors Memory Provenance
+    Link's own pattern above. Deviation from the frozen model: `draft_version_id` was dropped
+    along with the Drafts/Review pipeline's removal (see MemoryProvenanceLink's docstring).
     """
 
     __tablename__ = "message_context_links"
     __table_args__ = (
         CheckConstraint(
             "(target_type = 'research_document' AND document_id IS NOT NULL AND element_id IS NULL "
-            "AND chunk_id IS NULL AND draft_version_id IS NULL AND memory_record_id IS NULL) OR "
+            "AND chunk_id IS NULL AND memory_record_id IS NULL) OR "
             "(target_type = 'knowledge_element' AND element_id IS NOT NULL AND document_id IS NULL "
-            "AND chunk_id IS NULL AND draft_version_id IS NULL AND memory_record_id IS NULL) OR "
+            "AND chunk_id IS NULL AND memory_record_id IS NULL) OR "
             "(target_type = 'knowledge_chunk' AND chunk_id IS NOT NULL AND document_id IS NULL "
-            "AND element_id IS NULL AND draft_version_id IS NULL AND memory_record_id IS NULL) OR "
-            "(target_type = 'draft_version' AND draft_version_id IS NOT NULL AND document_id IS NULL "
-            "AND element_id IS NULL AND chunk_id IS NULL AND memory_record_id IS NULL) OR "
+            "AND element_id IS NULL AND memory_record_id IS NULL) OR "
             "(target_type = 'memory_record' AND memory_record_id IS NOT NULL AND document_id IS NULL "
-            "AND element_id IS NULL AND chunk_id IS NULL AND draft_version_id IS NULL)",
+            "AND element_id IS NULL AND chunk_id IS NULL)",
             name="ck_message_context_link_exclusive_target",
         ),
     )
@@ -375,6 +234,5 @@ class MessageContextLink(Base):
     document_id: Mapped[int | None] = mapped_column(ForeignKey("research_documents.document_id"), nullable=True)
     element_id: Mapped[int | None] = mapped_column(ForeignKey("knowledge_elements.element_id"), nullable=True)
     chunk_id: Mapped[int | None] = mapped_column(ForeignKey("knowledge_chunks.chunk_id"), nullable=True)
-    draft_version_id: Mapped[int | None] = mapped_column(ForeignKey("draft_versions.version_id"), nullable=True)
     memory_record_id: Mapped[int | None] = mapped_column(ForeignKey("memory_records.record_id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)

@@ -9,6 +9,7 @@ from app.ai.providers.base import EmbeddingProvider, TextGenerationProvider
 from app.database.unit_of_work import SqlAlchemyUnitOfWork
 from app.modules.agent.infrastructure.repositories import SqlAlchemyAgentRepository
 from app.modules.document.domain.enums import DocumentProcessingStatus
+from app.modules.document.domain.ports import ContentStore
 from app.modules.document.infrastructure.repositories import SqlAlchemyDocumentRepository
 from app.modules.knowledge.application.use_cases import ExtractDocumentKnowledgeUseCase, ProcessDocumentUseCase
 from app.modules.knowledge.domain.text_extraction import PlainTextExtractor
@@ -19,20 +20,16 @@ from app.modules.knowledge.infrastructure.repositories import (
     SqlAlchemyKnowledgeElementRepository,
 )
 from app.modules.project.infrastructure.repositories import SqlAlchemyProjectRepository
-from app.modules.writing.application.use_cases import GenerateDraftVersionUseCase
-from app.modules.writing.domain.entities import Message, MessageContextLink
-from app.modules.writing.domain.enums import MessageContextTargetType, MessageDirection
+from app.modules.writing.application.chat import GenerateConversationReplyUseCase
 from app.modules.writing.infrastructure.repositories import (
-    SqlAlchemyDraftEvidenceLinkRepository,
-    SqlAlchemyDraftRepository,
-    SqlAlchemyDraftVersionRepository,
-    SqlAlchemyMessageContextLinkRepository,
+    SqlAlchemyConversationRepository,
+    SqlAlchemyMemoryProvenanceLinkRepository,
+    SqlAlchemyMemoryRecordRepository,
     SqlAlchemyMessageRepository,
 )
-from app.storage.filesystem import FilesystemStorage
 from app.workers.enums import WorkItemState
 from app.workers.payloads import (
-    parse_generate_draft_version_payload_reference,
+    parse_generate_chat_reply_payload_reference,
     parse_process_document_payload_reference,
 )
 from app.workers.repository import WorkItemRepository
@@ -46,7 +43,7 @@ def process_one_work_item(
     text_provider: TextGenerationProvider,
     embedding_provider: EmbeddingProvider,
     embedding_model_version: str,
-    storage: FilesystemStorage,
+    storage: ContentStore,
 ) -> bool:
     """Claims and fully processes at most one queued Work Item using `session`.
 
@@ -72,27 +69,29 @@ def process_one_work_item(
         document_id = parse_process_document_payload_reference(
             item.payload_reference)
         work_kind = "document"
-    except ValueError as exc:
+    except ValueError:
         try:
-            draft_id, context, _request_id, message_id = parse_generate_draft_version_payload_reference(
-                item.payload_reference, storage)
-            work_kind = "writing"
-        except ValueError as writing_exc:
-            work_items.mark_failed(item.work_item_id, error=str(writing_exc))
+            conversation_id, _user_message_id, chat_context, _chat_request_id = (
+                parse_generate_chat_reply_payload_reference(item.payload_reference, storage)
+            )
+            work_kind = "chat"
+        except ValueError as chat_exc:
+            work_items.mark_failed(item.work_item_id, error=str(chat_exc))
             uow.commit()
             logger.warning(
-                "Work item %s has an unrecognized payload reference: %s", item.work_item_id, writing_exc)
+                "Work item %s has an unrecognized payload reference: %s", item.work_item_id, chat_exc)
             return True
 
-    if work_kind == "writing":
+    if work_kind == "chat":
         try:
-            generated_version = GenerateDraftVersionUseCase(
-                SqlAlchemyDraftRepository(session),
-                SqlAlchemyDraftVersionRepository(session),
-                SqlAlchemyDraftEvidenceLinkRepository(session),
+            GenerateConversationReplyUseCase(
+                SqlAlchemyMessageRepository(session),
+                SqlAlchemyConversationRepository(session),
+                SqlAlchemyMemoryRecordRepository(session),
+                SqlAlchemyMemoryProvenanceLinkRepository(session),
                 text_provider,
                 uow,
-            ).execute(draft_id=draft_id, context=context)
+            ).execute(conversation_id=conversation_id, context=chat_context)
         except Exception as exc:  # noqa: BLE001 - worker routes all failures through bounded retry
             updated_item = work_items.mark_failed(
                 item.work_item_id, error=str(exc))
@@ -100,40 +99,6 @@ def process_one_work_item(
             logger.warning("Work item %s failed (attempt %d): %s",
                            item.work_item_id, updated_item.attempts, exc)
             return True
-
-        if message_id is not None:
-            # Closes the instructions-contract gap (Project Writing Stage 8 finding): the
-            # instructions Message persisted at request time (RequestDraftGenerationUseCase)
-            # is linked here to the Draft Version it actually produced, via the frozen Message
-            # Context Link entity (04_Logical_Data_Model.md §4.4) - the same evidence-provenance
-            # discipline already applied to Draft Evidence Link, extended to instructions.
-            SqlAlchemyMessageContextLinkRepository(session).add(
-                MessageContextLink(
-                    message_id=message_id,
-                    target_type=MessageContextTargetType.DRAFT_VERSION,
-                    draft_version_id=generated_version.version_id,
-                )
-            )
-            messages = SqlAlchemyMessageRepository(session)
-            source_message = messages.get_by_id(message_id)
-            if source_message is not None:
-                response = messages.add(
-                    Message(
-                        conversation_id=source_message.conversation_id,
-                        sequence=messages.count_by_conversation_id(source_message.conversation_id) + 1,
-                        direction=MessageDirection.SYSTEM_RESPONSE,
-                        content=f"Draft Version {generated_version.version_number} generated.",
-                        origin=type(text_provider).__name__,
-                    )
-                )
-                SqlAlchemyMessageContextLinkRepository(session).add(
-                    MessageContextLink(
-                        message_id=response.message_id,
-                        target_type=MessageContextTargetType.DRAFT_VERSION,
-                        draft_version_id=generated_version.version_id,
-                    )
-                )
-            uow.commit()
 
         work_items.mark_succeeded(item.work_item_id)
         uow.commit()
@@ -196,7 +161,7 @@ class WorkItemExecutorLoop:
         text_provider: TextGenerationProvider,
         embedding_provider: EmbeddingProvider,
         embedding_model_version: str,
-        storage: FilesystemStorage,
+        storage: ContentStore,
         *,
         poll_interval: float = 1.0,
         stale_running_threshold: timedelta = timedelta(minutes=10),
