@@ -19,3 +19,11 @@ export async function getAgentWorkspace(): Promise<AgentWorkspaceResponse> {
   const response = await apiClient.get("/agents");
   return agentWorkspaceResponseSchema.parse(response.data);
 }
+
+/** Permanently and irreversibly deletes the caller's entire Agent Workspace - Project,
+ * documents, knowledge, writing profile, memory, conversations - so onboarding can
+ * start fresh. The backend independently requires `confirm: true`, regardless of whatever
+ * confirmation the caller already showed the user. */
+export async function resetAgentWorkspace(): Promise<void> {
+  await apiClient.delete("/agents/me", { data: { confirm: true } });
+}

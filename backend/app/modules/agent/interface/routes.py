@@ -5,9 +5,15 @@ from app.core.dependencies import (
     get_create_agent_workspace_use_case,
     get_current_user_id,
     get_get_agent_workspace_use_case,
+    get_reset_agent_workspace_use_case,
 )
+from app.modules.agent.application.reset_workspace import ResetAgentWorkspaceUseCase
 from app.modules.agent.application.use_cases import CreateAgentWorkspaceUseCase, GetAgentWorkspaceUseCase
-from app.modules.agent.interface.schemas import AgentWorkspaceResponse, CreateAgentWorkspaceRequest
+from app.modules.agent.interface.schemas import (
+    AgentWorkspaceResponse,
+    CreateAgentWorkspaceRequest,
+    ResetAgentWorkspaceRequest,
+)
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -64,3 +70,26 @@ def get_agent_workspace(
     """
     workspace = use_case.execute(user_id=user_id)
     return AgentWorkspaceResponse.from_domain(workspace)
+
+
+@router.delete(
+    "/me",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        401: {"model": ErrorResponse, "description": "Missing, malformed, unknown, or ended session."},
+        404: {"model": ErrorResponse, "description": "The authenticated user has no Agent yet."},
+        422: {"model": ErrorResponse, "description": "`confirm` was missing or not `true`."},
+    },
+)
+def reset_agent_workspace(
+    payload: ResetAgentWorkspaceRequest,
+    user_id: int = Depends(get_current_user_id),
+    use_case: ResetAgentWorkspaceUseCase = Depends(get_reset_agent_workspace_use_case),
+) -> None:
+    """Permanently and irreversibly deletes the authenticated user's entire Agent Workspace -
+    Project, documents, knowledge, drafts, writing profile, memory, and conversations - so
+    `POST /agents` can be called again for a fresh onboarding. Requires `{"confirm": true}` in
+    the body; the frontend is expected to have already confirmed with the user before calling
+    this at all.
+    """
+    use_case.execute(user_id=user_id)

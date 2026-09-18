@@ -3,13 +3,23 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.ai.exceptions import ProviderConfigurationError, ProviderRequestError
-from app.auth.exceptions import InvalidCredentialsError, InvalidSessionError
+from app.auth.exceptions import (
+    InvalidCredentialsError,
+    InvalidInviteCodeError,
+    InvalidSessionError,
+    UsernameAlreadyTakenError,
+    WeakPasswordError,
+)
 from app.core.exceptions import ScholarOSError
 from app.modules.agent.domain.exceptions import AgentAlreadyExistsForUserError, AgentNotFoundForUserError
 from app.modules.document.domain.exceptions import (
+    DocumentCannotBeDeletedError,
+    DocumentCannotBeRetriedError,
     EmptyDocumentContentError,
     InvalidDocumentFormatError,
     InvalidDocumentTitleError,
+    ResearchDocumentNotFoundError,
+    TooManyResearchDocumentsError,
 )
 from app.modules.project.domain.exceptions import (
     InvalidProjectTitleError,
@@ -18,11 +28,14 @@ from app.modules.project.domain.exceptions import (
     ProjectNotFoundError,
 )
 from app.modules.writing.domain.exceptions import (
-    DraftNotFoundError,
-    DraftVersionNotFoundError,
-    InsufficientDraftEvidenceError,
+    ChatReplyCannotBeRetriedError,
+    ChatReplyWorkItemNotFoundError,
+    ConversationNotFoundError,
     InvalidStyleSampleReferenceError,
+    MemoryRecordAlreadySupersededError,
+    MemoryRecordNotFoundError,
     NoUsableWritingStyleSamplesError,
+    TooManyWritingStyleSamplesError,
     UnusableWritingStyleSampleError,
     WritingProfileAlreadyExtractedError,
     WritingProfileNotFoundError,
@@ -97,16 +110,26 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(InvalidDocumentTitleError, _handle_invalid_input)
     app.add_exception_handler(InvalidDocumentFormatError, _handle_invalid_input)
     app.add_exception_handler(EmptyDocumentContentError, _handle_invalid_input)
+    app.add_exception_handler(ResearchDocumentNotFoundError, _handle_not_found)
+    app.add_exception_handler(DocumentCannotBeDeletedError, _handle_conflict)
+    app.add_exception_handler(DocumentCannotBeRetriedError, _handle_conflict)
+    app.add_exception_handler(TooManyResearchDocumentsError, _handle_conflict)
     app.add_exception_handler(InvalidStyleSampleReferenceError, _handle_not_found)
     app.add_exception_handler(NoUsableWritingStyleSamplesError, _handle_invalid_input)
+    app.add_exception_handler(TooManyWritingStyleSamplesError, _handle_conflict)
     app.add_exception_handler(UnusableWritingStyleSampleError, _handle_invalid_input)
     app.add_exception_handler(WritingProfileAlreadyExtractedError, _handle_conflict)
-    app.add_exception_handler(DraftNotFoundError, _handle_not_found)
-    app.add_exception_handler(DraftVersionNotFoundError, _handle_not_found)
-    app.add_exception_handler(InsufficientDraftEvidenceError, _handle_invalid_input)
     app.add_exception_handler(WritingProfileNotFoundError, _handle_not_found)
+    app.add_exception_handler(ConversationNotFoundError, _handle_not_found)
+    app.add_exception_handler(ChatReplyWorkItemNotFoundError, _handle_not_found)
+    app.add_exception_handler(ChatReplyCannotBeRetriedError, _handle_conflict)
+    app.add_exception_handler(MemoryRecordNotFoundError, _handle_not_found)
+    app.add_exception_handler(MemoryRecordAlreadySupersededError, _handle_conflict)
     app.add_exception_handler(InvalidCredentialsError, _handle_unauthorized)
     app.add_exception_handler(InvalidSessionError, _handle_unauthorized)
+    app.add_exception_handler(InvalidInviteCodeError, _handle_unauthorized)
+    app.add_exception_handler(UsernameAlreadyTakenError, _handle_conflict)
+    app.add_exception_handler(WeakPasswordError, _handle_invalid_input)
     app.add_exception_handler(ProviderConfigurationError, _handle_provider_unavailable)
     app.add_exception_handler(ProviderRequestError, _handle_provider_request_failure)
     app.add_exception_handler(OSError, _handle_storage_failure)

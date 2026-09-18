@@ -1,0 +1,8 @@
+# Stray artifacts from running backend/frontend tooling with the wrong working directory
+# (e.g. `npm install` or a Python process launched from the repo root instead of its own
+# subproject) - real lockfiles/databases live under backend/ and frontend/, never here.
+/package-lock.json
+/scholaros.db
+/scholaros.db-shm
+/scholaros.db-wal
+/node_modules/

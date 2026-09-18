@@ -4,14 +4,22 @@ from app.core.unit_of_work import UnitOfWork
 from app.modules.agent.domain.exceptions import AgentNotFoundForUserError
 from app.modules.agent.domain.repositories import AgentRepository
 from app.modules.document.domain.entities import ResearchDocument
+from app.modules.document.domain.enums import DocumentPurpose
 from app.modules.document.domain.exceptions import EmptyDocumentContentError
 from app.modules.document.domain.ports import ContentStore
 from app.modules.document.domain.repositories import DocumentRepository
 from app.modules.project.domain.repositories import ProjectRepository
 from app.modules.writing.domain.entities import WritingProfile
+from app.modules.writing.domain.exceptions import TooManyWritingStyleSamplesError
 from app.modules.writing.domain.repositories import WritingProfileRepository
+from app.modules.writing.domain.style_extraction import MAX_SAMPLES_PER_EXTRACTION
 
 DEFAULT_WRITING_PROFILE_NAME = "Primary Writing Profile"
+
+MAX_WRITING_STYLE_SAMPLES = MAX_SAMPLES_PER_EXTRACTION
+"""Reuses style_extraction's own ceiling rather than a separate magic number: extraction never
+looks at more than MAX_SAMPLES_PER_EXTRACTION samples per run regardless, so allowing more
+uploads than that would only let samples pile up that can never actually be used."""
 
 
 @dataclass
@@ -37,7 +45,10 @@ class UploadWritingStyleDocumentUseCase:
     content-addressed-storage-then-persist-metadata ordering as
     `UploadResearchDocumentUseCase` (orphaned content on a failed commit is accepted as
     harmless, per that use case's own documented convention - content-addressed storage never
-    duplicates or corrupts, ADR-004 §5).
+    duplicates or corrupts, ADR-004 §5). Tagged `DocumentPurpose.WRITING_STYLE_SAMPLE` (see
+    that enum's own docstring for why this was added after Stage 3/4 first shipped without it)
+    so it never bleeds into the Research Documents listing, which is scoped to
+    `DocumentPurpose.RESEARCH` only.
 
     **Critical difference from `UploadResearchDocumentUseCase`: no Work Item is enqueued.**
     Enqueuing the existing knowledge-processing Work Item would run this document through the
@@ -108,6 +119,12 @@ class UploadWritingStyleDocumentUseCase:
         project = self._projects.get_by_agent_id(agent.agent_id)
         assert project is not None, f"Agent {agent.agent_id} has no Project (invariant 15 violated)"
 
+        existing_count = len(
+            self._documents.list_by_project_id(project.project_id, purpose=DocumentPurpose.WRITING_STYLE_SAMPLE)
+        )
+        if existing_count >= MAX_WRITING_STYLE_SAMPLES:
+            raise TooManyWritingStyleSamplesError(limit=MAX_WRITING_STYLE_SAMPLES)
+
         if not content:
             raise EmptyDocumentContentError()
 
@@ -127,6 +144,7 @@ class UploadWritingStyleDocumentUseCase:
                 content_reference=content_reference,
                 author=author,
                 source=source,
+                purpose=DocumentPurpose.WRITING_STYLE_SAMPLE,
             )
             document = self._documents.add(document)
             self._uow.commit()
@@ -135,3 +153,33 @@ class UploadWritingStyleDocumentUseCase:
             raise
 
         return WritingStyleDocumentUpload(document=document, profile=profile)
+
+
+class ListWritingStyleDocumentsUseCase:
+    """Lists the authenticated user's own already-uploaded writing-style samples (`Document
+    Purpose.WRITING_STYLE_SAMPLE`) - added resolving a real gap found via manual use: the
+    frontend previously tracked "documents uploaded this session" as pure local component
+    state, so navigating away or refreshing lost track of everything already uploaded, even
+    though it was safely persisted server-side. Mirrors `ListProjectDocumentsUseCase`'s own
+    ownership-checked read pattern.
+    """
+
+    def __init__(
+        self,
+        document_repository: DocumentRepository,
+        project_repository: ProjectRepository,
+        agent_repository: AgentRepository,
+    ) -> None:
+        self._documents = document_repository
+        self._projects = project_repository
+        self._agents = agent_repository
+
+    def execute(self, *, user_id: int) -> list[ResearchDocument]:
+        agent = self._agents.get_by_user_id(user_id)
+        if agent is None:
+            raise AgentNotFoundForUserError(user_id=user_id)
+
+        project = self._projects.get_by_agent_id(agent.agent_id)
+        assert project is not None, f"Agent {agent.agent_id} has no Project (invariant 15 violated)"
+
+        return self._documents.list_by_project_id(project.project_id, purpose=DocumentPurpose.WRITING_STYLE_SAMPLE)

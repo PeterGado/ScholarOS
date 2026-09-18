@@ -10,23 +10,6 @@ class InvalidContextAssemblyInputError(WritingDomainError):
         super().__init__(f"Context assembly input is invalid: {reason}.")
 
 
-class InvalidDraftTitleError(WritingDomainError):
-    def __init__(self) -> None:
-        super().__init__("Draft title must not be blank.")
-
-
-class InvalidDraftVersionContentError(WritingDomainError):
-    def __init__(self) -> None:
-        super().__init__("Draft Version content must not be blank.")
-
-
-class InvalidDraftVersionNumberError(WritingDomainError):
-    def __init__(self, *, version_number: int) -> None:
-        super().__init__(
-            f"Draft Version version_number must be a positive integer, got {version_number}.")
-        self.version_number = version_number
-
-
 class InvalidWritingProfileNameError(WritingDomainError):
     def __init__(self) -> None:
         super().__init__("Writing Profile name must not be blank.")
@@ -42,17 +25,6 @@ class InvalidMemoryRecordContentError(WritingDomainError):
         super().__init__("Memory Record content must not be blank.")
 
 
-class DraftEvidenceLinkTargetError(WritingDomainError):
-    """04_Logical_Data_Model.md §4.2 exclusive-arc rule: exactly one of chunk_id / document_id
-    must be set, consistent with target_type.
-    """
-
-    def __init__(self) -> None:
-        super().__init__(
-            "Draft Evidence Link must set exactly one of chunk_id / document_id, consistent with target_type."
-        )
-
-
 class MemoryProvenanceLinkTargetError(WritingDomainError):
     """04_Logical_Data_Model.md §4.3 exclusive-arc rule: exactly one of the five target
     references must be set, consistent with source_type.
@@ -64,21 +36,35 @@ class MemoryProvenanceLinkTargetError(WritingDomainError):
         )
 
 
-class DraftNotFoundError(WritingDomainError):
-    def __init__(self, *, draft_id: int) -> None:
-        super().__init__(f"Draft {draft_id} was not found.")
-        self.draft_id = draft_id
-
-
-class DraftVersionNotFoundError(WritingDomainError):
-    """Also raised when a version_id resolves to a real row that does not belong to the
-    draft_id in the request path - deliberately indistinguishable from a genuinely missing
-    version (non-enumeration), mirroring DraftNotFoundError's own precedent.
+class MemoryRecordNotFoundError(WritingDomainError):
+    """Also raised (non-enumeration) when a Memory Record exists but belongs to a different
+    Agent.
     """
 
-    def __init__(self, *, version_id: int) -> None:
-        super().__init__(f"Draft Version {version_id} was not found.")
-        self.version_id = version_id
+    def __init__(self, *, record_id: int) -> None:
+        super().__init__(f"Memory Record {record_id} was not found.")
+        self.record_id = record_id
+
+
+class MemoryRecordAlreadySupersededError(WritingDomainError):
+    """Only a `current` Memory Record can be superseded - re-superseding an already-superseded
+    one would silently orphan the supersession chain (05_Constraints_and_Integrity.md's
+    supersession pattern, mirrored from Knowledge Element's own).
+    """
+
+    def __init__(self, *, record_id: int) -> None:
+        super().__init__(f"Memory Record {record_id} has already been superseded.")
+        self.record_id = record_id
+
+
+class ConversationNotFoundError(WritingDomainError):
+    """Also raised (non-enumeration) when a Conversation exists but belongs to a different
+    Agent.
+    """
+
+    def __init__(self, *, conversation_id: int) -> None:
+        super().__init__(f"Conversation {conversation_id} was not found.")
+        self.conversation_id = conversation_id
 
 
 class WritingProfileNotFoundError(WritingDomainError):
@@ -91,16 +77,9 @@ class WritingProfileNotFoundError(WritingDomainError):
         self.agent_id = agent_id
 
 
-class InsufficientDraftEvidenceError(WritingDomainError):
-    def __init__(self, *, draft_id: int) -> None:
-        super().__init__(
-            f"Draft {draft_id} cannot be generated because no supporting evidence was found.")
-        self.draft_id = draft_id
-
-
-class EmptyGeneratedDraftContentError(WritingDomainError):
+class EmptyGeneratedContentError(WritingDomainError):
     def __init__(self) -> None:
-        super().__init__("The generation provider returned empty draft content.")
+        super().__init__("The generation provider returned empty content.")
 
 
 class StyleExtractionError(WritingDomainError):
@@ -113,6 +92,20 @@ class StyleExtractionError(WritingDomainError):
 
     def __init__(self, *, reason: str) -> None:
         super().__init__(f"Style extraction failed: {reason}")
+
+
+class TooManyWritingStyleSamplesError(WritingDomainError):
+    """An Agent may hold at most `style_ingestion.MAX_WRITING_STYLE_SAMPLES` writing-style
+    samples at once - extraction never looks at more than that many per run regardless, so
+    allowing more uploads would only let samples pile up that can never actually be used.
+    """
+
+    def __init__(self, *, limit: int) -> None:
+        super().__init__(
+            f"You already have the maximum of {limit} writing style samples. "
+            "Delete one before uploading another."
+        )
+        self.limit = limit
 
 
 class NoUsableWritingStyleSamplesError(WritingDomainError):
@@ -181,6 +174,44 @@ class MessageContextLinkTargetError(WritingDomainError):
         super().__init__(
             "Message Context Link must set exactly one target reference, consistent with target_type."
         )
+
+
+class MemoryExtractionError(WritingDomainError):
+    """The AI provider's response could not be parsed into a valid Memory Record - mirrors
+    `StyleExtractionError`'s own discipline exactly (invalid JSON, missing field, or
+    `record_type` outside the frozen `MemoryRecordType` enum). Raised from within chat reply
+    generation (the Work Item worker), swallowed there exactly like conversation summarization's
+    own failure handling - a bad extraction never turns an otherwise-successful chat reply into
+    a failed Work Item.
+    """
+
+    def __init__(self, *, reason: str) -> None:
+        super().__init__(f"Memory extraction failed: {reason}")
+
+
+class ChatReplyWorkItemNotFoundError(WritingDomainError):
+    """No such Work Item, or its payload_reference doesn't actually belong to the Conversation
+    the caller named - deliberately indistinguishable (non-enumeration), mirroring
+    ConversationNotFoundError's own established precedent. Closes a real cross-conversation
+    probing risk: without this check, an authenticated owner of *some* conversation could poll
+    any work_item_id and read another conversation's generation status/error text.
+    """
+
+    def __init__(self, *, work_item_id: int) -> None:
+        super().__init__(f"Chat reply Work Item {work_item_id} was not found.")
+        self.work_item_id = work_item_id
+
+
+class ChatReplyCannotBeRetriedError(WritingDomainError):
+    """Only a terminally `failed` Work Item can be retried - one still `queued`/`running` has a
+    live attempt in flight, and one `succeeded` already produced its reply Message. Mirrors
+    DocumentCannotBeRetriedError's own status-gating exactly.
+    """
+
+    def __init__(self, *, work_item_id: int, state: str) -> None:
+        super().__init__(f"Chat reply Work Item {work_item_id} cannot be retried (current state: {state}).")
+        self.work_item_id = work_item_id
+        self.state = state
 
 
 class WritingProfileAlreadyExtractedError(WritingDomainError):

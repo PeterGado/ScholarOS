@@ -1,12 +1,20 @@
+import io
 import json
 import re
+import zipfile
 from dataclasses import dataclass
+
+import docx
+import pypdf
 
 from app.ai.providers.base import TextGenerationProvider
 from app.modules.writing.domain.enums import ProfileCharacteristicType
 from app.modules.writing.domain.exceptions import StyleExtractionError, UnusableWritingStyleSampleError
 
 _CODE_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
+
+_DOCX_MAGIC = b"PK\x03\x04"
+_PDF_MAGIC = b"%PDF-"
 
 MAX_SAMPLES_PER_EXTRACTION = 5
 MAX_CHARACTERS_PER_SAMPLE = 4000
@@ -37,17 +45,55 @@ Writing sample(s):
 
 
 def decode_sample_text(content: bytes, *, document_id: int) -> str:
-    """Mirrors app.modules.knowledge.domain.text_extraction.PlainTextExtractor's own strict
-    UTF-8-decode-or-unsupported approach, duplicated deliberately rather than imported: Writing
-    and Knowledge are architecturally separate pipelines that must never depend on each other
-    (Project_Writing_Implementation_Plan.md §7; Backend_Slice2_AI_Readiness_Review.md §8) -
-    five lines of duplication is a smaller cost than a new cross-module dependency between two
-    domains this project has repeatedly required stay independent.
+    """Mirrors app.modules.knowledge.domain.text_extraction.PlainTextExtractor's own docx/PDF-
+    aware extraction, duplicated deliberately rather than imported: Writing and Knowledge are
+    architecturally separate pipelines that must never depend on each other (Project_Writing_
+    Implementation_Plan.md §7; Backend_Slice2_AI_Readiness_Review.md §8) - some duplication is a
+    smaller cost than a new cross-module dependency between two domains this project has
+    repeatedly required stay independent.
+
+    Originally a bare UTF-8 decode, which meant every real .docx/PDF writing sample (virtually
+    all of them, in practice) failed with `UnusableWritingStyleSampleError` before ever reaching
+    the AI provider - a real, blocking bug found via manual use, the same class of defect
+    `PlainTextExtractor` itself was fixed for earlier. Magic bytes are sniffed before attempting
+    a plain-UTF-8 decode for the same reason as there: a small, simple .docx/PDF can occasionally
+    be byte-for-byte valid UTF-8, which would otherwise silently return raw file-format markup
+    as if it were the sample's real text.
     """
+    if content.startswith(_DOCX_MAGIC):
+        try:
+            return _extract_docx_text(content)
+        except (zipfile.BadZipFile, KeyError, ValueError, docx.opc.exceptions.PackageNotFoundError) as exc:
+            raise UnusableWritingStyleSampleError(document_id=document_id) from exc
+
+    if content.startswith(_PDF_MAGIC):
+        try:
+            return _extract_pdf_text(content)
+        except (pypdf.errors.PdfReadError, ValueError) as exc:
+            raise UnusableWritingStyleSampleError(document_id=document_id) from exc
+
     try:
         return content.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise UnusableWritingStyleSampleError(document_id=document_id) from exc
+
+
+def _extract_docx_text(content: bytes) -> str:
+    document = docx.Document(io.BytesIO(content))
+    paragraphs = [paragraph.text for paragraph in document.paragraphs if paragraph.text.strip()]
+    text = "\n\n".join(paragraphs)
+    if not text.strip():
+        raise ValueError("The .docx file contained no extractable text")
+    return text
+
+
+def _extract_pdf_text(content: bytes) -> str:
+    reader = pypdf.PdfReader(io.BytesIO(content))
+    pages = [page.extract_text() or "" for page in reader.pages]
+    text = "\n\n".join(page.strip() for page in pages if page.strip())
+    if not text.strip():
+        raise ValueError("The PDF contained no extractable text (it may be a scanned/image-only PDF)")
+    return text
 
 
 def build_style_extraction_prompt(samples: list[str]) -> str:

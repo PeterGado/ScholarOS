@@ -2,12 +2,12 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from app.modules.document.domain.entities import ResearchDocument
 from app.modules.writing.application.profile_view import WritingProfileView
 from app.modules.writing.application.style_extraction import WritingStyleProfileExtraction
 from app.modules.writing.application.style_ingestion import WritingStyleDocumentUpload
-from app.modules.writing.application.use_cases import DraftVersionWithEvidence
-from app.modules.writing.domain.entities import Draft, ReviewDecision
-from app.modules.writing.domain.enums import ReviewOutcome
+from app.modules.writing.application.memory_inspection import MemoryRecordWithProvenance
+from app.modules.writing.domain.entities import Conversation, Message
 from app.workers.entities import WorkItem
 
 
@@ -43,6 +43,41 @@ class WritingStyleDocumentResponse(BaseModel):
             profile_id=upload.profile.profile_id,
             profile_name=upload.profile.name,
         )
+
+
+class WritingStyleDocumentSummaryResponse(BaseModel):
+    """Response item for GET /writing/style-profile/documents - lets the frontend show what a
+    user has already uploaded across sessions (see `ListWritingStyleDocumentsUseCase`'s own
+    docstring for the bug this closes). No `processing_status`: a style sample is never
+    submitted to the knowledge pipeline, so that field would always read `pending` and imply a
+    stuck upload that isn't actually stuck.
+    """
+
+    document_id: int
+    title: str
+    author: str | None
+    source: str | None
+    format: str
+    ingested_at: datetime
+
+    @classmethod
+    def from_domain(cls, document: ResearchDocument) -> "WritingStyleDocumentSummaryResponse":
+        return cls(
+            document_id=document.document_id,
+            title=document.title,
+            author=document.author,
+            source=document.source,
+            format=document.format,
+            ingested_at=document.ingested_at,
+        )
+
+
+class WritingStyleDocumentListResponse(BaseModel):
+    documents: list[WritingStyleDocumentSummaryResponse]
+
+    @classmethod
+    def from_domain(cls, documents: list[ResearchDocument]) -> "WritingStyleDocumentListResponse":
+        return cls(documents=[WritingStyleDocumentSummaryResponse.from_domain(d) for d in documents])
 
 
 class ExtractWritingStyleProfileRequest(BaseModel):
@@ -88,140 +123,6 @@ class WritingStyleProfileExtractionResponse(BaseModel):
         )
 
 
-class CreateDraftRequest(BaseModel):
-    """Request for POST /writing/drafts. No agent_id - ownership is resolved entirely from
-    the authenticated identity (mirrors CreateAgentWorkspaceRequest's own convention).
-    """
-
-    title: str = Field(..., min_length=1, max_length=255)
-    target: str | None = None
-
-
-class DraftResponse(BaseModel):
-    """Excludes agent_id - the client never needs it, every writing endpoint is scoped by
-    draft_id or the authenticated identity alone.
-    """
-
-    draft_id: int
-    title: str
-    target: str | None
-    status: str
-    created_at: datetime
-
-    @classmethod
-    def from_domain(cls, draft: Draft) -> "DraftResponse":
-        return cls(
-            draft_id=draft.draft_id,
-            title=draft.title,
-            target=draft.target,
-            status=draft.status.value,
-            created_at=draft.created_at,
-        )
-
-
-class DraftListResponse(BaseModel):
-    drafts: list[DraftResponse]
-
-    @classmethod
-    def from_domain(cls, drafts: list[Draft]) -> "DraftListResponse":
-        return cls(drafts=[DraftResponse.from_domain(draft) for draft in drafts])
-
-
-class DraftEvidenceLinkResponse(BaseModel):
-    """Provenance as the writing domain already persists it - no additional lookups (e.g. a
-    source document's title) are performed; that would require injecting the Document module's
-    repository into a use case that otherwise needs no cross-module dependency beyond what
-    Draft Evidence Link itself already stores (Stage 7 report: deliberate scope boundary).
-    """
-
-    target_type: str
-    chunk_id: int | None
-    document_id: int | None
-
-
-class DraftVersionResponse(BaseModel):
-    version_id: int
-    version_number: int
-    content: str
-    created_at: datetime
-    created_by: str
-    evidence: list[DraftEvidenceLinkResponse]
-
-    @classmethod
-    def from_domain(cls, item: DraftVersionWithEvidence) -> "DraftVersionResponse":
-        return cls(
-            version_id=item.version.version_id,
-            version_number=item.version.version_number,
-            content=item.version.content,
-            created_at=item.version.created_at,
-            created_by=item.version.created_by.value,
-            evidence=[
-                DraftEvidenceLinkResponse(
-                    target_type=link.target_type.value, chunk_id=link.chunk_id, document_id=link.document_id
-                )
-                for link in item.evidence
-            ],
-        )
-
-
-class DraftVersionListResponse(BaseModel):
-    versions: list[DraftVersionResponse]
-
-    @classmethod
-    def from_domain(cls, items: list[DraftVersionWithEvidence]) -> "DraftVersionListResponse":
-        return cls(versions=[DraftVersionResponse.from_domain(item) for item in items])
-
-
-class RequestDraftGenerationRequest(BaseModel):
-    """Request for POST /writing/drafts/{draft_id}/generate. Deliberately carries no evidence,
-    style, or memory fields - those are resolved server-side by `RequestDraftGenerationUseCase`
-    (real retrieval, the Agent's own Writing Profile, the Agent's own Memory Records), never
-    accepted from the client (Stage 7 reconnaissance finding - see the use case's docstring).
-    """
-
-    instructions: str = Field(..., min_length=1)
-
-
-class GenerationStatusResponse(BaseModel):
-    """Uses the existing Work Item state contract (app.workers.enums.WorkItemState) rather
-    than inventing a second asynchronous status model. Excludes payload_reference/
-    idempotency_key - internal outbox plumbing (a content-store key), not part of the public
-    contract, mirroring ResearchDocumentResponse's own content_reference exclusion.
-    """
-
-    draft_id: int
-    work_item_id: int
-    state: str
-
-    @classmethod
-    def from_domain(cls, *, draft_id: int, work_item: WorkItem) -> "GenerationStatusResponse":
-        return cls(draft_id=draft_id, work_item_id=work_item.work_item_id, state=work_item.state.value)
-
-
-class SubmitDraftReviewRequest(BaseModel):
-    outcome: ReviewOutcome
-    rationale: str | None = None
-    notes: str | None = None
-
-
-class ReviewDecisionResponse(BaseModel):
-    decision_id: int
-    review_id: int
-    outcome: str
-    rationale: str | None
-    decided_at: datetime
-
-    @classmethod
-    def from_domain(cls, decision: ReviewDecision) -> "ReviewDecisionResponse":
-        return cls(
-            decision_id=decision.decision_id,
-            review_id=decision.review_id,
-            outcome=decision.outcome.value,
-            rationale=decision.rationale,
-            decided_at=decision.decided_at,
-        )
-
-
 class WritingProfileCharacteristicResponse(BaseModel):
     """Deliberately excludes source_document_ids - unlike the extraction-result response
     (ProfileCharacteristicResponse), a profile-view read has no extraction run in hand to
@@ -233,6 +134,147 @@ class WritingProfileCharacteristicResponse(BaseModel):
     characteristic_type: str
     signal: str
     confidence: float | None
+
+
+class StartConversationRequest(BaseModel):
+    """Request for POST /writing/conversations. No agent_id - resolved from the authenticated
+    identity, mirroring every other Writing create endpoint. `title` is a free-form, optional
+    label the caller may give the conversation; unset for an untitled chat thread.
+    """
+
+    title: str | None = Field(None, max_length=255)
+
+
+class ConversationResponse(BaseModel):
+    conversation_id: int
+    title: str | None
+    status: str
+    started_at: datetime
+
+    @classmethod
+    def from_domain(cls, conversation: Conversation) -> "ConversationResponse":
+        return cls(
+            conversation_id=conversation.conversation_id,
+            title=conversation.title,
+            status=conversation.status.value,
+            started_at=conversation.started_at,
+        )
+
+
+class ConversationListResponse(BaseModel):
+    conversations: list[ConversationResponse]
+
+    @classmethod
+    def from_domain(cls, conversations: list[Conversation]) -> "ConversationListResponse":
+        return cls(conversations=[ConversationResponse.from_domain(c) for c in conversations])
+
+
+class SendChatMessageRequest(BaseModel):
+    content: str = Field(..., min_length=1)
+
+
+class ChatMessageResponse(BaseModel):
+    message_id: int
+    sequence: int
+    direction: str
+    content: str
+    created_at: datetime
+
+    @classmethod
+    def from_domain(cls, message: Message) -> "ChatMessageResponse":
+        return cls(
+            message_id=message.message_id,
+            sequence=message.sequence,
+            direction=message.direction.value,
+            content=message.content,
+            created_at=message.created_at,
+        )
+
+
+class ChatMessageListResponse(BaseModel):
+    messages: list[ChatMessageResponse]
+
+    @classmethod
+    def from_domain(cls, messages: list[Message]) -> "ChatMessageListResponse":
+        return cls(messages=[ChatMessageResponse.from_domain(m) for m in messages])
+
+
+class ChatReplyStatusResponse(BaseModel):
+    """Uses the existing Work Item state contract (app.workers.enums.WorkItemState) - the reply
+    is generated asynchronously, by the Work Item executor, never synchronously inside this
+    request.
+    """
+
+    conversation_id: int
+    work_item_id: int
+    state: str
+    last_error: str | None = None
+
+    @classmethod
+    def from_domain(cls, *, conversation_id: int, work_item: WorkItem) -> "ChatReplyStatusResponse":
+        return cls(
+            conversation_id=conversation_id,
+            work_item_id=work_item.work_item_id,
+            state=work_item.state.value,
+            last_error=work_item.last_error,
+        )
+
+
+class MemoryProvenanceResponse(BaseModel):
+    source_type: str
+    conversation_id: int | None
+    element_id: int | None
+    document_id: int | None
+
+
+class MemoryRecordResponse(BaseModel):
+    record_id: int
+    record_type: str
+    content: str
+    rationale: str | None
+    status: str
+    created_at: datetime
+    created_by: str
+    provenance: list[MemoryProvenanceResponse]
+
+    @classmethod
+    def from_domain(cls, item: MemoryRecordWithProvenance) -> "MemoryRecordResponse":
+        return cls(
+            record_id=item.record.record_id,
+            record_type=item.record.record_type.value,
+            content=item.record.content,
+            rationale=item.record.rationale,
+            status=item.record.status.value,
+            created_at=item.record.created_at,
+            created_by=item.record.created_by.value,
+            provenance=[
+                MemoryProvenanceResponse(
+                    source_type=link.source_type.value,
+                    conversation_id=link.conversation_id,
+                    element_id=link.element_id,
+                    document_id=link.document_id,
+                )
+                for link in item.provenance
+            ],
+        )
+
+
+class MemoryRecordListResponse(BaseModel):
+    records: list[MemoryRecordResponse]
+
+    @classmethod
+    def from_domain(cls, items: list[MemoryRecordWithProvenance]) -> "MemoryRecordListResponse":
+        return cls(records=[MemoryRecordResponse.from_domain(item) for item in items])
+
+
+class SupersedeMemoryRecordRequest(BaseModel):
+    """Request for POST /memory/{record_id}/supersede. `content` is the corrected memory
+    statement the user is asserting, replacing the current one - the user's own correction is
+    the awareness signal (Business Rule 4), not an AI call.
+    """
+
+    content: str = Field(..., min_length=1)
+    rationale: str | None = None
 
 
 class WritingProfileViewResponse(BaseModel):

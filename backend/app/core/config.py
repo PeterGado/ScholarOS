@@ -9,11 +9,27 @@ class Settings(BaseSettings):
     environment: str = "development"
     database_url: str = "sqlite:///./scholaros.db"
     storage_root: str = "./data/documents"
+    # Object storage backend (ADR-004 §5's content-addressed store, now provider-agnostic):
+    # "filesystem" (default, unchanged) or "s3" - any S3-compatible endpoint (MinIO, Cloudflare
+    # R2, AWS S3 itself), selected by configuration exactly like the AI provider gateway
+    # (ADR-002's own pattern), never by business logic. The s3_* fields are only read when
+    # storage_backend is "s3"; storage_root remains what "filesystem" uses.
+    storage_backend: str = "filesystem"
+    s3_bucket: str | None = None
+    s3_endpoint_url: str | None = None
+    s3_region: str = "auto"
+    s3_access_key_id: str | None = None
+    s3_secret_access_key: str | None = None
     # Authentication Boundary (ADR-010): the one pre-provisioned account, seeded from
     # configuration, never hard-coded. auth_password_hash is a bcrypt hash, never plaintext -
     # see backend/README.md "Authentication Setup" for how to generate one.
     auth_username: str | None = None
     auth_password_hash: str | None = None
+    # Self-service registration (ADR-011): additive alongside the one pre-provisioned account
+    # above. When set, POST /auth/register requires a matching invite_code - a temporary,
+    # config-only gate for a friends-testing phase, removable later (clear this var) without a
+    # code change when the project owner is ready for fully public registration.
+    registration_invite_code: str | None = None
     # AI Provider Abstraction (ADR-002; Backend_Slice2_Implementation_Plan.md §4, corrected
     # Stage 9): the first concrete provider is Google's Gemini via the native `google-genai`
     # SDK ("google_genai"), selected by configuration - never by business logic. The original

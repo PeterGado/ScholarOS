@@ -1,8 +1,18 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
 from app.modules.agent.application.use_cases import AgentWorkspace
+
+
+class ResetAgentWorkspaceRequest(BaseModel):
+    """Request body for DELETE /agents/me. `confirm` must be the literal `true` - FastAPI's
+    own request validation (422) rejects anything else, including a missing field or `false` -
+    a real, server-side safety check independent of whatever confirmation the frontend shows,
+    since this operation is irreversible."""
+
+    confirm: Literal[True]
 
 
 class CreateAgentWorkspaceRequest(BaseModel):

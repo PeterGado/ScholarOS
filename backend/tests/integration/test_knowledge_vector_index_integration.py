@@ -24,7 +24,7 @@ from app.workers.repository import WorkItemRepository
 
 class FakeTextGenerationProvider:
     def generate(self, prompt: str) -> str:
-        return '{"element_type": "concept", "label": "L", "description": "d"}'
+        return '[{"element_type": "concept", "label": "L", "description": "d"}]'
 
 
 class FakeEmbeddingProvider:
@@ -37,6 +37,9 @@ class FakeEmbeddingProvider:
 
     def embed(self, text: str) -> list[float]:
         return self._vectors_by_text[text]
+
+    def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        return [self._vectors_by_text[text] for text in texts]
 
 
 @pytest.fixture()

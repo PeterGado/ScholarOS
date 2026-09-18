@@ -42,6 +42,7 @@ export const researchDocumentResponseSchema = z.object({
   format: z.string(),
   processing_status: z.string(),
   ingested_at: z.string(),
+  error_message: z.string().nullable(),
 });
 export type ResearchDocumentResponse = z.infer<typeof researchDocumentResponseSchema>;
 
@@ -80,6 +81,20 @@ export const writingStyleDocumentResponseSchema = z.object({
 });
 export type WritingStyleDocumentResponse = z.infer<typeof writingStyleDocumentResponseSchema>;
 
+export const writingStyleDocumentSummaryResponseSchema = z.object({
+  document_id: z.number(),
+  title: z.string(),
+  author: z.string().nullable(),
+  source: z.string().nullable(),
+  format: z.string(),
+  ingested_at: z.string(),
+});
+export type WritingStyleDocumentSummaryResponse = z.infer<typeof writingStyleDocumentSummaryResponseSchema>;
+
+export const writingStyleDocumentListResponseSchema = z.object({
+  documents: z.array(writingStyleDocumentSummaryResponseSchema),
+});
+
 export const profileCharacteristicResponseSchema = z.object({
   characteristic_id: z.number(),
   characteristic_type: z.string(),
@@ -111,51 +126,62 @@ export const writingProfileViewResponseSchema = z.object({
 });
 export type WritingProfileViewResponse = z.infer<typeof writingProfileViewResponseSchema>;
 
-export const draftResponseSchema = z.object({
-  draft_id: z.number(),
-  title: z.string(),
-  target: z.string().nullable(),
+// --- Persistent Brain: Agent Workspace chat -------------------------------------------------
+
+export const conversationResponseSchema = z.object({
+  conversation_id: z.number(),
+  title: z.string().nullable(),
   status: z.string(),
+  started_at: z.string(),
+});
+export type ConversationResponse = z.infer<typeof conversationResponseSchema>;
+
+export const conversationListResponseSchema = z.object({
+  conversations: z.array(conversationResponseSchema),
+});
+
+export const chatMessageResponseSchema = z.object({
+  message_id: z.number(),
+  sequence: z.number(),
+  direction: z.string(),
+  content: z.string(),
   created_at: z.string(),
 });
-export type DraftResponse = z.infer<typeof draftResponseSchema>;
+export type ChatMessageResponse = z.infer<typeof chatMessageResponseSchema>;
 
-export const draftListResponseSchema = z.object({
-  drafts: z.array(draftResponseSchema),
+export const chatMessageListResponseSchema = z.object({
+  messages: z.array(chatMessageResponseSchema),
 });
 
-export const draftEvidenceLinkResponseSchema = z.object({
-  target_type: z.string(),
-  chunk_id: z.number().nullable(),
+export const chatReplyStatusResponseSchema = z.object({
+  conversation_id: z.number(),
+  work_item_id: z.number(),
+  state: z.string(),
+  last_error: z.string().nullable().optional(),
+});
+export type ChatReplyStatusResponse = z.infer<typeof chatReplyStatusResponseSchema>;
+
+// --- Persistent Brain v2: Memory inspection -------------------------------------------------
+
+export const memoryProvenanceResponseSchema = z.object({
+  source_type: z.string(),
+  conversation_id: z.number().nullable(),
+  element_id: z.number().nullable(),
   document_id: z.number().nullable(),
 });
 
-export const draftVersionResponseSchema = z.object({
-  version_id: z.number(),
-  version_number: z.number(),
+export const memoryRecordResponseSchema = z.object({
+  record_id: z.number(),
+  record_type: z.string(),
   content: z.string(),
+  rationale: z.string().nullable(),
+  status: z.string(),
   created_at: z.string(),
   created_by: z.string(),
-  evidence: z.array(draftEvidenceLinkResponseSchema),
+  provenance: z.array(memoryProvenanceResponseSchema),
 });
-export type DraftVersionResponse = z.infer<typeof draftVersionResponseSchema>;
+export type MemoryRecordResponse = z.infer<typeof memoryRecordResponseSchema>;
 
-export const draftVersionListResponseSchema = z.object({
-  versions: z.array(draftVersionResponseSchema),
+export const memoryRecordListResponseSchema = z.object({
+  records: z.array(memoryRecordResponseSchema),
 });
-
-export const generationStatusResponseSchema = z.object({
-  draft_id: z.number(),
-  work_item_id: z.number(),
-  state: z.string(),
-});
-export type GenerationStatusResponse = z.infer<typeof generationStatusResponseSchema>;
-
-export const reviewDecisionResponseSchema = z.object({
-  decision_id: z.number(),
-  review_id: z.number(),
-  outcome: z.string(),
-  rationale: z.string().nullable(),
-  decided_at: z.string(),
-});
-export type ReviewDecisionResponse = z.infer<typeof reviewDecisionResponseSchema>;

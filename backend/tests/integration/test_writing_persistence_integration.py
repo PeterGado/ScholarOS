@@ -10,42 +10,26 @@ from app.modules.knowledge.domain.enums import KnowledgeElementType
 from app.modules.knowledge.infrastructure.models import KnowledgeChunk, KnowledgeElement
 from app.modules.project.infrastructure.models import Project
 from app.modules.writing.domain.entities import (
-    Draft,
-    DraftEvidenceLink,
-    DraftVersion,
+    Conversation,
     MemoryProvenanceLink,
     MemoryRecord,
     ProfileCharacteristic,
     ProfileCharacteristicSource,
-    Review,
-    ReviewDecision,
     WritingProfile,
 )
 from app.modules.writing.domain.enums import (
-    DraftStatus,
     MemoryProvenanceSourceType,
     MemoryRecordType,
     ProfileCharacteristicType,
-    ReviewOutcome,
 )
-from app.modules.writing.infrastructure.models import Draft as DraftModel
-from app.modules.writing.infrastructure.models import DraftEvidenceLink as DraftEvidenceLinkModel
-from app.modules.writing.infrastructure.models import DraftVersion as DraftVersionModel
 from app.modules.writing.infrastructure.models import MemoryProvenanceLink as MemoryProvenanceLinkModel
-from app.modules.writing.infrastructure.models import MemoryRecord as MemoryRecordModel
-from app.modules.writing.infrastructure.models import Review as ReviewModel
-from app.modules.writing.infrastructure.models import ReviewDecision as ReviewDecisionModel
 from app.modules.writing.infrastructure.models import WritingProfile as WritingProfileModel
 from app.modules.writing.infrastructure.repositories import (
-    SqlAlchemyDraftEvidenceLinkRepository,
-    SqlAlchemyDraftRepository,
-    SqlAlchemyDraftVersionRepository,
+    SqlAlchemyConversationRepository,
     SqlAlchemyMemoryProvenanceLinkRepository,
     SqlAlchemyMemoryRecordRepository,
     SqlAlchemyProfileCharacteristicRepository,
     SqlAlchemyProfileCharacteristicSourceRepository,
-    SqlAlchemyReviewDecisionRepository,
-    SqlAlchemyReviewRepository,
     SqlAlchemyWritingProfileRepository,
 )
 
@@ -108,234 +92,6 @@ def _make_knowledge_chunk(session, agent):
     session.add(chunk)
     session.flush()
     return chunk
-
-
-# --- Draft / Draft Version -------------------------------------------------------------------
-
-
-def test_draft_persists_and_retrieves(session):
-    agent = _make_agent(session)
-    repo = SqlAlchemyDraftRepository(session)
-
-    draft = repo.add(Draft.create(agent_id=agent.agent_id, title="Chapter 1"))
-    session.commit()
-
-    fetched = repo.get_by_id(draft.draft_id)
-    assert fetched is not None
-    assert fetched.agent_id == agent.agent_id
-    assert fetched.status == DraftStatus.DRAFTING
-    assert fetched.deleted_at is None
-
-
-def test_draft_requires_existing_agent(session):
-    session.add(DraftModel(agent_id=999, title="Orphan"))
-    with pytest.raises(IntegrityError):
-        session.commit()
-    session.rollback()
-
-
-def test_draft_version_numbering_is_strictly_ordered_and_unique_per_draft(session):
-    agent = _make_agent(session)
-    drafts = SqlAlchemyDraftRepository(session)
-    versions = SqlAlchemyDraftVersionRepository(session)
-    draft = drafts.add(Draft.create(agent_id=agent.agent_id, title="Chapter 1"))
-    session.commit()
-
-    v1 = versions.add(DraftVersion(draft_id=draft.draft_id, version_number=1, content="First"))
-    session.commit()
-    v2 = versions.add(DraftVersion(draft_id=draft.draft_id, version_number=2, content="Second"))
-    session.commit()
-
-    latest = versions.get_latest_by_draft_id(draft.draft_id)
-    assert latest.version_id == v2.version_id
-    all_versions = versions.list_by_draft_id(draft.draft_id)
-    assert [v.version_number for v in all_versions] == [1, 2]
-    assert v1.version_id != v2.version_id
-
-
-def test_draft_version_duplicate_version_number_is_rejected(session):
-    agent = _make_agent(session)
-    draft = SqlAlchemyDraftRepository(session).add(Draft.create(agent_id=agent.agent_id, title="Chapter 1"))
-    session.commit()
-
-    session.add(DraftVersionModel(draft_id=draft.draft_id, version_number=1, content="A", created_by="user"))
-    session.commit()
-    session.add(DraftVersionModel(draft_id=draft.draft_id, version_number=1, content="B", created_by="user"))
-    with pytest.raises(IntegrityError):
-        session.commit()
-    session.rollback()
-
-
-def test_a_persistence_failure_rolls_back_without_orphaning_prior_writes(session):
-    """Mirrors the Agent/Project atomicity test (test_agent_workspace_integration.py) -
-    confirms rollback leaves no partial state, per the project's transaction conventions.
-    """
-    agent = _make_agent(session)
-    draft = SqlAlchemyDraftRepository(session).add(Draft.create(agent_id=agent.agent_id, title="Chapter 1"))
-    session.commit()
-
-    session.add(DraftVersionModel(draft_id=draft.draft_id, version_number=1, content="A", created_by="user"))
-    session.commit()
-
-    session.add(DraftVersionModel(draft_id=999999, version_number=1, content="Orphan", created_by="user"))
-    with pytest.raises(IntegrityError):
-        session.commit()
-    session.rollback()
-
-    versions = SqlAlchemyDraftVersionRepository(session).list_by_draft_id(draft.draft_id)
-    assert len(versions) == 1
-
-
-# --- Review / Review Decision -------------------------------------------------------------------
-
-
-def test_review_and_decision_persist_with_relationship_to_draft_version(session):
-    agent = _make_agent(session)
-    draft = SqlAlchemyDraftRepository(session).add(Draft.create(agent_id=agent.agent_id, title="Chapter 1"))
-    session.commit()
-    version = SqlAlchemyDraftVersionRepository(session).add(
-        DraftVersion(draft_id=draft.draft_id, version_number=1, content="First")
-    )
-    session.commit()
-
-    reviews = SqlAlchemyReviewRepository(session)
-    review = reviews.add(Review(draft_version_id=version.version_id))
-    session.commit()
-
-    user = _make_user(session, username="reviewer")
-    decisions = SqlAlchemyReviewDecisionRepository(session)
-    decision = decisions.add(ReviewDecision(review_id=review.review_id, outcome=ReviewOutcome.APPROVED, decided_by=user.user_id))
-    session.commit()
-
-    assert decisions.get_by_review_id(review.review_id).decision_id == decision.decision_id
-
-
-def test_at_most_one_open_review_per_draft_version_is_enforced_at_database_level(session):
-    agent = _make_agent(session)
-    draft = SqlAlchemyDraftRepository(session).add(Draft.create(agent_id=agent.agent_id, title="Chapter 1"))
-    session.commit()
-    version = SqlAlchemyDraftVersionRepository(session).add(
-        DraftVersion(draft_id=draft.draft_id, version_number=1, content="First")
-    )
-    session.commit()
-
-    session.add(ReviewModel(draft_version_id=version.version_id, status="open"))
-    session.commit()
-    session.add(ReviewModel(draft_version_id=version.version_id, status="open"))
-    with pytest.raises(IntegrityError):
-        session.commit()
-    session.rollback()
-
-
-def test_one_decision_per_review_is_enforced_at_database_level(session):
-    agent = _make_agent(session)
-    draft = SqlAlchemyDraftRepository(session).add(Draft.create(agent_id=agent.agent_id, title="Chapter 1"))
-    session.commit()
-    version = SqlAlchemyDraftVersionRepository(session).add(
-        DraftVersion(draft_id=draft.draft_id, version_number=1, content="First")
-    )
-    session.commit()
-    review = SqlAlchemyReviewRepository(session).add(Review(draft_version_id=version.version_id))
-    session.commit()
-    user = _make_user(session, username="reviewer")
-
-    decisions = SqlAlchemyReviewDecisionRepository(session)
-    decisions.add(ReviewDecision(review_id=review.review_id, outcome=ReviewOutcome.APPROVED, decided_by=user.user_id))
-    session.commit()
-
-    session.add(ReviewDecisionModel(review_id=review.review_id, outcome="approved", decided_by=user.user_id))
-    with pytest.raises(IntegrityError):
-        session.commit()
-    session.rollback()
-
-
-# --- Draft Evidence Link -------------------------------------------------------------------
-
-
-def test_draft_evidence_link_references_existing_knowledge_chunk(session):
-    agent = _make_agent(session)
-    draft = SqlAlchemyDraftRepository(session).add(Draft.create(agent_id=agent.agent_id, title="Chapter 1"))
-    session.commit()
-    version = SqlAlchemyDraftVersionRepository(session).add(
-        DraftVersion(draft_id=draft.draft_id, version_number=1, content="First")
-    )
-    session.commit()
-    chunk = _make_knowledge_chunk(session, agent)
-
-    links = SqlAlchemyDraftEvidenceLinkRepository(session)
-    link = links.add(DraftEvidenceLink.for_knowledge_chunk(draft_version_id=version.version_id, chunk_id=chunk.chunk_id))
-    session.commit()
-
-    stored = links.list_by_draft_version_id(version.version_id)
-    assert len(stored) == 1
-    assert stored[0].chunk_id == chunk.chunk_id
-    assert link.link_id == stored[0].link_id
-
-
-def test_draft_evidence_link_references_existing_research_document(session):
-    agent = _make_agent(session)
-    project = _make_project(session, agent=agent)
-    document = _make_document(session, project=project)
-    draft = SqlAlchemyDraftRepository(session).add(Draft.create(agent_id=agent.agent_id, title="Chapter 1"))
-    session.commit()
-    version = SqlAlchemyDraftVersionRepository(session).add(
-        DraftVersion(draft_id=draft.draft_id, version_number=1, content="First")
-    )
-    session.commit()
-
-    links = SqlAlchemyDraftEvidenceLinkRepository(session)
-    link = links.add(
-        DraftEvidenceLink.for_research_document(draft_version_id=version.version_id, document_id=document.document_id)
-    )
-    session.commit()
-
-    assert links.list_by_draft_version_id(version.version_id)[0].document_id == document.document_id
-
-
-def test_draft_evidence_link_exclusive_target_check_constraint_rejects_both_set(session):
-    agent = _make_agent(session)
-    draft = SqlAlchemyDraftRepository(session).add(Draft.create(agent_id=agent.agent_id, title="Chapter 1"))
-    session.commit()
-    version = SqlAlchemyDraftVersionRepository(session).add(
-        DraftVersion(draft_id=draft.draft_id, version_number=1, content="First")
-    )
-    session.commit()
-    chunk = _make_knowledge_chunk(session, agent)
-    project = _make_project(session, agent=agent)
-    document = _make_document(session, project=project)
-
-    session.add(
-        DraftEvidenceLinkModel(
-            draft_version_id=version.version_id,
-            target_type="knowledge_chunk",
-            chunk_id=chunk.chunk_id,
-            document_id=document.document_id,
-            created_by="system",
-        )
-    )
-    with pytest.raises(IntegrityError):
-        session.commit()
-    session.rollback()
-
-
-def test_draft_evidence_link_duplicate_annotation_is_rejected(session):
-    agent = _make_agent(session)
-    draft = SqlAlchemyDraftRepository(session).add(Draft.create(agent_id=agent.agent_id, title="Chapter 1"))
-    session.commit()
-    version = SqlAlchemyDraftVersionRepository(session).add(
-        DraftVersion(draft_id=draft.draft_id, version_number=1, content="First")
-    )
-    session.commit()
-    chunk = _make_knowledge_chunk(session, agent)
-
-    links = SqlAlchemyDraftEvidenceLinkRepository(session)
-    links.add(DraftEvidenceLink.for_knowledge_chunk(draft_version_id=version.version_id, chunk_id=chunk.chunk_id))
-    session.commit()
-
-    with pytest.raises(IntegrityError):
-        links.add(DraftEvidenceLink.for_knowledge_chunk(draft_version_id=version.version_id, chunk_id=chunk.chunk_id))
-        session.commit()
-    session.rollback()
 
 
 # --- Writing Profile / Profile Characteristic -------------------------------------------------------------------
@@ -411,13 +167,9 @@ def test_memory_record_persists_and_lists_current_by_agent(session):
     assert current[0].record_id == record.record_id
 
 
-def test_memory_provenance_link_traces_to_draft_version(session):
+def test_memory_provenance_link_traces_to_conversation(session):
     agent = _make_agent(session)
-    draft = SqlAlchemyDraftRepository(session).add(Draft.create(agent_id=agent.agent_id, title="Chapter 1"))
-    session.commit()
-    version = SqlAlchemyDraftVersionRepository(session).add(
-        DraftVersion(draft_id=draft.draft_id, version_number=1, content="First")
-    )
+    conversation = SqlAlchemyConversationRepository(session).add(Conversation(agent_id=agent.agent_id))
     session.commit()
     record = SqlAlchemyMemoryRecordRepository(session).add(
         MemoryRecord(agent_id=agent.agent_id, record_type=MemoryRecordType.GUIDANCE, content="Prefer active voice.")
@@ -428,13 +180,13 @@ def test_memory_provenance_link_traces_to_draft_version(session):
     link = links.add(
         MemoryProvenanceLink(
             record_id=record.record_id,
-            source_type=MemoryProvenanceSourceType.DRAFT_VERSION,
-            draft_version_id=version.version_id,
+            source_type=MemoryProvenanceSourceType.CONVERSATION,
+            conversation_id=conversation.conversation_id,
         )
     )
     session.commit()
 
-    assert links.list_by_record_id(record.record_id)[0].draft_version_id == version.version_id
+    assert links.list_by_record_id(record.record_id)[0].conversation_id == conversation.conversation_id
 
 
 def test_memory_record_supersession_chain_is_traceable(session):
@@ -461,7 +213,7 @@ def test_memory_record_supersession_chain_is_traceable(session):
 
 def test_memory_provenance_link_exclusive_target_check_constraint_rejects_mismatched_source_type(session):
     """Bypasses the domain layer's own validation to confirm the database CHECK constraint is
-    real defense in depth, not just a comment - mirrors the equivalent Draft Evidence Link test.
+    real defense in depth, not just a comment.
     """
     agent = _make_agent(session)
     record = SqlAlchemyMemoryRecordRepository(session).add(
@@ -497,15 +249,6 @@ def test_writing_entities_do_not_leak_across_agents(session):
     """
     agent_a = _make_agent(session, user=_make_user(session, username="user-a"))
     agent_b = _make_agent(session, user=_make_user(session, username="user-b"))
-    drafts = SqlAlchemyDraftRepository(session)
-    drafts.add(Draft.create(agent_id=agent_a.agent_id, title="Agent A's draft"))
-    session.commit()
-    drafts.add(Draft.create(agent_id=agent_b.agent_id, title="Agent B's draft"))
-    session.commit()
-
-    agent_a_drafts = drafts.list_by_agent_id(agent_a.agent_id)
-    assert len(agent_a_drafts) == 1
-    assert agent_a_drafts[0].title == "Agent A's draft"
 
     memory = SqlAlchemyMemoryRecordRepository(session)
     memory.add(MemoryRecord(agent_id=agent_a.agent_id, record_type=MemoryRecordType.OBJECTIVE, content="A's objective"))

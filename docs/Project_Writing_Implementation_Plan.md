@@ -48,7 +48,7 @@ User (exactly one, ADR-010)
 | Semantic classification → Knowledge Element/Chunk/Evidence Link | Built, tested (Stage 5) | `ExtractDocumentKnowledgeUseCase` , `classify_chunk` |
 | Embedding + vector index | Built, tested (Stage 7) | `ChunkEmbedding` , `KnowledgeChunkEmbeddingRepository` , `rank_by_similarity` |
 | Async Work Item / outbox executor | Built, tested (Stage 6) | `WorkItemRepository` , `process_one_work_item` , `WorkItemExecutorLoop` |
-| Agent-scoped vector retrieval | Built, tested (Stage 8) | `SearchKnowledgeUseCase` — **vector-only, not hybrid (§9)** |
+| Agent-scoped hybrid retrieval | Built, tested (Stage 8; hybrid completed 2026-09-18) | `SearchKnowledgeUseCase` — semantic + lexical (SQLite FTS5/BM25), fused via `reciprocal_rank_fusion` (ADR-005) |
 | AI Provider gateway (2 concrete providers) | Built, tested (Stage 3, corrected Stage 9) | `TextGenerationProvider` , `EmbeddingProvider` , `create_provider(settings)` |
 | Real-provider validation | Done (Stage 9) | Real Gemini account, full upload→search loop proven |
 
@@ -347,7 +347,7 @@ Derived from the architecture above, not copied from the brief's example — eac
 **Dependencies:** existing `ContentStore`, `TextGenerationProvider`.
 **Tests:** unit + integration + e2e, including the mandatory failure-atomicity test (one valid + one invalid characteristic leaves zero persisted rows) and provenance test (every characteristic's `Profile Characteristic Source` rows point only to the documents actually supplied to that extraction call, never a model-returned id).
 **Acceptance:** a style document produces real, persisted `Profile Characteristic` rows, never mistaken for evidence (verified by asserting `Draft Evidence Link`'s target types never include them); every characteristic carries mandatory, deterministic provenance.
-**Two genuine gaps found and resolved without inventing new frozen entities, reported rather than silently decided:** (1) no field on `Research Document` distinguishes a style sample from ordinary research material - resolved by having the caller supply the exact `document_ids` to analyze explicitly (WR-010's user-driven framing), not a schema change; (2) `Profile Characteristic` has no status/supersession mechanism yet is documented "never tombstoned" - re-extraction against an already-extracted profile is refused outright (409, `WritingProfileAlreadyExtractedError`) rather than guessing at accumulate-vs-replace semantics. Both remain open items pending an explicit decision, not blockers.
+**Two genuine gaps found and resolved without inventing new frozen entities, reported rather than silently decided:** (1) no field on `Research Document` distinguishes a style sample from ordinary research material - resolved by having the caller supply the exact `document_ids` to analyze explicitly (WR-010's user-driven framing), not a schema change; (2) `Profile Characteristic` has no status/supersession mechanism yet is documented "never tombstoned" - re-extraction against an already-extracted profile is refused outright (409, `WritingProfileAlreadyExtractedError`) rather than guessing at accumulate-vs-replace semantics. **Both confirmed as final product decisions by the project owner on 2026-09-18** (no longer open): (1) `document_ids` stays caller-specified per extraction call, never promoted to a first-class queryable property; (2) re-extraction stays refused outright — the underlying schema gap (no status/supersession mechanism on `Profile Characteristic`) remains architecturally unresolved, but is no longer blocking any product decision since accumulate/replace semantics are confirmed out of scope for now.
 **Non-goals:** no similar-project handling, no draft generation.
 
 ### Stage 4 — Context Assembly — Complete
@@ -444,3 +444,25 @@ Stage 2 → Stage 3 → Stage 4 → Stage 5 → Stage 6 → Stage 7 → Stage 8,
 **Security Reviewer:** Every new entity's isolation story is "the same pattern already proven, applied to one more table" — no new isolation mechanism was invented, which is itself the correct answer (a new mechanism would be an unreviewed risk; reusing the tested one is not).
 
 **Independent Reviewer:** Re-read this plan assuming the above reasoning could be wrong. Checked specifically for: entities invented where a frozen one already existed (none found — the opposite risk, under-inventing, was actively watched for and resolved by re-reading `04_Logical_Data_Model.md` directly rather than from memory); a "WritingTask" entity duplicating `Draft` (explicitly rejected in §14); unnecessary complexity (no event sourcing, no new message queue, no new database, no new provider capability — every "no" in §23 of the brief is satisfied); missing decisions (the six items in §19 are the complete list of what remains genuinely open after this reconnaissance).
+
+---
+
+## 21. Persistent Brain Milestone — Draft vs. Agent Workspace (2026-09-16)
+
+Added while implementing the Persistent Brain milestone's Decision F ("Workspace is not Draft — a conceptual distinction only; do not perform a blind rename"). Recorded here, not as a schema or naming change — none was made.
+
+**Finding:** `Agent` already *is* the data-level workspace boundary this milestone's product framing calls the "Agent Workspace." Every persistent-context entity — Knowledge, Memory, Conversation, Writing Profile, and Draft itself — is already `agent_id`-scoped directly (ADR-009), not nested under Draft. `Draft`/`DraftVersion` are, and remain, one specific *kind of output* the workspace produces (a generated writing task and its immutable versions), structurally coequal with Conversation and Memory, never their container.
+
+**What changed:** nothing in the schema or entity names. `Draft` was not renamed, and no new "Workspace" table or entity was introduced — the repository investigation found no gap that would require one.
+
+**What did change:** the *conceptual/navigational* framing. The frontend's landing destination and primary nav item are now Chat (`/chat`, an Agent-level Conversation, independent of any Draft — Persistent Brain Decision 3), with Drafts demoted to one of several workspace contents rather than the default entry point. This is the "Agent Workspace is the conceptual center" requirement, satisfied without touching the data model.
+
+---
+
+## 22. Persistent Brain v3 Audit Fix — `MemoryRecordType.STYLE` (2026-09-17)
+
+A v3 architecture audit found that Persistent Brain v2's memory extraction reused `MemoryRecordType.GUIDANCE` for two different, undocumented meanings: its original sense (a generic standing preference/guidance, per the v1 prompt) and, silently introduced in v2's prompt wording, "an observed style trait." A persisted `guidance` record carried no way to tell which sense produced it.
+
+**Fix:** added `STYLE = "style"` to `MemoryRecordType` (`backend/app/modules/writing/domain/enums.py`) - a dedicated value for style observations only; `GUIDANCE` reverts to its original, generic meaning. This **extends** the frozen enumerated family documented at `docs/database/04_Logical_Data_Model.md` §3.8 (`objective / hypothesis / method / decision / terminology / guidance / other`) by one value. The frozen document itself is not rewritten here — this entry is the record of the deviation, per this project's standing discipline for additive, reviewed changes to a frozen enumerated family (no CHECK constraint enumerates these values at the database layer, so no migration was needed).
+
+Also fixed in the same pass: `MemoryRecord` had no bound at the point it reaches a prompt - `list_current_by_agent_id` returned every current record, unordered, and `assemble_context` rendered all of them, relying only on the whole-prompt character budget to (arbitrarily) trim under pressure. `ContextAssemblyInput` gained `max_memories` (default 20, mirroring `max_evidence`'s established pattern exactly); the repository now orders by `created_at DESC` (with a `record_id` tiebreak for same-timestamp inserts) so the cap keeps the most recently established memories. Verified through the real chat pipeline, not a hand-built context: `tests/integration/test_persistent_brain_v3_integration.py::test_only_the_most_recent_memories_reach_a_real_chat_prompt` seeds 25 real `MemoryRecord` rows, sends one real chat message through `SendChatMessageUseCase` and the real Work Item executor, and asserts the 5 oldest are absent from the real assembled prompt while the 20 most recent are present.

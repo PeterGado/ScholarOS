@@ -13,3 +13,17 @@ class WorkItemEnqueuer(Protocol):
     """
 
     def enqueue(self, *, kind: WorkItemKind, payload_reference: str, idempotency_key: str) -> WorkItem: ...
+
+
+class WorkItemOutcomeLookup(Protocol):
+    """A second narrow capability: reading a Work Item's terminal outcome and retrying a failed
+    one, both scoped to a payload_reference - what the document module needs to show *why* a
+    document's processing failed and to let the user retry it, without owning any Work Item
+    persistence itself. Mirrors `WorkItemEnqueuer`'s own narrow-capability pattern.
+    """
+
+    def get_by_payload_reference(self, payload_reference: str) -> WorkItem | None: ...
+
+    def get_by_id(self, work_item_id: int) -> WorkItem | None: ...
+
+    def requeue_failed_by_payload_reference(self, payload_reference: str) -> WorkItem | None: ...

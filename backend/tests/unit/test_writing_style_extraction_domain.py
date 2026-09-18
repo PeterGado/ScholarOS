@@ -1,3 +1,6 @@
+import io
+
+import docx
 import pytest
 
 from app.modules.writing.domain.enums import ProfileCharacteristicType
@@ -11,6 +14,39 @@ from app.modules.writing.domain.style_extraction import (
     extract_style_characteristics,
     parse_style_extraction_response,
 )
+
+
+def _build_docx_bytes(paragraphs: list[str]) -> bytes:
+    document = docx.Document()
+    for paragraph in paragraphs:
+        document.add_paragraph(paragraph)
+    buffer = io.BytesIO()
+    document.save(buffer)
+    return buffer.getvalue()
+
+
+def _build_pdf_bytes(text: str) -> bytes:
+    """Mirrors test_knowledge_text_extraction.py's own minimal hand-built PDF helper - a real,
+    spec-conformant single-page PDF with one text-drawing operator."""
+    content = f"BT /F1 12 Tf 72 720 Td ({text}) Tj ET".encode("latin-1")
+    objects = [
+        b"1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj",
+        b"2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj",
+        b"3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Resources<</Font<</F1 5 0 R>>>>/Contents 4 0 R>>endobj",
+        b"4 0 obj<</Length " + str(len(content)).encode() + b">>stream\n" + content + b"\nendstream endobj",
+        b"5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj",
+    ]
+    pdf = b"%PDF-1.4\n"
+    offsets = []
+    for obj in objects:
+        offsets.append(len(pdf))
+        pdf += obj + b"\n"
+    xref_offset = len(pdf)
+    pdf += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode()
+    for offset in offsets:
+        pdf += f"{offset:010d} 00000 n \n".encode()
+    pdf += f"trailer<</Size {len(objects) + 1}/Root 1 0 R>>\nstartxref\n{xref_offset}\n%%EOF".encode()
+    return pdf
 
 
 class FakeProvider:
@@ -39,6 +75,35 @@ def test_decode_sample_text_decodes_utf8():
 def test_decode_sample_text_rejects_undecodable_bytes():
     with pytest.raises(UnusableWritingStyleSampleError):
         decode_sample_text(b"\xff\xfe\x00\x01", document_id=1)
+
+
+def test_decode_sample_text_extracts_a_real_docx_file():
+    """The bug this closes: every real .docx writing sample previously failed here with
+    UnusableWritingStyleSampleError before ever reaching the AI provider - a naive UTF-8-only
+    decode can never read a .docx file's actual zip-based binary format.
+    """
+    content = _build_docx_bytes(["First paragraph of the sample.", "Second paragraph."])
+    result = decode_sample_text(content, document_id=1)
+    assert "First paragraph of the sample." in result
+    assert "Second paragraph." in result
+
+
+def test_decode_sample_text_extracts_a_real_pdf_file():
+    content = _build_pdf_bytes("Sample PDF text")
+    result = decode_sample_text(content, document_id=1)
+    assert "Sample PDF text" in result
+
+
+def test_decode_sample_text_a_pdf_that_is_byte_for_byte_valid_utf8_is_still_extracted_as_a_pdf():
+    """Mirrors PlainTextExtractor's own regression test: a minimal, all-ASCII PDF like the one
+    built here is byte-for-byte valid UTF-8 - magic bytes must be sniffed before attempting a
+    UTF-8 decode, not after it fails, or this would silently return raw PDF markup as if it
+    were the sample's real text instead of the actual extracted "Sample PDF text".
+    """
+    content = _build_pdf_bytes("Sample PDF text")
+    content.decode("utf-8")  # sanity: this genuinely does not raise for this fixture
+    result = decode_sample_text(content, document_id=1)
+    assert result.strip() == "Sample PDF text"
 
 
 # --- build_style_extraction_prompt (deterministic input preparation) -------------------------------------------------------------------

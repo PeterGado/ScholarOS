@@ -5,10 +5,17 @@ from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 from app.api.exception_handlers import ErrorResponse
 from app.core.dependencies import (
     get_current_user_id,
+    get_delete_research_document_use_case,
     get_list_project_documents_use_case,
+    get_retry_document_processing_use_case,
     get_upload_research_document_use_case,
 )
-from app.modules.document.application.use_cases import ListProjectDocumentsUseCase, UploadResearchDocumentUseCase
+from app.modules.document.application.use_cases import (
+    DeleteResearchDocumentUseCase,
+    ListProjectDocumentsUseCase,
+    RetryDocumentProcessingUseCase,
+    UploadResearchDocumentUseCase,
+)
 from app.modules.document.interface.schemas import ResearchDocumentListResponse, ResearchDocumentResponse
 
 router = APIRouter(prefix="/projects", tags=["documents"])
@@ -94,3 +101,63 @@ def list_project_documents(
     """
     documents = use_case.execute(project_id=project_id, user_id=user_id)
     return ResearchDocumentListResponse.from_domain(documents)
+
+
+@router.delete(
+    "/{project_id}/documents/{document_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        401: {"model": ErrorResponse, "description": "Missing, malformed, unknown, or ended session."},
+        404: {
+            "model": ErrorResponse,
+            "description": "No such Project/Document, it does not belong to the authenticated user, or it was already deleted.",
+        },
+        409: {
+            "model": ErrorResponse,
+            "description": "The document has already been processed (or is currently processing) and can no longer be deleted.",
+        },
+    },
+)
+def delete_research_document(
+    project_id: int,
+    document_id: int,
+    user_id: int = Depends(get_current_user_id),
+    use_case: DeleteResearchDocumentUseCase = Depends(get_delete_research_document_use_case),
+) -> None:
+    """Deletes a Research Document that has not yet been successfully processed (`pending` or
+    `failed` only - see DeleteResearchDocumentUseCase's docstring). A soft delete: the row and
+    its stored content remain, but it disappears from `GET .../documents` and can never be
+    listed, generated with, or deleted again.
+    """
+    use_case.execute(project_id=project_id, user_id=user_id, document_id=document_id)
+
+
+@router.post(
+    "/{project_id}/documents/{document_id}/retry",
+    response_model=ResearchDocumentResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"model": ErrorResponse, "description": "Missing, malformed, unknown, or ended session."},
+        404: {
+            "model": ErrorResponse,
+            "description": "No such Project/Document, it does not belong to the authenticated user, or it was deleted.",
+        },
+        409: {
+            "model": ErrorResponse,
+            "description": "The document has not failed - only a failed document can be retried.",
+        },
+    },
+)
+def retry_document_processing(
+    project_id: int,
+    document_id: int,
+    user_id: int = Depends(get_current_user_id),
+    use_case: RetryDocumentProcessingUseCase = Depends(get_retry_document_processing_use_case),
+) -> ResearchDocumentResponse:
+    """Re-enqueues processing for a Research Document whose previous attempt terminally
+    `failed` (see RetryDocumentProcessingUseCase's docstring) - lets a document recover from a
+    transient failure (e.g. the AI provider's quota was briefly exhausted) without deleting it
+    and re-uploading the same file.
+    """
+    document = use_case.execute(project_id=project_id, user_id=user_id, document_id=document_id)
+    return ResearchDocumentResponse.from_domain(document)

@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from app.modules.document.domain.enums import DocumentProcessingStatus
+from app.modules.document.domain.enums import DocumentProcessingStatus, DocumentPurpose
 from app.modules.document.domain.exceptions import (
     EmptyDocumentContentError,
     InvalidDocumentFormatError,
@@ -28,6 +28,7 @@ class ResearchDocument:
     author: str | None = None
     source: str | None = None
     processing_status: DocumentProcessingStatus = DocumentProcessingStatus.PENDING
+    purpose: DocumentPurpose = DocumentPurpose.RESEARCH
     ingested_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     processed_at: datetime | None = None
     deleted_at: datetime | None = None
@@ -50,6 +51,7 @@ class ResearchDocument:
         content_reference: str,
         author: str | None = None,
         source: str | None = None,
+        purpose: DocumentPurpose = DocumentPurpose.RESEARCH,
     ) -> "ResearchDocument":
         return cls(
             project_id=project_id,
@@ -58,4 +60,5 @@ class ResearchDocument:
             content_reference=content_reference,
             author=author,
             source=source,
+            purpose=purpose,
         )

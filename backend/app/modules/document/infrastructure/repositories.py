@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.modules.document.domain.entities import ResearchDocument
-from app.modules.document.domain.enums import DocumentProcessingStatus
+from app.modules.document.domain.enums import DocumentProcessingStatus, DocumentPurpose
 from app.modules.document.domain.exceptions import ResearchDocumentNotFoundError
 from app.modules.document.domain.repositories import DocumentRepository
 from app.modules.document.infrastructure.models import ResearchDocument as ResearchDocumentModel
@@ -17,9 +17,11 @@ class SqlAlchemyDocumentRepository(DocumentRepository):
         row = self._session.get(ResearchDocumentModel, document_id)
         return self._to_domain(row) if row is not None else None
 
-    def list_by_project_id(self, project_id: int) -> list[ResearchDocument]:
-        rows = self._session.query(ResearchDocumentModel).filter_by(project_id=project_id).all()
-        return [self._to_domain(row) for row in rows]
+    def list_by_project_id(self, project_id: int, *, purpose: DocumentPurpose | None = None) -> list[ResearchDocument]:
+        query = self._session.query(ResearchDocumentModel).filter_by(project_id=project_id, deleted_at=None)
+        if purpose is not None:
+            query = query.filter_by(purpose=purpose)
+        return [self._to_domain(row) for row in query.all()]
 
     def add(self, document: ResearchDocument) -> ResearchDocument:
         row = ResearchDocumentModel(
@@ -30,6 +32,7 @@ class SqlAlchemyDocumentRepository(DocumentRepository):
             format=document.format,
             content_reference=document.content_reference,
             processing_status=document.processing_status,
+            purpose=document.purpose,
         )
         self._session.add(row)
         self._session.flush()
@@ -48,6 +51,13 @@ class SqlAlchemyDocumentRepository(DocumentRepository):
             row.processed_at = processed_at
         self._session.flush()
 
+    def mark_deleted(self, document_id: int, *, deleted_at: datetime) -> None:
+        row = self._session.get(ResearchDocumentModel, document_id)
+        if row is None:
+            raise ResearchDocumentNotFoundError(document_id=document_id)
+        row.deleted_at = deleted_at
+        self._session.flush()
+
     @staticmethod
     def _to_domain(row: ResearchDocumentModel) -> ResearchDocument:
         return ResearchDocument(
@@ -59,6 +69,7 @@ class SqlAlchemyDocumentRepository(DocumentRepository):
             format=row.format,
             content_reference=row.content_reference,
             processing_status=row.processing_status,
+            purpose=row.purpose,
             ingested_at=row.ingested_at,
             processed_at=row.processed_at,
             deleted_at=row.deleted_at,

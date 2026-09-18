@@ -1,43 +1,14 @@
 import enum
 
 
-class DraftStatus(str, enum.Enum):
-    """04_Logical_Data_Model.md §3.15. Documented transitions only
-    (05_Constraints_and_Integrity.md §"State Transitions"): drafting -> in_review;
-    in_review -> drafting (revision requested); in_review -> approved; draft -> superseded.
-    """
-
-    DRAFTING = "drafting"
-    IN_REVIEW = "in_review"
-    APPROVED = "approved"
-    SUPERSEDED = "superseded"
-
-
 class CreatedBy(str, enum.Enum):
-    """Shared "system / user" provenance value set for Draft Version, Draft Evidence Link, and
-    Memory Record (04_Logical_Data_Model.md §3.16, §4.2, §3.8). Scoped to this module, not
-    imported from app.modules.knowledge.domain.enums, to keep Writing's bounded context
-    independent (ADR-003) even though the value set happens to match.
+    """Shared "system / user" provenance value set for Memory Record (04_Logical_Data_Model.md
+    §3.8). Scoped to this module, not imported from app.modules.knowledge.domain.enums, to keep
+    Writing's bounded context independent (ADR-003) even though the value set happens to match.
     """
 
     SYSTEM = "system"
     USER = "user"
-
-
-class ReviewStatus(str, enum.Enum):
-    OPEN = "open"
-    DECIDED = "decided"
-
-
-class ReviewOutcome(str, enum.Enum):
-    APPROVED = "approved"
-    REVISIONS_REQUESTED = "revisions_requested"
-    REJECTED = "rejected"
-
-
-class DraftEvidenceTargetType(str, enum.Enum):
-    KNOWLEDGE_CHUNK = "knowledge_chunk"
-    RESEARCH_DOCUMENT = "research_document"
 
 
 class WritingProfileStatus(str, enum.Enum):
@@ -60,6 +31,13 @@ class MemoryRecordType(str, enum.Enum):
     DECISION = "decision"
     TERMINOLOGY = "terminology"
     GUIDANCE = "guidance"
+    # Persistent Brain v3 audit fix: v2's memory extraction reused GUIDANCE for both generic
+    # preferences and inferred style observations, with no way to tell which a persisted
+    # record meant. STYLE is a dedicated value for the latter only - GUIDANCE reverts to its
+    # original, generic sense. Extends the frozen enumerated family at
+    # docs/database/04_Logical_Data_Model.md §3.8 - recorded as a deviation, not a silent
+    # rewrite, in docs/Project_Writing_Implementation_Plan.md.
+    STYLE = "style"
     OTHER = "other"
 
 
@@ -69,12 +47,18 @@ class MemoryRecordStatus(str, enum.Enum):
 
 
 class MemoryProvenanceSourceType(str, enum.Enum):
+    """Deviation from the frozen enumerated family (04_Logical_Data_Model.md §4.3): dropped
+    REVIEW_DECISION and DRAFT_VERSION when the Drafts/Review pipeline was removed entirely (the
+    user only ever wants chat replies, not a separate generate-then-review document workflow -
+    recorded in docs/Project_Writing_Implementation_Plan.md). CONVERSATION - already modeled
+    but never wired to a real generator - is now Memory's only automatic source, triggered
+    periodically from chat (see memory_extraction.MEMORY_EXTRACTION_TRIGGER_COUNT).
+    """
+
     USER_INPUT = "user_input"
-    REVIEW_DECISION = "review_decision"
     CONVERSATION = "conversation"
     KNOWLEDGE_ELEMENT = "knowledge_element"
     DOCUMENT = "document"
-    DRAFT_VERSION = "draft_version"
 
 
 class ConversationStatus(str, enum.Enum):
@@ -93,10 +77,10 @@ class MessageDirection(str, enum.Enum):
 
 
 class MessageContextTargetType(str, enum.Enum):
-    """04_Logical_Data_Model.md §4.4."""
+    """04_Logical_Data_Model.md §4.4. Deviation: dropped DRAFT_VERSION along with the removed
+    Drafts pipeline (see MemoryProvenanceSourceType's own docstring above)."""
 
     RESEARCH_DOCUMENT = "research_document"
     KNOWLEDGE_ELEMENT = "knowledge_element"
     KNOWLEDGE_CHUNK = "knowledge_chunk"
-    DRAFT_VERSION = "draft_version"
     MEMORY_RECORD = "memory_record"

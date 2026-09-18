@@ -15,12 +15,15 @@ class FakeTextGenerationProvider:
     """
 
     def generate(self, prompt: str) -> str:
-        return '{"element_type": "concept", "label": "E2E concept", "description": "From a real HTTP upload."}'
+        return '[{"element_type": "concept", "label": "E2E concept", "description": "From a real HTTP upload."}]'
 
 
 class FakeEmbeddingProvider:
     def embed(self, text: str) -> list[float]:
         return [0.1, 0.2, 0.3]
+
+    def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        return [[0.1, 0.2, 0.3] for _ in texts]
 
 
 def test_a_document_uploaded_over_real_http_is_processed_by_the_executor_over_a_separate_step(

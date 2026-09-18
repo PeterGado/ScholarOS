@@ -79,6 +79,9 @@ class FakeDocumentRepository(DocumentRepository):
     def update_processing_status(self, document_id, status, *, processed_at=None):
         raise NotImplementedError
 
+    def mark_deleted(self, document_id, *, deleted_at):
+        raise NotImplementedError
+
 
 class FakeContentStore:
     def __init__(self, content_by_reference: dict[str, bytes] | None = None):

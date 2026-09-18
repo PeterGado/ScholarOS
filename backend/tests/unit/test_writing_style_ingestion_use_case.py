@@ -4,15 +4,19 @@ from app.modules.agent.domain.entities import Agent
 from app.modules.agent.domain.exceptions import AgentNotFoundForUserError
 from app.modules.agent.domain.repositories import AgentRepository
 from app.modules.document.domain.entities import ResearchDocument
+from app.modules.document.domain.enums import DocumentPurpose
 from app.modules.document.domain.exceptions import EmptyDocumentContentError
 from app.modules.document.domain.repositories import DocumentRepository
 from app.modules.project.domain.entities import Project
 from app.modules.project.domain.repositories import ProjectRepository
 from app.modules.writing.application.style_ingestion import (
     DEFAULT_WRITING_PROFILE_NAME,
+    MAX_WRITING_STYLE_SAMPLES,
+    ListWritingStyleDocumentsUseCase,
     UploadWritingStyleDocumentUseCase,
 )
 from app.modules.writing.domain.entities import WritingProfile
+from app.modules.writing.domain.exceptions import TooManyWritingStyleSamplesError
 from app.modules.writing.domain.repositories import WritingProfileRepository
 
 OWNER_USER_ID = 1
@@ -56,8 +60,12 @@ class FakeDocumentRepository(DocumentRepository):
     def get_by_id(self, document_id):
         return self._by_id.get(document_id)
 
-    def list_by_project_id(self, project_id):
-        return [d for d in self._by_id.values() if d.project_id == project_id]
+    def list_by_project_id(self, project_id, *, purpose=None):
+        return [
+            d
+            for d in self._by_id.values()
+            if d.project_id == project_id and (purpose is None or d.purpose == purpose)
+        ]
 
     def add(self, document: ResearchDocument) -> ResearchDocument:
         document.document_id = self._next_id
@@ -66,6 +74,9 @@ class FakeDocumentRepository(DocumentRepository):
         return document
 
     def update_processing_status(self, document_id, status, *, processed_at=None):
+        raise NotImplementedError
+
+    def mark_deleted(self, document_id, *, deleted_at):
         raise NotImplementedError
 
 
@@ -135,6 +146,7 @@ def test_uploads_style_document_and_auto_creates_a_writing_profile_when_none_exi
     assert result.profile.profile_id is not None
     assert result.profile.name == DEFAULT_WRITING_PROFILE_NAME
     assert result.profile.agent_id == AGENT_ID
+    assert result.document.purpose == DocumentPurpose.WRITING_STYLE_SAMPLE
     assert uow.committed
 
 
@@ -176,3 +188,81 @@ def test_upload_for_a_user_with_no_agent_is_rejected():
 
     assert content_store.saved == []
     assert not uow.committed
+
+
+def test_upload_beyond_the_sample_limit_is_rejected_and_nothing_is_committed():
+    use_case, documents, profiles, content_store, uow = _build_use_case()
+    for i in range(MAX_WRITING_STYLE_SAMPLES):
+        use_case.execute(user_id=OWNER_USER_ID, title=f"Sample {i}", format="txt", content=b"x")
+    content_store.saved.clear()
+
+    with pytest.raises(TooManyWritingStyleSamplesError):
+        use_case.execute(user_id=OWNER_USER_ID, title="One too many", format="txt", content=b"x")
+
+    assert len(documents.list_by_project_id(PROJECT_ID)) == MAX_WRITING_STYLE_SAMPLES
+    assert content_store.saved == []  # rejected before ever writing to storage
+
+
+def test_upload_at_exactly_the_sample_limit_still_succeeds():
+    use_case, documents, profiles, content_store, uow = _build_use_case()
+    for i in range(MAX_WRITING_STYLE_SAMPLES - 1):
+        use_case.execute(user_id=OWNER_USER_ID, title=f"Sample {i}", format="txt", content=b"x")
+
+    use_case.execute(user_id=OWNER_USER_ID, title="The last one", format="txt", content=b"x")
+
+    assert len(documents.list_by_project_id(PROJECT_ID)) == MAX_WRITING_STYLE_SAMPLES
+
+
+def test_a_research_document_in_the_same_project_does_not_count_against_the_sample_limit():
+    use_case, documents, profiles, content_store, uow = _build_use_case()
+    documents.add(
+        ResearchDocument.create(
+            project_id=PROJECT_ID, title="Unrelated research doc", format="txt", content_reference="ref-research",
+            purpose=DocumentPurpose.RESEARCH,
+        )
+    )
+
+    for i in range(MAX_WRITING_STYLE_SAMPLES):
+        use_case.execute(user_id=OWNER_USER_ID, title=f"Sample {i}", format="txt", content=b"x")
+
+    assert len(documents.list_by_project_id(PROJECT_ID, purpose=DocumentPurpose.WRITING_STYLE_SAMPLE)) == MAX_WRITING_STYLE_SAMPLES
+
+
+# --- ListWritingStyleDocumentsUseCase ---------------------------------------------------------
+
+
+def test_list_writing_style_documents_returns_only_uploaded_samples():
+    """A real gap this closes: research documents in the same project must never bleed into
+    this listing, and vice versa (DocumentPurpose's own docstring).
+    """
+    upload_use_case, documents, *_ = _build_use_case()
+    upload_use_case.execute(user_id=OWNER_USER_ID, title="Sample A", format="txt", content=b"a")
+    upload_use_case.execute(user_id=OWNER_USER_ID, title="Sample B", format="txt", content=b"b")
+    documents.add(
+        ResearchDocument.create(
+            project_id=PROJECT_ID, title="Unrelated research doc", format="txt", content_reference="ref-research",
+            purpose=DocumentPurpose.RESEARCH,
+        )
+    )
+
+    list_use_case = ListWritingStyleDocumentsUseCase(
+        documents, FakeProjectRepository(), FakeAgentRepository()
+    )
+    result = list_use_case.execute(user_id=OWNER_USER_ID)
+
+    assert {d.title for d in result} == {"Sample A", "Sample B"}
+
+
+def test_list_writing_style_documents_for_a_user_with_none_uploaded_returns_empty_list():
+    documents = FakeDocumentRepository()
+    list_use_case = ListWritingStyleDocumentsUseCase(documents, FakeProjectRepository(), FakeAgentRepository())
+
+    assert list_use_case.execute(user_id=OWNER_USER_ID) == []
+
+
+def test_list_writing_style_documents_for_a_user_with_no_agent_is_rejected():
+    documents = FakeDocumentRepository()
+    list_use_case = ListWritingStyleDocumentsUseCase(documents, FakeProjectRepository(), FakeAgentRepository(agents={}))
+
+    with pytest.raises(AgentNotFoundForUserError):
+        list_use_case.execute(user_id=OWNER_USER_ID)

@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  agentWorkspaceResponseSchema,
-  draftVersionResponseSchema,
-  generationStatusResponseSchema,
-  searchResponseSchema,
-} from "./schemas";
+import { agentWorkspaceResponseSchema, searchResponseSchema } from "./schemas";
 
 // These fixtures are hand-copied from the real Pydantic response shapes
 // (backend/app/**/interface/schemas.py) - if the backend contract drifts, these should be the
@@ -25,30 +20,6 @@ describe("agentWorkspaceResponseSchema", () => {
       },
     };
     expect(() => agentWorkspaceResponseSchema.parse(body)).not.toThrow();
-  });
-});
-
-describe("draftVersionResponseSchema", () => {
-  it("accepts a version with evidence links of both target types", () => {
-    const body = {
-      version_id: 5,
-      version_number: 1,
-      content: "Generated text.",
-      created_at: "2026-09-16T00:00:00Z",
-      created_by: "system",
-      evidence: [
-        { target_type: "knowledge_chunk", chunk_id: 7, document_id: null },
-        { target_type: "research_document", chunk_id: null, document_id: 3 },
-      ],
-    };
-    expect(() => draftVersionResponseSchema.parse(body)).not.toThrow();
-  });
-});
-
-describe("generationStatusResponseSchema", () => {
-  it("accepts the 202 response shape from POST /writing/drafts/{id}/generate", () => {
-    const body = { draft_id: 1, work_item_id: 9, state: "queued" };
-    expect(() => generationStatusResponseSchema.parse(body)).not.toThrow();
   });
 });
 

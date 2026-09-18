@@ -34,3 +34,15 @@ export async function listProjectDocuments(projectId: number): Promise<ResearchD
   const response = await apiClient.get(`/projects/${projectId}/documents`);
   return researchDocumentListResponseSchema.parse(response.data).documents;
 }
+
+export async function deleteResearchDocument(projectId: number, documentId: number): Promise<void> {
+  await apiClient.delete(`/projects/${projectId}/documents/${documentId}`);
+}
+
+export async function retryResearchDocument(
+  projectId: number,
+  documentId: number,
+): Promise<ResearchDocumentResponse> {
+  const response = await apiClient.post(`/projects/${projectId}/documents/${documentId}/retry`);
+  return researchDocumentResponseSchema.parse(response.data);
+}

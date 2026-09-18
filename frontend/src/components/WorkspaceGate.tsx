@@ -4,7 +4,7 @@ import type { AgentWorkspaceResponse } from "@/api/schemas";
 
 /** Resolves the caller's Agent workspace once and makes it available to every nested route via
  * `useWorkspaceContext()`. A user with no workspace yet is redirected to onboarding - the only
- * way to reach any of the Documents/Style/Drafts pages, since every one of them needs a real
+ * way to reach any of the Documents/Style pages, since every one of them needs a real
  * project_id/agent_id the backend already resolved, never one the frontend guesses. */
 export function WorkspaceGate() {
   const { data, isLoading, isError, error } = useWorkspace();

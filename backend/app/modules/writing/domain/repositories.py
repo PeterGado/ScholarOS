@@ -1,85 +1,16 @@
 from abc import ABC, abstractmethod
+from datetime import datetime
 
 from app.modules.writing.domain.entities import (
     Conversation,
-    Draft,
-    DraftEvidenceLink,
-    DraftVersion,
     MemoryProvenanceLink,
     MemoryRecord,
     Message,
     MessageContextLink,
     ProfileCharacteristic,
     ProfileCharacteristicSource,
-    Review,
-    ReviewDecision,
     WritingProfile,
 )
-from app.modules.writing.domain.enums import DraftStatus
-
-
-class DraftRepository(ABC):
-    @abstractmethod
-    def add(self, draft: Draft) -> Draft: ...
-
-    @abstractmethod
-    def get_by_id(self, draft_id: int) -> Draft | None: ...
-
-    @abstractmethod
-    def list_by_agent_id(self, agent_id: int) -> list[Draft]: ...
-
-    @abstractmethod
-    def update_status(self, draft_id: int, status: DraftStatus) -> None:
-        """Added Stage 7: the review-submission use case is the first caller that needs to
-        transition Draft.status (05_Constraints_and_Integrity.md lifecycle table:
-        in_review -> approved; in_review -> drafting on revisions_requested).
-        """
-        ...
-
-
-class DraftVersionRepository(ABC):
-    @abstractmethod
-    def add(self, version: DraftVersion) -> DraftVersion: ...
-
-    @abstractmethod
-    def get_by_id(self, version_id: int) -> DraftVersion | None: ...
-
-    @abstractmethod
-    def list_by_draft_id(self, draft_id: int) -> list[DraftVersion]:
-        """Ordered by version_number ascending - the last element is the current version
-        (04_Logical_Data_Model.md §6: "current" is derived, never stored).
-        """
-        ...
-
-    @abstractmethod
-    def get_latest_by_draft_id(self, draft_id: int) -> DraftVersion | None: ...
-
-
-class ReviewRepository(ABC):
-    @abstractmethod
-    def add(self, review: Review) -> Review: ...
-
-    @abstractmethod
-    def get_by_id(self, review_id: int) -> Review | None: ...
-
-    @abstractmethod
-    def get_open_by_draft_version_id(self, draft_version_id: int) -> Review | None: ...
-
-
-class ReviewDecisionRepository(ABC):
-    @abstractmethod
-    def add(self, decision: ReviewDecision) -> ReviewDecision: ...
-
-    @abstractmethod
-    def get_by_review_id(self, review_id: int) -> ReviewDecision | None: ...
-
-
-class DraftEvidenceLinkRepository(ABC):
-    @abstractmethod
-    def add(self, link: DraftEvidenceLink) -> DraftEvidenceLink: ...
-
-    @abstractmethod
-    def list_by_draft_version_id(self, draft_version_id: int) -> list[DraftEvidenceLink]: ...
 
 
 class WritingProfileRepository(ABC):
@@ -119,6 +50,16 @@ class MemoryRecordRepository(ABC):
     @abstractmethod
     def list_current_by_agent_id(self, agent_id: int) -> list[MemoryRecord]: ...
 
+    @abstractmethod
+    def mark_superseded(self, record_id: int, *, superseded_record_id: int, superseded_at: datetime) -> None:
+        """Transitions a Memory Record `current -> superseded` (04_Logical_Data_Model.md §3.8;
+        `MemoryRecordStatus.SUPERSEDED`), exercising a write path that has existed in the
+        frozen schema with zero callers since Stage 2 (Persistent Brain v2, memory inspection/
+        correction). Never deletes the row - superseded records remain readable, just excluded
+        from `list_current_by_agent_id`, preserving history.
+        """
+        ...
+
 
 class MemoryProvenanceLinkRepository(ABC):
     @abstractmethod
@@ -136,9 +77,28 @@ class ConversationRepository(ABC):
     def get_by_id(self, conversation_id: int) -> Conversation | None: ...
 
     @abstractmethod
-    def get_by_agent_id_and_title(self, agent_id: int, title: str) -> Conversation | None:
-        """The find-or-create lookup `RequestDraftGenerationUseCase` uses to resolve "the
-        Conversation for Draft N" without a `draft_id` column on the frozen Conversation shape.
+    def list_by_agent_id(self, agent_id: int) -> list[Conversation]:
+        """Every standalone Agent Workspace chat conversation owned by an Agent
+        (Persistent Brain Decision 3)."""
+        ...
+
+    @abstractmethod
+    def mark_summarized(self, conversation_id: int, *, summarized_at: datetime) -> None:
+        """Records that a rolling summary Message now exists for this Conversation - exercises
+        the frozen `status`/`summarized_at` fields (04_Logical_Data_Model.md §3.9;
+        `ConversationStatus.SUMMARIZED`) for the first time (Persistent Brain v2, scalable
+        conversation memory). The summary's actual text lives in a Message row (see
+        `conversation_context.CONVERSATION_SUMMARY_ORIGIN`), not here - this only updates the
+        Conversation's own bookkeeping fields.
+        """
+        ...
+
+    @abstractmethod
+    def mark_deleted(self, conversation_id: int, *, deleted_at: datetime) -> None:
+        """Soft-deletes a Conversation (exercises the frozen `deleted_at` field for the first
+        time). Its Messages are never touched or deleted - only the Conversation itself is
+        excluded from `list_by_agent_id` and treated as not-found by every use case that
+        resolves one by id, preserving the underlying continuity record.
         """
         ...
 
@@ -153,6 +113,15 @@ class MessageRepository(ABC):
     @abstractmethod
     def count_by_conversation_id(self, conversation_id: int) -> int:
         """Used to compute the next `sequence` value for a new Message."""
+        ...
+
+    @abstractmethod
+    def list_by_conversation_id(self, conversation_id: int) -> list[Message]:
+        """Ordered by `sequence` ascending. Used to resolve bounded RELEVANT CONVERSATION
+        CONTEXT for generation (Persistent Brain Decision 3) - callers are responsible for
+        bounding to the most recent N themselves or via `ContextAssemblyInput.
+        max_conversation_messages`, this method returns the full history for its Conversation.
+        """
         ...
 
 

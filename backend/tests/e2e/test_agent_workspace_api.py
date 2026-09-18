@@ -147,3 +147,44 @@ def test_no_bootstrap_user_is_created_by_an_authenticated_request(client, db_eng
         assert "default-user" not in usernames
     finally:
         session.close()
+
+
+# --- DELETE /agents/me (workspace reset) ----------------------------------------------------
+
+
+def test_reset_without_confirm_true_returns_422_and_changes_nothing(client, auth_headers):
+    client.post("/agents", json={"project_title": "Thesis", "project_topic": "Topic"}, headers=auth_headers)
+
+    missing = client.request("DELETE", "/agents/me", json={}, headers=auth_headers)
+    false_confirm = client.request("DELETE", "/agents/me", json={"confirm": False}, headers=auth_headers)
+
+    assert missing.status_code == 422
+    assert false_confirm.status_code == 422
+    assert client.get("/agents", headers=auth_headers).status_code == 200
+
+
+def test_reset_with_confirm_deletes_the_workspace_and_allows_fresh_onboarding(client, auth_headers):
+    client.post("/agents", json={"project_title": "Thesis", "project_topic": "Topic"}, headers=auth_headers)
+
+    response = client.request("DELETE", "/agents/me", json={"confirm": True}, headers=auth_headers)
+
+    assert response.status_code == 204
+    assert client.get("/agents", headers=auth_headers).status_code == 404
+
+    fresh = client.post(
+        "/agents", json={"project_title": "New Thesis", "project_topic": "A fresh start"}, headers=auth_headers
+    )
+    assert fresh.status_code == 201
+    assert fresh.json()["project"]["topic"] == "A fresh start"
+
+
+def test_reset_without_an_agent_returns_404(client, auth_headers):
+    response = client.request("DELETE", "/agents/me", json={"confirm": True}, headers=auth_headers)
+
+    assert response.status_code == 404
+    assert response.json()["error_type"] == "AgentNotFoundForUserError"
+
+
+def test_reset_without_authentication_returns_401(client):
+    response = client.request("DELETE", "/agents/me", json={"confirm": True})
+    assert response.status_code == 401

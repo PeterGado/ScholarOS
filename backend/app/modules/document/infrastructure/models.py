@@ -4,9 +4,9 @@ from sqlalchemy import Enum, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
-from app.modules.document.domain.enums import DocumentProcessingStatus
+from app.modules.document.domain.enums import DocumentProcessingStatus, DocumentPurpose
 
-__all__ = ["ResearchDocument", "DocumentProcessingStatus"]
+__all__ = ["ResearchDocument", "DocumentProcessingStatus", "DocumentPurpose"]
 
 
 class ResearchDocument(Base):
@@ -31,6 +31,13 @@ class ResearchDocument(Base):
         Enum(DocumentProcessingStatus, native_enum=False, length=16),
         nullable=False,
         default=DocumentProcessingStatus.PENDING,
+    )
+    # Deviation resolving a gap Stage 3/4 explicitly flagged and deferred - see
+    # DocumentPurpose's own docstring for why this exists.
+    purpose: Mapped[DocumentPurpose] = mapped_column(
+        Enum(DocumentPurpose, native_enum=False, length=32),
+        nullable=False,
+        default=DocumentPurpose.RESEARCH,
     )
     ingested_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
     processed_at: Mapped[datetime | None] = mapped_column(nullable=True)

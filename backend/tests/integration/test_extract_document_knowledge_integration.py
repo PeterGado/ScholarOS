@@ -35,7 +35,7 @@ class FakeTextGenerationProvider:
         self.call_count += 1
         if self._responses:
             return self._responses.pop(0)
-        return '{"element_type": "concept", "label": "Default", "description": "d"}'
+        return '[{"element_type": "concept", "label": "Default", "description": "d"}]'
 
 
 class FakeEmbeddingProvider:
@@ -45,6 +45,10 @@ class FakeEmbeddingProvider:
     def embed(self, text: str) -> list[float]:
         self.call_count += 1
         return [0.1, 0.2, 0.3]
+
+    def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        self.call_count += 1
+        return [[0.1, 0.2, 0.3] for _ in texts]
 
 
 @pytest.fixture()
@@ -115,7 +119,7 @@ def _build_use_case(session, storage, provider, embedding_provider=None):
 def test_a_real_document_is_persisted_as_genuine_evidence_linked_knowledge(session, storage):
     document_id, agent_id = _upload_document(session, storage, b"Introduction to the study.")
     provider = FakeTextGenerationProvider(
-        responses=['{"element_type": "theme", "label": "Study introduction", "description": "Opens the study."}']
+        responses=['[{"element_type": "theme", "label": "Study introduction", "description": "Opens the study."}]']
     )
     use_case = _build_use_case(session, storage, provider)
 
@@ -142,7 +146,7 @@ def test_a_real_document_is_persisted_as_genuine_evidence_linked_knowledge(sessi
 def test_reprocessing_against_real_persistence_does_not_duplicate_rows(session, storage):
     document_id, _ = _upload_document(session, storage, b"Content for idempotency check.")
     provider = FakeTextGenerationProvider(
-        responses=['{"element_type": "concept", "label": "X", "description": "d"}']
+        responses=['[{"element_type": "concept", "label": "X", "description": "d"}]']
     )
     use_case = _build_use_case(session, storage, provider)
 
@@ -193,8 +197,8 @@ def test_multiple_documents_produce_independently_evidence_linked_knowledge(sess
 
     provider = FakeTextGenerationProvider(
         responses=[
-            '{"element_type": "concept", "label": "A", "description": "da"}',
-            '{"element_type": "concept", "label": "B", "description": "db"}',
+            '[{"element_type": "concept", "label": "A", "description": "da"}]',
+            '[{"element_type": "concept", "label": "B", "description": "db"}]',
         ]
     )
     use_case = _build_use_case(session, storage, provider)

@@ -59,6 +59,24 @@ class GoogleGenAIProvider:
         except (IndexError, AttributeError, TypeError) as exc:
             raise ProviderRequestError("Provider response did not contain an expected embedding.") from exc
 
+    def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
+
+        try:
+            response = self._client.models.embed_content(model=self._embedding_model, contents=texts)
+        except Exception as exc:  # noqa: BLE001 - the SDK's exception hierarchy is not part of our contract
+            raise ProviderRequestError("AI provider request failed.") from exc
+
+        try:
+            embeddings = [list(item.values) for item in response.embeddings]
+        except (AttributeError, TypeError) as exc:
+            raise ProviderRequestError("Provider response did not contain an expected embedding.") from exc
+
+        if len(embeddings) != len(texts):
+            raise ProviderRequestError("Provider returned a different number of embeddings than requested.")
+        return embeddings
+
 
 def create_google_genai_provider(settings) -> GoogleGenAIProvider:
     """Constructs the configured provider (ADR-002: "selected by configuration, never by

@@ -53,6 +53,21 @@ class OpenAICompatibleProvider:
         except (KeyError, IndexError, TypeError) as exc:
             raise ProviderRequestError("Provider response did not contain an expected embedding.") from exc
 
+    def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
+
+        body = self._post("/embeddings", {"model": self._embedding_model, "input": texts})
+        try:
+            items = sorted(body["data"], key=lambda item: item["index"])
+            embeddings = [item["embedding"] for item in items]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise ProviderRequestError("Provider response did not contain an expected embedding.") from exc
+
+        if len(embeddings) != len(texts):
+            raise ProviderRequestError("Provider returned a different number of embeddings than requested.")
+        return embeddings
+
     def _post(self, path: str, json_body: dict) -> dict:
         try:
             response = self._client.post(f"{self._base_url}{path}", json=json_body, headers=self._headers)

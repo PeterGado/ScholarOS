@@ -10,16 +10,8 @@ format.
 (04_Logical_Data_Model.md §3.20), the same logical type as `ResearchDocument.
 content_reference` (§3.4) - a pointer, not the payload itself. `build_process_document_
 payload_reference` already follows that: `process_document:<id>` is a genuine reference.
-`build_generate_draft_version_payload_reference` follows the same pattern: the (potentially
-large - evidence chunk content, style signals, memory) `ContextAssemblyInput` is written to
-the existing content-addressed `ContentStore` (the same abstraction and the same object-store
-category `UploadResearchDocumentUseCase` already writes into, ADR-004 §5) and only a short
-reference to it is embedded in `payload_reference`, exactly mirroring `ResearchDocument.
-content_reference`. An earlier version of this function inlined the full serialized context
-directly into `payload_reference` and rejected anything over 512 characters - workable only
-for near-empty contexts, since Context Assembly's own default budget is 12,000 characters
-across up to 10 evidence chunks. Found and fixed before Stage 7; see the review that flagged
-it for the full reasoning.
+`build_generate_chat_reply_payload_reference` follows the same pattern - see its own
+docstring for why the context is snapshotted to the content store rather than inlined.
 """
 
 import json
@@ -28,19 +20,20 @@ from uuid import uuid4
 from app.modules.document.domain.ports import ContentStore
 from app.modules.writing.domain.context_assembly import (
     ContextAssemblyInput,
+    ContextConversationMessage,
     ContextEvidence,
     ContextEvidenceSource,
     ContextMemory,
     ContextStyleSignal,
 )
-from app.modules.writing.domain.enums import MemoryRecordType, ProfileCharacteristicType
+from app.modules.writing.domain.enums import MemoryRecordType, MessageDirection, ProfileCharacteristicType
 
 _PROCESS_DOCUMENT_PREFIX = "process_document:"
-_GENERATE_DRAFT_VERSION_PREFIX = "generate_draft_version:"
+_GENERATE_CHAT_REPLY_PREFIX = "generate_chat_reply:"
 # No longer sized against a serialized context (see module docstring) - this now only bounds
-# the reference itself (draft_id + request_id + content-store key), which is always small and
-# of roughly fixed size regardless of context size. Kept as a defensive assertion, not a
-# routine limitation.
+# the reference itself (conversation_id + message_id + request_id + content-store key), which
+# is always small and of roughly fixed size regardless of context size. Kept as a defensive
+# assertion, not a routine limitation.
 _MAX_PAYLOAD_REFERENCE_LENGTH = 512
 
 
@@ -63,64 +56,87 @@ def parse_process_document_payload_reference(payload_reference: str) -> int:
     return int(payload_reference[len(_PROCESS_DOCUMENT_PREFIX):])
 
 
-def build_generate_draft_version_payload_reference(
-    draft_id: int,
+def build_generate_chat_reply_payload_reference(
+    conversation_id: int,
+    user_message_id: int,
     context: ContextAssemblyInput,
     content_store: ContentStore,
     *,
     request_id: str | None = None,
-    message_id: int | None = None,
 ) -> tuple[str, str]:
-    """Persist a server-created generation request's context to the content store and embed
-    only a short reference to it in the Work Item payload (see module docstring for why).
-
-    The context is deliberately snapshotted at enqueue time (written once, content-addressed)
-    so a retry re-reads the identical Stage 5 request rather than a possibly-changed one.
-
-    `message_id` (added resolving the Stage 8 instructions-contract finding) identifies the
-    Draft-scoped Conversation Message that carried these instructions
-    (RequestDraftGenerationUseCase), so the executor can link it to the resulting Draft Version
-    via Message Context Link once generation succeeds. Optional - `None` for any caller that
-    does not go through that use case (e.g. a direct Stage 6 test), encoded as an empty segment.
+    """Persistent Brain Decision 3: an Agent Workspace chat message, resolved into a real
+    `ContextAssemblyInput` and enqueued - the (potentially large - evidence chunk content,
+    style signals, memory) context is written to the existing content-addressed `ContentStore`
+    (the same abstraction and object-store category `UploadResearchDocumentUseCase` already
+    writes into, ADR-004 §5) and only a short reference to it is embedded in
+    `payload_reference`, exactly mirroring `ResearchDocument.content_reference` - never inlined
+    directly (Context Assembly's own default budget is 12,000 characters across up to 10
+    evidence chunks, far past what a single Work Item column should hold).
     """
     request_id = request_id or uuid4().hex
     context_json = json.dumps(_context_to_dict(context), separators=(",", ":"), sort_keys=True)
     context_reference = content_store.save(context_json.encode("utf-8"), extension="json")
 
-    message_segment = str(message_id) if message_id is not None else ""
     payload_reference = (
-        f"{_GENERATE_DRAFT_VERSION_PREFIX}{draft_id}:{request_id}:{context_reference}:{message_segment}"
+        f"{_GENERATE_CHAT_REPLY_PREFIX}{conversation_id}:{user_message_id}:{request_id}:{context_reference}"
     )
     if len(payload_reference) > _MAX_PAYLOAD_REFERENCE_LENGTH:
-        raise ValueError("generate_draft_version payload reference unexpectedly exceeds the Work Item column limit")
-    return payload_reference, f"{_GENERATE_DRAFT_VERSION_PREFIX}{request_id}"
+        raise ValueError("generate_chat_reply payload reference unexpectedly exceeds the Work Item column limit")
+    return payload_reference, f"{_GENERATE_CHAT_REPLY_PREFIX}{request_id}"
 
 
-def parse_generate_draft_version_payload_reference(
-    payload_reference: str, content_store: ContentStore
-) -> tuple[int, ContextAssemblyInput, str, int | None]:
-    if not payload_reference.startswith(_GENERATE_DRAFT_VERSION_PREFIX):
+def parse_generate_chat_reply_conversation_id(payload_reference: str) -> int:
+    """Cheaply extracts just the conversation_id a `generate_chat_reply` Work Item belongs to,
+    without reading its content-store-backed context (unlike `parse_generate_chat_reply_
+    payload_reference`) - all a status/ownership check needs, per `GetChatReplyStatusUseCase`'s
+    own docstring for why it must confirm a work_item_id actually belongs to the conversation
+    the caller claims, not just that the conversation itself is theirs.
+    """
+    if not payload_reference.startswith(_GENERATE_CHAT_REPLY_PREFIX):
         raise ValueError(f"Unrecognized payload reference: {payload_reference!r}")
     try:
-        remainder = payload_reference[len(_GENERATE_DRAFT_VERSION_PREFIX):]
-        draft_id_text, request_id, context_reference, message_segment = remainder.split(":", 3)
-        draft_id = int(draft_id_text)
-        if draft_id < 1 or not request_id or not context_reference:
+        remainder = payload_reference[len(_GENERATE_CHAT_REPLY_PREFIX):]
+        conversation_id_text = remainder.split(":", 1)[0]
+        conversation_id = int(conversation_id_text)
+        if conversation_id < 1:
             raise ValueError
-        message_id = int(message_segment) if message_segment else None
+    except ValueError as exc:
+        raise ValueError(f"Malformed chat reply payload reference: {payload_reference!r}") from exc
+    return conversation_id
+
+
+def parse_generate_chat_reply_payload_reference(
+    payload_reference: str, content_store: ContentStore
+) -> tuple[int, int, ContextAssemblyInput, str]:
+    if not payload_reference.startswith(_GENERATE_CHAT_REPLY_PREFIX):
+        raise ValueError(f"Unrecognized payload reference: {payload_reference!r}")
+    try:
+        remainder = payload_reference[len(_GENERATE_CHAT_REPLY_PREFIX):]
+        conversation_id_text, message_id_text, request_id, context_reference = remainder.split(":", 3)
+        conversation_id = int(conversation_id_text)
+        user_message_id = int(message_id_text)
+        if conversation_id < 1 or user_message_id < 1 or not request_id or not context_reference:
+            raise ValueError
         context_json = content_store.read(context_reference)
         context = _context_from_dict(json.loads(context_json))
     except (ValueError, TypeError, KeyError, json.JSONDecodeError, OSError) as exc:
-        raise ValueError(f"Malformed generation payload reference: {payload_reference!r}") from exc
-    return draft_id, context, request_id, message_id
+        raise ValueError(f"Malformed chat reply payload reference: {payload_reference!r}") from exc
+    return conversation_id, user_message_id, context, request_id
 
 
 def _context_to_dict(context: ContextAssemblyInput) -> dict:
     return {
         "topic": context.topic,
+        "description": context.description,
         "instructions": context.instructions,
         "max_characters": context.max_characters,
         "max_evidence": context.max_evidence,
+        "max_conversation_messages": context.max_conversation_messages,
+        "max_memories": context.max_memories,
+        "conversation_messages": [
+            {"direction": item.direction.value, "content": item.content, "is_summary": item.is_summary}
+            for item in context.conversation_messages
+        ],
         "evidence": [
             {
                 "chunk_id": item.chunk_id,
@@ -156,9 +172,20 @@ def _context_from_dict(payload: dict) -> ContextAssemblyInput:
         raise ValueError
     return ContextAssemblyInput(
         topic=payload["topic"],
+        description=payload.get("description"),
         instructions=payload["instructions"],
         max_characters=payload["max_characters"],
         max_evidence=payload["max_evidence"],
+        max_conversation_messages=payload.get("max_conversation_messages", 10),
+        max_memories=payload.get("max_memories", 20),
+        conversation_messages=tuple(
+            ContextConversationMessage(
+                direction=MessageDirection(item["direction"]),
+                content=item["content"],
+                is_summary=item.get("is_summary", False),
+            )
+            for item in payload.get("conversation_messages", [])
+        ),
         evidence=tuple(
             ContextEvidence(
                 chunk_id=item["chunk_id"],

@@ -19,7 +19,7 @@ from app.modules.knowledge.domain.repositories import (
     KnowledgeChunkRepository,
     KnowledgeElementRepository,
 )
-from app.modules.knowledge.domain.semantic_classification import classify_chunk
+from app.modules.knowledge.domain.semantic_classification import ChunkClassification, classify_chunks_batch
 from app.modules.knowledge.domain.text_extraction import DocumentTextExtractor
 from app.modules.knowledge.domain.text_normalization import normalize_text
 from app.modules.project.domain.repositories import ProjectRepository
@@ -64,6 +64,18 @@ class ProcessDocumentUseCase:
         raw_text = self._extractor.extract(content, document_id=document_id)
         normalized = normalize_text(raw_text)
         return chunk_text(normalized, document_id=document_id)
+
+
+_MAX_TEXTS_PER_PROVIDER_CALL = 15
+"""Bounds how many chunks go into a single classification or embedding provider call. Real
+providers' free tiers cap requests *per day* (not just per minute), so cutting a 46-chunk
+document from ~92 one-chunk-at-a-time calls down to a handful of batched calls is what makes
+processing a real research paper possible at all - see the finding recorded alongside this
+change in docs/Project_Writing_Implementation_Plan.md."""
+
+
+def _batched(items: list[str], size: int) -> list[list[str]]:
+    return [items[index : index + size] for index in range(0, len(items), size)]
 
 
 class ExtractDocumentKnowledgeUseCase:
@@ -128,9 +140,15 @@ class ExtractDocumentKnowledgeUseCase:
 
         agent_id = self._resolve_agent_id(document.project_id, document_id=document_id)
         candidates = self._process_document.execute(document_id=document_id)
+        texts = [candidate.text for candidate in candidates]
 
-        classifications = [classify_chunk(candidate.text, self._text_provider) for candidate in candidates]
-        embedding_vectors = [self._embedding_provider.embed(candidate.text) for candidate in candidates]
+        classifications: list[ChunkClassification] = []
+        for batch in _batched(texts, _MAX_TEXTS_PER_PROVIDER_CALL):
+            classifications.extend(classify_chunks_batch(batch, self._text_provider))
+
+        embedding_vectors: list[list[float]] = []
+        for batch in _batched(texts, _MAX_TEXTS_PER_PROVIDER_CALL):
+            embedding_vectors.extend(self._embedding_provider.embed_batch(batch))
 
         try:
             persisted_chunks = self._persist(document_id, agent_id, candidates, classifications, embedding_vectors)
@@ -160,7 +178,7 @@ class ExtractDocumentKnowledgeUseCase:
         document_id: int,
         agent_id: int,
         candidates: list[TextChunkCandidate],
-        classifications: list,
+        classifications: list[ChunkClassification],
         embedding_vectors: list[list[float]],
     ) -> list[KnowledgeChunk]:
         persisted_chunks: list[KnowledgeChunk] = []

@@ -18,18 +18,11 @@ from app.modules.knowledge.domain.enums import CreatedBy as KnowledgeCreatedBy, 
 from app.modules.knowledge.infrastructure.vector_models import KnowledgeChunkEmbedding
 from app.modules.project.application.use_cases import CreateProjectUseCase
 from app.modules.project.infrastructure.repositories import SqlAlchemyProjectRepository
-from app.modules.writing.application.use_cases import CreateDraftUseCase
-from app.modules.writing.domain.context_assembly import ContextAssemblyInput, ContextEvidence
-from app.modules.writing.infrastructure.repositories import (
-    SqlAlchemyDraftRepository,
-    SqlAlchemyDraftVersionRepository,
-)
-from app.modules.writing.infrastructure.models import DraftEvidenceLink
 from app.storage.filesystem import FilesystemStorage
 from app.workers.enums import WorkItemKind, WorkItemState
 from app.workers.executor import WorkItemExecutorLoop, process_one_work_item
 from app.workers.models import WorkItem as WorkItemModel
-from app.workers.payloads import build_generate_draft_version_payload_reference, build_process_document_payload_reference
+from app.workers.payloads import build_process_document_payload_reference
 from app.workers.repository import WorkItemRepository
 
 
@@ -45,7 +38,7 @@ class FakeTextGenerationProvider:
             raise RuntimeError("simulated provider outage")
         if self._responses:
             return self._responses.pop(0)
-        return '{"element_type": "concept", "label": "Default", "description": "d"}'
+        return '[{"element_type": "concept", "label": "Default", "description": "d"}]'
 
 
 class FakeEmbeddingProvider:
@@ -58,6 +51,12 @@ class FakeEmbeddingProvider:
         if self._always_fail:
             raise RuntimeError("simulated embedding outage")
         return [0.1, 0.2, 0.3]
+
+    def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        self.call_count += 1
+        if self._always_fail:
+            raise RuntimeError("simulated embedding outage")
+        return [[0.1, 0.2, 0.3] for _ in texts]
 
 
 def _process_one(session, storage, *, text_provider, embedding_provider=None) -> bool:
@@ -122,73 +121,6 @@ def _upload_document(session, storage, content: bytes = b"Some real document con
         documents, projects, agents, storage, uow, WorkItemRepository(session)
     ).execute(project_id=workspace.project.project_id, user_id=user.user_id, title="Doc", format="txt", content=content)
     return document.document_id
-
-
-def _enqueue_writing_generation(session, storage, *, request_id="writing-request-1", with_instructions_message=False):
-    user = User(username=f"writer-{request_id}")
-    session.add(user)
-    session.flush()
-    agent = SqlAlchemyAgentRepository(session).add(Agent(user_id=user.user_id))
-    session.flush()
-
-    message_id = None
-    if with_instructions_message:
-        from app.modules.writing.domain.entities import Conversation, Message
-        from app.modules.writing.domain.enums import MessageDirection
-        from app.modules.writing.infrastructure.repositories import (
-            SqlAlchemyConversationRepository,
-            SqlAlchemyMessageRepository,
-        )
-
-        conversation = SqlAlchemyConversationRepository(session).add(
-            Conversation(agent_id=agent.agent_id, title=f"draft:{request_id}:instructions")
-        )
-        message = SqlAlchemyMessageRepository(session).add(
-            Message(
-                conversation_id=conversation.conversation_id,
-                sequence=1,
-                direction=MessageDirection.USER_REQUEST,
-                content="Write a grounded paragraph.",
-            )
-        )
-        session.flush()
-        message_id = message.message_id
-    element = KnowledgeElement(
-        agent_id=agent.agent_id,
-        element_type=KnowledgeElementType.CONCEPT,
-        label="Evidence",
-        created_by=KnowledgeCreatedBy.SYSTEM,
-    )
-    session.add(element)
-    session.flush()
-    # Realistic, evidence-sized content (not a one-line fixture string) - this is the exact
-    # scenario the fixed defect broke: a context this size used to be inlined into
-    # payload_reference and rejected once it exceeded 512 characters.
-    chunk = KnowledgeChunk(
-        agent_id=agent.agent_id, element_id=element.element_id, content="Evidence paragraph. " * 100
-    )
-    session.add(chunk)
-    session.flush()
-    draft = CreateDraftUseCase(
-        SqlAlchemyDraftRepository(session), SqlAlchemyAgentRepository(session), SqlAlchemyUnitOfWork(session)
-    ).execute(user_id=user.user_id, title="Generated Draft")
-    context = ContextAssemblyInput(
-        topic="Research topic",
-        instructions="Write a grounded paragraph.",
-        evidence=(ContextEvidence(chunk_id=chunk.chunk_id,
-                  content=chunk.content, summary=None, score=1.0),),
-    )
-    payload, idempotency_key = build_generate_draft_version_payload_reference(
-        draft.draft_id, context, storage, request_id=request_id, message_id=message_id
-    )
-    assert len(payload) < 200  # a genuine reference, not the inlined context
-    WorkItemRepository(session).enqueue(
-        kind=WorkItemKind.PIPELINE_STAGE,
-        payload_reference=payload,
-        idempotency_key=idempotency_key,
-    )
-    SqlAlchemyUnitOfWork(session).commit()
-    return draft.draft_id, chunk.chunk_id, request_id, message_id
 
 
 # --- WorkItemRepository, directly ------------------------------------------------------
@@ -321,7 +253,7 @@ def test_executor_loop_start_recovers_stale_running_items_before_polling(session
         session.close()
 
     provider = FakeTextGenerationProvider(
-        responses=['{"element_type": "concept", "label": "Recovered", "description": "d"}']
+        responses=['[{"element_type": "concept", "label": "Recovered", "description": "d"}]']
     )
     loop = WorkItemExecutorLoop(
         session_factory,
@@ -369,7 +301,7 @@ def test_process_one_work_item_succeeds_and_transitions_document_to_processed(se
         session, storage, content=b"Paragraph one.\n\nParagraph two.")
     provider = FakeTextGenerationProvider(
         responses=[
-            '{"element_type": "theme", "label": "Overview", "description": "d"}']
+            '[{"element_type": "theme", "label": "Overview", "description": "d"}]']
     )
 
     claimed = _process_one(session, storage, text_provider=provider)
@@ -450,69 +382,3 @@ def test_a_second_process_one_work_item_call_after_success_finds_nothing_to_clai
     assert _process_one(session, storage, text_provider=provider) is False
 
 
-def test_process_one_writing_work_item_generates_version_and_succeeds(session, storage):
-    draft_id, chunk_id, request_id, _message_id = _enqueue_writing_generation(
-        session, storage, request_id="writing-success")
-    provider = FakeTextGenerationProvider(responses=["Generated writing."])
-
-    assert _process_one(session, storage, text_provider=provider) is True
-
-    versions = SqlAlchemyDraftVersionRepository(
-        session).list_by_draft_id(draft_id)
-    assert len(versions) == 1
-    assert versions[0].content == "Generated writing."
-    links = session.query(DraftEvidenceLink).all()
-    assert len(links) == 1
-    assert links[0].chunk_id == chunk_id
-    assert WorkItemRepository(session).claim_next_queued() is None
-    assert provider.call_count == 1
-    succeeded = session.query(WorkItemModel).filter_by(idempotency_key=f"generate_draft_version:{request_id}").one()
-    assert succeeded.state == WorkItemState.SUCCEEDED
-    assert succeeded.attempts == 0
-    assert succeeded.completed_at is not None
-
-
-def test_process_one_writing_work_item_links_instructions_message_to_generated_version(session, storage):
-    """Resolves the instructions-contract discrepancy: once generation succeeds, the executor
-    must link the instructions Message to the Draft Version it produced (Message Context Link)
-    and record the system's own response as a second Message in the same Conversation.
-    """
-    from app.modules.writing.infrastructure.models import MessageContextLink as MessageContextLinkModel
-    from app.modules.writing.infrastructure.models import Message as MessageModel
-
-    draft_id, _chunk_id, _request_id, message_id = _enqueue_writing_generation(
-        session, storage, request_id="writing-with-message", with_instructions_message=True
-    )
-    provider = FakeTextGenerationProvider(responses=["Generated writing."])
-
-    assert _process_one(session, storage, text_provider=provider) is True
-
-    version = SqlAlchemyDraftVersionRepository(session).list_by_draft_id(draft_id)[0]
-    conversation_id = session.get(MessageModel, message_id).conversation_id
-    conversation_messages = session.query(MessageModel).filter_by(conversation_id=conversation_id).all()
-    assert len(conversation_messages) == 2  # the instructions message and the system's response
-
-    response_message = next(m for m in conversation_messages if m.message_id != message_id)
-    assert response_message.direction.value == "system_response"
-    assert str(version.version_number) in response_message.content
-
-    links = session.query(MessageContextLinkModel).all()
-    assert {link.message_id for link in links} == {message_id, response_message.message_id}
-    assert all(link.draft_version_id == version.version_id for link in links)
-
-
-def test_process_one_writing_failure_retries_and_preserves_atomicity(session, storage):
-    draft_id, _, _, _ = _enqueue_writing_generation(
-        session, storage, request_id="writing-failure")
-    provider = FakeTextGenerationProvider(always_fail=True)
-
-    for attempt in range(3):
-        assert _process_one(session, storage, text_provider=provider) is True
-
-    assert SqlAlchemyDraftVersionRepository(
-        session).list_by_draft_id(draft_id) == []
-    assert WorkItemRepository(session).claim_next_queued() is None
-    failed = session.query(WorkItemModel).filter_by(idempotency_key="generate_draft_version:writing-failure").one()
-    assert failed.state == WorkItemState.FAILED
-    assert failed.attempts == 3
-    assert failed.completed_at is not None

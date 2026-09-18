@@ -4,6 +4,7 @@ from app.auth.hashing import hash_password
 from app.database.session import build_sessionmaker
 from app.database.shared_models import User
 from app.modules.document.infrastructure.repositories import SqlAlchemyDocumentRepository
+from app.modules.writing.application.style_ingestion import MAX_WRITING_STYLE_SAMPLES
 from app.modules.writing.infrastructure.repositories import SqlAlchemyWritingProfileRepository
 
 
@@ -158,6 +159,74 @@ def test_client_supplied_identity_cannot_bypass_ownership(client, auth_headers):
     assert response.status_code == 201
 
 
+def test_uploading_beyond_the_sample_limit_returns_409(client, auth_headers):
+    _create_workspace(client, auth_headers)
+    for i in range(MAX_WRITING_STYLE_SAMPLES):
+        response = client.post(
+            "/writing/style-profile/documents",
+            files={"file": (f"essay{i}.pdf", io.BytesIO(b"sample"), "application/pdf")},
+            data={"title": f"Essay {i}", "format": "pdf"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 201
+
+    response = client.post(
+        "/writing/style-profile/documents",
+        files={"file": ("one-too-many.pdf", io.BytesIO(b"sample"), "application/pdf")},
+        data={"title": "One too many", "format": "pdf"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error_type"] == "TooManyWritingStyleSamplesError"
+    listing = client.get("/writing/style-profile/documents", headers=auth_headers).json()["documents"]
+    assert len(listing) == MAX_WRITING_STYLE_SAMPLES
+
+
+def test_deleting_a_style_sample_frees_a_slot_under_the_limit(client, auth_headers):
+    """The generic document-delete endpoint is purpose-agnostic (DeleteResearchDocumentUseCase
+    never checks DocumentPurpose) - this proves that reuse actually works end-to-end for style
+    samples specifically, closing the one gap the live Playwright run couldn't verify reliably
+    (that test's delete step was starved by an unrelated, separately-running heavy test in the
+    same file contending for the single SQLite writer).
+    """
+    workspace = _create_workspace(client, auth_headers)
+    project_id = workspace["project"]["project_id"]
+    uploaded = []
+    for i in range(MAX_WRITING_STYLE_SAMPLES):
+        response = client.post(
+            "/writing/style-profile/documents",
+            files={"file": (f"essay{i}.pdf", io.BytesIO(b"sample"), "application/pdf")},
+            data={"title": f"Essay {i}", "format": "pdf"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 201
+        uploaded.append(response.json()["document_id"])
+
+    blocked = client.post(
+        "/writing/style-profile/documents",
+        files={"file": ("one-too-many.pdf", io.BytesIO(b"sample"), "application/pdf")},
+        data={"title": "One too many", "format": "pdf"},
+        headers=auth_headers,
+    )
+    assert blocked.status_code == 409
+
+    delete_response = client.delete(f"/projects/{project_id}/documents/{uploaded[0]}", headers=auth_headers)
+    assert delete_response.status_code == 204
+
+    listing = client.get("/writing/style-profile/documents", headers=auth_headers).json()["documents"]
+    assert len(listing) == MAX_WRITING_STYLE_SAMPLES - 1
+    assert uploaded[0] not in {d["document_id"] for d in listing}
+
+    retried = client.post(
+        "/writing/style-profile/documents",
+        files={"file": ("makes-room.pdf", io.BytesIO(b"sample"), "application/pdf")},
+        data={"title": "Makes Room", "format": "pdf"},
+        headers=auth_headers,
+    )
+    assert retried.status_code == 201
+
+
 def test_upload_style_document_missing_required_form_field_is_rejected(client, auth_headers):
     _create_workspace(client, auth_headers)
 
@@ -169,3 +238,68 @@ def test_upload_style_document_missing_required_form_field_is_rejected(client, a
     )
 
     assert response.status_code == 422
+
+
+def test_list_style_documents_returns_previously_uploaded_samples(client, auth_headers):
+    """The real gap this closes: a page reload must not lose track of what was already
+    uploaded (ListWritingStyleDocumentsUseCase's own docstring).
+    """
+    _create_workspace(client, auth_headers)
+    client.post(
+        "/writing/style-profile/documents",
+        files={"file": ("essay1.pdf", io.BytesIO(b"sample one"), "application/pdf")},
+        data={"title": "Essay 1", "format": "pdf"},
+        headers=auth_headers,
+    )
+    client.post(
+        "/writing/style-profile/documents",
+        files={"file": ("essay2.pdf", io.BytesIO(b"sample two"), "application/pdf")},
+        data={"title": "Essay 2", "format": "pdf"},
+        headers=auth_headers,
+    )
+
+    response = client.get("/writing/style-profile/documents", headers=auth_headers)
+
+    assert response.status_code == 200
+    titles = {d["title"] for d in response.json()["documents"]}
+    assert titles == {"Essay 1", "Essay 2"}
+
+
+def test_list_style_documents_for_a_user_with_none_uploaded_returns_empty_list(client, auth_headers):
+    _create_workspace(client, auth_headers)
+
+    response = client.get("/writing/style-profile/documents", headers=auth_headers)
+
+    assert response.status_code == 200
+    assert response.json()["documents"] == []
+
+
+def test_style_documents_never_appear_on_the_research_documents_listing(client, auth_headers):
+    """The other real gap this closes: a style sample must never sit forever at `pending` on
+    the Research Documents page (DocumentPurpose's own docstring).
+    """
+    workspace = _create_workspace(client, auth_headers)
+    client.post(
+        "/writing/style-profile/documents",
+        files={"file": ("essay.pdf", io.BytesIO(b"sample"), "application/pdf")},
+        data={"title": "Style Sample", "format": "pdf"},
+        headers=auth_headers,
+    )
+
+    response = client.get(f"/projects/{workspace['project']['project_id']}/documents", headers=auth_headers)
+
+    assert response.status_code == 200
+    assert response.json()["documents"] == []
+
+
+def test_list_style_documents_without_authentication_returns_401(client, auth_headers):
+    response = client.get("/writing/style-profile/documents")
+
+    assert response.status_code == 401
+
+
+def test_list_style_documents_for_a_user_with_no_agent_returns_404(client, auth_headers):
+    response = client.get("/writing/style-profile/documents", headers=auth_headers)
+
+    assert response.status_code == 404
+    assert response.json()["error_type"] == "AgentNotFoundForUserError"

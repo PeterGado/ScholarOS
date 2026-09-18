@@ -25,6 +25,50 @@ class WorkItemRepository:
         self._session.flush()
         return self._to_domain(row)
 
+    def get_by_payload_reference(self, payload_reference: str) -> WorkItem | None:
+        """The most recent Work Item for a given payload_reference (e.g. `process_document:7`) -
+        used to surface *why* a document's processing terminally failed, without the document
+        module owning any Work Item persistence itself.
+        """
+        row = (
+            self._session.query(WorkItemModel)
+            .filter_by(payload_reference=payload_reference)
+            .order_by(WorkItemModel.work_item_id.desc())
+            .first()
+        )
+        return self._to_domain(row) if row is not None else None
+
+    def get_by_id(self, work_item_id: int) -> WorkItem | None:
+        """Looked up directly by primary key - used where a caller already holds a specific
+        work_item_id from an earlier enqueue response (e.g. chat reply status polling) rather
+        than re-deriving it from a payload_reference.
+        """
+        row = self._session.get(WorkItemModel, work_item_id)
+        return self._to_domain(row) if row is not None else None
+
+    def requeue_failed_by_payload_reference(self, payload_reference: str) -> WorkItem | None:
+        """Resets an already-terminal `failed` Work Item back to `queued` for a fresh bounded
+        retry - used by "Retry" on a failed document. Resets the existing row rather than
+        enqueuing a new one: `idempotency_key` is unique per payload_reference, so a second
+        `enqueue` call for the same document would violate that constraint. Returns None if no
+        `failed` item matches (nothing to retry).
+        """
+        row = (
+            self._session.query(WorkItemModel)
+            .filter_by(payload_reference=payload_reference, state=WorkItemState.FAILED)
+            .order_by(WorkItemModel.work_item_id.desc())
+            .first()
+        )
+        if row is None:
+            return None
+        row.state = WorkItemState.QUEUED
+        row.attempts = 0
+        row.last_error = None
+        row.executed_at = None
+        row.completed_at = None
+        self._session.flush()
+        return self._to_domain(row)
+
     def claim_next_queued(self) -> WorkItem | None:
         """Claims the oldest queued item, transitioning it to `running`. Single-writer-safe
         for the MVP's one in-process executor (ADR-006 Decision 3); not safe against

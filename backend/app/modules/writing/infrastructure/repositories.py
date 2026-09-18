@@ -4,249 +4,37 @@ from sqlalchemy.orm import Session
 
 from app.modules.writing.domain.entities import (
     Conversation,
-    Draft,
-    DraftEvidenceLink,
-    DraftVersion,
     MemoryProvenanceLink,
     MemoryRecord,
     Message,
     MessageContextLink,
     ProfileCharacteristic,
     ProfileCharacteristicSource,
-    Review,
-    ReviewDecision,
     WritingProfile,
 )
-from app.modules.writing.domain.enums import DraftStatus, MemoryRecordStatus, ReviewStatus, WritingProfileStatus
+from app.modules.writing.domain.enums import (
+    ConversationStatus,
+    MemoryRecordStatus,
+    WritingProfileStatus,
+)
 from app.modules.writing.domain.repositories import (
     ConversationRepository,
-    DraftEvidenceLinkRepository,
-    DraftRepository,
-    DraftVersionRepository,
     MemoryProvenanceLinkRepository,
     MemoryRecordRepository,
     MessageContextLinkRepository,
     MessageRepository,
     ProfileCharacteristicRepository,
     ProfileCharacteristicSourceRepository,
-    ReviewDecisionRepository,
-    ReviewRepository,
     WritingProfileRepository,
 )
 from app.modules.writing.infrastructure.models import Conversation as ConversationModel
-from app.modules.writing.infrastructure.models import Draft as DraftModel
-from app.modules.writing.infrastructure.models import DraftEvidenceLink as DraftEvidenceLinkModel
-from app.modules.writing.infrastructure.models import DraftVersion as DraftVersionModel
 from app.modules.writing.infrastructure.models import MemoryProvenanceLink as MemoryProvenanceLinkModel
 from app.modules.writing.infrastructure.models import MemoryRecord as MemoryRecordModel
 from app.modules.writing.infrastructure.models import Message as MessageModel
 from app.modules.writing.infrastructure.models import MessageContextLink as MessageContextLinkModel
 from app.modules.writing.infrastructure.models import ProfileCharacteristic as ProfileCharacteristicModel
 from app.modules.writing.infrastructure.models import ProfileCharacteristicSource as ProfileCharacteristicSourceModel
-from app.modules.writing.infrastructure.models import Review as ReviewModel
-from app.modules.writing.infrastructure.models import ReviewDecision as ReviewDecisionModel
 from app.modules.writing.infrastructure.models import WritingProfile as WritingProfileModel
-
-
-class SqlAlchemyDraftRepository(DraftRepository):
-    def __init__(self, session: Session) -> None:
-        self._session = session
-
-    def add(self, draft: Draft) -> Draft:
-        row = DraftModel(agent_id=draft.agent_id, title=draft.title, target=draft.target, status=draft.status)
-        self._session.add(row)
-        self._session.flush()
-        draft.draft_id = row.draft_id
-        draft.created_at = row.created_at
-        return draft
-
-    def get_by_id(self, draft_id: int) -> Draft | None:
-        row = self._session.get(DraftModel, draft_id)
-        return self._to_domain(row) if row is not None else None
-
-    def list_by_agent_id(self, agent_id: int) -> list[Draft]:
-        rows = self._session.query(DraftModel).filter_by(agent_id=agent_id).all()
-        return [self._to_domain(row) for row in rows]
-
-    def update_status(self, draft_id: int, status: DraftStatus) -> None:
-        row = self._session.get(DraftModel, draft_id)
-        row.status = status
-        row.updated_at = datetime.now(timezone.utc)
-        self._session.flush()
-
-    @staticmethod
-    def _to_domain(row: DraftModel) -> Draft:
-        return Draft(
-            draft_id=row.draft_id,
-            agent_id=row.agent_id,
-            title=row.title,
-            target=row.target,
-            status=row.status,
-            created_at=row.created_at,
-            updated_at=row.updated_at,
-            deleted_at=row.deleted_at,
-        )
-
-
-class SqlAlchemyDraftVersionRepository(DraftVersionRepository):
-    def __init__(self, session: Session) -> None:
-        self._session = session
-
-    def add(self, version: DraftVersion) -> DraftVersion:
-        row = DraftVersionModel(
-            draft_id=version.draft_id,
-            version_number=version.version_number,
-            content=version.content,
-            created_by=version.created_by,
-        )
-        self._session.add(row)
-        self._session.flush()
-        version.version_id = row.version_id
-        version.created_at = row.created_at
-        return version
-
-    def get_by_id(self, version_id: int) -> DraftVersion | None:
-        row = self._session.get(DraftVersionModel, version_id)
-        return self._to_domain(row) if row is not None else None
-
-    def list_by_draft_id(self, draft_id: int) -> list[DraftVersion]:
-        rows = (
-            self._session.query(DraftVersionModel)
-            .filter_by(draft_id=draft_id)
-            .order_by(DraftVersionModel.version_number.asc())
-            .all()
-        )
-        return [self._to_domain(row) for row in rows]
-
-    def get_latest_by_draft_id(self, draft_id: int) -> DraftVersion | None:
-        row = (
-            self._session.query(DraftVersionModel)
-            .filter_by(draft_id=draft_id)
-            .order_by(DraftVersionModel.version_number.desc())
-            .first()
-        )
-        return self._to_domain(row) if row is not None else None
-
-    @staticmethod
-    def _to_domain(row: DraftVersionModel) -> DraftVersion:
-        return DraftVersion(
-            version_id=row.version_id,
-            draft_id=row.draft_id,
-            version_number=row.version_number,
-            content=row.content,
-            created_at=row.created_at,
-            created_by=row.created_by,
-        )
-
-
-class SqlAlchemyReviewRepository(ReviewRepository):
-    def __init__(self, session: Session) -> None:
-        self._session = session
-
-    def add(self, review: Review) -> Review:
-        row = ReviewModel(
-            draft_version_id=review.draft_version_id,
-            status=review.status,
-            notes=review.notes,
-            decided_at=review.decided_at,
-        )
-        self._session.add(row)
-        self._session.flush()
-        review.review_id = row.review_id
-        review.opened_at = row.opened_at
-        review.decided_at = row.decided_at
-        return review
-
-    def get_by_id(self, review_id: int) -> Review | None:
-        row = self._session.get(ReviewModel, review_id)
-        return self._to_domain(row) if row is not None else None
-
-    def get_open_by_draft_version_id(self, draft_version_id: int) -> Review | None:
-        row = (
-            self._session.query(ReviewModel)
-            .filter_by(draft_version_id=draft_version_id, status=ReviewStatus.OPEN)
-            .one_or_none()
-        )
-        return self._to_domain(row) if row is not None else None
-
-    @staticmethod
-    def _to_domain(row: ReviewModel) -> Review:
-        return Review(
-            review_id=row.review_id,
-            draft_version_id=row.draft_version_id,
-            status=row.status,
-            notes=row.notes,
-            opened_at=row.opened_at,
-            decided_at=row.decided_at,
-        )
-
-
-class SqlAlchemyReviewDecisionRepository(ReviewDecisionRepository):
-    def __init__(self, session: Session) -> None:
-        self._session = session
-
-    def add(self, decision: ReviewDecision) -> ReviewDecision:
-        row = ReviewDecisionModel(
-            review_id=decision.review_id,
-            outcome=decision.outcome,
-            rationale=decision.rationale,
-            decided_by=decision.decided_by,
-        )
-        self._session.add(row)
-        self._session.flush()
-        decision.decision_id = row.decision_id
-        decision.decided_at = row.decided_at
-        return decision
-
-    def get_by_review_id(self, review_id: int) -> ReviewDecision | None:
-        row = self._session.query(ReviewDecisionModel).filter_by(review_id=review_id).one_or_none()
-        return self._to_domain(row) if row is not None else None
-
-    @staticmethod
-    def _to_domain(row: ReviewDecisionModel) -> ReviewDecision:
-        return ReviewDecision(
-            decision_id=row.decision_id,
-            review_id=row.review_id,
-            outcome=row.outcome,
-            rationale=row.rationale,
-            decided_by=row.decided_by,
-            decided_at=row.decided_at,
-        )
-
-
-class SqlAlchemyDraftEvidenceLinkRepository(DraftEvidenceLinkRepository):
-    def __init__(self, session: Session) -> None:
-        self._session = session
-
-    def add(self, link: DraftEvidenceLink) -> DraftEvidenceLink:
-        row = DraftEvidenceLinkModel(
-            draft_version_id=link.draft_version_id,
-            target_type=link.target_type,
-            chunk_id=link.chunk_id,
-            document_id=link.document_id,
-            created_by=link.created_by,
-        )
-        self._session.add(row)
-        self._session.flush()
-        link.link_id = row.link_id
-        link.created_at = row.created_at
-        return link
-
-    def list_by_draft_version_id(self, draft_version_id: int) -> list[DraftEvidenceLink]:
-        rows = self._session.query(DraftEvidenceLinkModel).filter_by(draft_version_id=draft_version_id).all()
-        return [self._to_domain(row) for row in rows]
-
-    @staticmethod
-    def _to_domain(row: DraftEvidenceLinkModel) -> DraftEvidenceLink:
-        return DraftEvidenceLink(
-            link_id=row.link_id,
-            draft_version_id=row.draft_version_id,
-            target_type=row.target_type,
-            chunk_id=row.chunk_id,
-            document_id=row.document_id,
-            created_at=row.created_at,
-            created_by=row.created_by,
-        )
 
 
 class SqlAlchemyWritingProfileRepository(WritingProfileRepository):
@@ -376,12 +164,25 @@ class SqlAlchemyMemoryRecordRepository(MemoryRecordRepository):
         return self._to_domain(row) if row is not None else None
 
     def list_current_by_agent_id(self, agent_id: int) -> list[MemoryRecord]:
+        """Most-recently-established first (Persistent Brain v3 audit fix) - callers that cap
+        this list (`ContextAssemblyInput.max_memories`) get the most recent memories, not
+        whatever order SQLite happens to return; `ListMemoryUseCase`'s inspection listing
+        benefits from the same, more useful ordering for free.
+        """
         rows = (
             self._session.query(MemoryRecordModel)
             .filter_by(agent_id=agent_id, status=MemoryRecordStatus.CURRENT)
+            .order_by(MemoryRecordModel.created_at.desc(), MemoryRecordModel.record_id.desc())
             .all()
         )
         return [self._to_domain(row) for row in rows]
+
+    def mark_superseded(self, record_id: int, *, superseded_record_id: int, superseded_at) -> None:
+        row = self._session.get(MemoryRecordModel, record_id)
+        row.status = MemoryRecordStatus.SUPERSEDED
+        row.superseded_record_id = superseded_record_id
+        row.superseded_at = superseded_at
+        self._session.flush()
 
     @staticmethod
     def _to_domain(row: MemoryRecordModel) -> MemoryRecord:
@@ -407,11 +208,9 @@ class SqlAlchemyMemoryProvenanceLinkRepository(MemoryProvenanceLinkRepository):
         row = MemoryProvenanceLinkModel(
             record_id=link.record_id,
             source_type=link.source_type,
-            review_decision_id=link.review_decision_id,
             conversation_id=link.conversation_id,
             element_id=link.element_id,
             document_id=link.document_id,
-            draft_version_id=link.draft_version_id,
         )
         self._session.add(row)
         self._session.flush()
@@ -429,11 +228,9 @@ class SqlAlchemyMemoryProvenanceLinkRepository(MemoryProvenanceLinkRepository):
             link_id=row.link_id,
             record_id=row.record_id,
             source_type=row.source_type,
-            review_decision_id=row.review_decision_id,
             conversation_id=row.conversation_id,
             element_id=row.element_id,
             document_id=row.document_id,
-            draft_version_id=row.draft_version_id,
             created_at=row.created_at,
         )
 
@@ -456,9 +253,25 @@ class SqlAlchemyConversationRepository(ConversationRepository):
         row = self._session.get(ConversationModel, conversation_id)
         return self._to_domain(row) if row is not None else None
 
-    def get_by_agent_id_and_title(self, agent_id: int, title: str) -> Conversation | None:
-        row = self._session.query(ConversationModel).filter_by(agent_id=agent_id, title=title).one_or_none()
-        return self._to_domain(row) if row is not None else None
+    def list_by_agent_id(self, agent_id: int) -> list[Conversation]:
+        rows = (
+            self._session.query(ConversationModel)
+            .filter_by(agent_id=agent_id, deleted_at=None)
+            .order_by(ConversationModel.started_at.asc())
+            .all()
+        )
+        return [self._to_domain(row) for row in rows]
+
+    def mark_summarized(self, conversation_id: int, *, summarized_at) -> None:
+        row = self._session.get(ConversationModel, conversation_id)
+        row.status = ConversationStatus.SUMMARIZED
+        row.summarized_at = summarized_at
+        self._session.flush()
+
+    def mark_deleted(self, conversation_id: int, *, deleted_at) -> None:
+        row = self._session.get(ConversationModel, conversation_id)
+        row.deleted_at = deleted_at
+        self._session.flush()
 
     @staticmethod
     def _to_domain(row: ConversationModel) -> Conversation:
@@ -498,6 +311,15 @@ class SqlAlchemyMessageRepository(MessageRepository):
     def count_by_conversation_id(self, conversation_id: int) -> int:
         return self._session.query(MessageModel).filter_by(conversation_id=conversation_id).count()
 
+    def list_by_conversation_id(self, conversation_id: int) -> list[Message]:
+        rows = (
+            self._session.query(MessageModel)
+            .filter_by(conversation_id=conversation_id)
+            .order_by(MessageModel.sequence.asc())
+            .all()
+        )
+        return [self._to_domain(row) for row in rows]
+
     @staticmethod
     def _to_domain(row: MessageModel) -> Message:
         return Message(
@@ -522,7 +344,6 @@ class SqlAlchemyMessageContextLinkRepository(MessageContextLinkRepository):
             document_id=link.document_id,
             element_id=link.element_id,
             chunk_id=link.chunk_id,
-            draft_version_id=link.draft_version_id,
             memory_record_id=link.memory_record_id,
         )
         self._session.add(row)
@@ -544,7 +365,6 @@ class SqlAlchemyMessageContextLinkRepository(MessageContextLinkRepository):
             document_id=row.document_id,
             element_id=row.element_id,
             chunk_id=row.chunk_id,
-            draft_version_id=row.draft_version_id,
             memory_record_id=row.memory_record_id,
             created_at=row.created_at,
         )

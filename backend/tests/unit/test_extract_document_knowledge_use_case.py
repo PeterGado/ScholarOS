@@ -39,6 +39,9 @@ class FakeDocumentRepository(DocumentRepository):
     def update_processing_status(self, document_id, status, *, processed_at=None):
         raise NotImplementedError
 
+    def mark_deleted(self, document_id, *, deleted_at):
+        raise NotImplementedError
+
 
 class FakeContentStore:
     def __init__(self, files=None):
@@ -166,7 +169,7 @@ class FakeTextGenerationProvider:
             raise RuntimeError("simulated provider failure")
         if self._responses:
             return self._responses.pop(0)
-        return '{"element_type": "concept", "label": "Default label", "description": "d"}'
+        return '[{"element_type": "concept", "label": "Default label", "description": "d"}]'
 
     @property
     def call_count(self):
@@ -185,6 +188,13 @@ class FakeEmbeddingProvider:
         if self.fail:
             raise RuntimeError("simulated embedding failure")
         return [0.1, 0.2, 0.3]
+
+    def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        self.call_count += 1
+        self.texts_embedded.extend(texts)
+        if self.fail:
+            raise RuntimeError("simulated embedding failure")
+        return [[0.1, 0.2, 0.3] for _ in texts]
 
 
 def _document(document_id=DOCUMENT_ID, project_id=PROJECT_ID, content_reference="ref-1") -> ResearchDocument:
@@ -262,7 +272,7 @@ def test_successful_extraction_persists_element_chunk_and_evidence_link():
 
 def test_persisted_element_uses_the_providers_classification():
     provider = FakeTextGenerationProvider(
-        responses=['{"element_type": "claim", "label": "Key claim", "description": "The study finds X."}']
+        responses=['[{"element_type": "claim", "label": "Key claim", "description": "The study finds X."}]']
     )
     use_case, elements, *_ = _build_use_case(provider=provider)
 
@@ -349,8 +359,8 @@ def test_multiple_chunks_each_get_their_own_element_and_evidence_link():
         content_store=FakeContentStore({"ref-1": long_content}),
         provider=FakeTextGenerationProvider(
             responses=[
-                '{"element_type": "concept", "label": "First", "description": "d1"}',
-                '{"element_type": "theme", "label": "Second", "description": "d2"}',
+                '[{"element_type": "concept", "label": "First", "description": "d1"},'
+                ' {"element_type": "theme", "label": "Second", "description": "d2"}]'
             ]
         ),
     )

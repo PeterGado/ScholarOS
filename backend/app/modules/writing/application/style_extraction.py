@@ -47,19 +47,17 @@ class ExtractWritingStyleProfileUseCase:
     `TextGenerationProvider` - no new AI abstraction) from writing-style samples Stage 3
     already persisted, with mandatory provenance to those samples.
 
-    **Which samples to analyze - a genuine, reported gap, resolved without a schema change.**
-    The frozen Logical Data Model has no field distinguishing a "writing-style sample"
-    `ResearchDocument` from an ordinary research document (Stage 3's own completion report,
-    Risk #1) - both share the same table, scoped only by Project. Rather than guessing at a
-    project-wide scan (which would silently pull ordinary research material into style
-    analysis, corrupting the profile) or inventing a new column (forbidden this stage), this
-    use case requires the caller to supply the exact `document_ids` to analyze. This matches
-    the Stage 4 prompt's own §10 guidance precisely: "the application associates the
-    characteristic with the samples used for extraction" - the *set* of samples used is
-    therefore an explicit input, not something silently inferred. It also matches WR-010's
-    framing ("the system shall allow the user to provide... samples for... analysis") - sample
-    selection is a user-driven action. This is an implementation-level API/use-case design
-    choice, not a change to any frozen entity or requirement, so no ADR is warranted.
+    **Which samples to analyze.** The caller supplies the exact `document_ids` to analyze,
+    rather than this use case silently scanning the whole Project (which would risk pulling
+    ordinary research material into style analysis, corrupting the profile). This matches the
+    Stage 4 prompt's own §10 guidance precisely: "the application associates the characteristic
+    with the samples used for extraction" - the *set* of samples used is therefore an explicit
+    input, not something silently inferred. It also matches WR-010's framing ("the system shall
+    allow the user to provide... samples for... analysis") - sample selection is a user-driven
+    action. (`DocumentPurpose.WRITING_STYLE_SAMPLE` - added after Stage 3/4 first shipped -
+    now also lets the frontend list a user's own already-uploaded samples across sessions
+    without depending on this explicit-id-list requirement for that; extraction itself still
+    requires an explicit list, unchanged.)
 
     **Provenance, exactly.** The AI provider returns semantic characteristics only - never a
     source/document reference (Stage 4 prompt §7/§10: the model must not be trusted to choose
