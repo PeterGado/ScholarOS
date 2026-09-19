@@ -1,6 +1,7 @@
+import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate, useOutletContext, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileText, LogOut, MessageSquare, PenLine, Plus, Settings, X } from "lucide-react";
+import { FileText, LogOut, Menu, MessageSquare, PenLine, Plus, Settings, X } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { logout as logoutRequest } from "@/api/auth";
 import { deleteConversation, listConversations, startConversation } from "@/api/writing";
@@ -37,6 +38,15 @@ export function AppShell() {
   const queryClient = useQueryClient();
   const isChatRoute = location.pathname.startsWith("/chat");
   const { conversationId: activeConversationId } = useParams<{ conversationId: string }>();
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  // A route change (tapping a nav item, a conversation, or "New chat") means the user is done
+  // with the sidebar on mobile - closing it automatically is what makes a phone/tablet sidebar
+  // feel like a menu rather than a permanently obstructing panel. Desktop ignores this state
+  // entirely (see the `lg:translate-x-0` class below), so this has no effect there.
+  useEffect(() => {
+    setIsSidebarOpen(false);
+  }, [location.pathname]);
 
   const conversationsQuery = useQuery({ queryKey: ["conversations"], queryFn: listConversations });
 
@@ -66,11 +76,54 @@ export function AppShell() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
-      <aside className="flex w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
-        <div className="p-3">
+      {/* Mobile-only top bar: the sidebar has no room to stay permanently visible on a phone-
+          width screen, so it becomes a slide-in drawer, opened from here. Hidden entirely on
+          desktop (lg:hidden), where the sidebar is already always visible. */}
+      <div className="flex items-center gap-2 border-b border-sidebar-border bg-sidebar p-3 text-sidebar-foreground lg:hidden fixed inset-x-0 top-0 z-30">
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="Open menu"
+          onClick={() => setIsSidebarOpen(true)}
+          className="text-sidebar-foreground"
+        >
+          <Menu className="size-5" />
+        </Button>
+        <span className="text-sm font-semibold">ScholarOS</span>
+      </div>
+
+      {/* Backdrop: only rendered (and only intercepts taps) while the drawer is open on
+          mobile - lg:hidden means it can never appear on desktop even if state is stale. */}
+      {isSidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          onClick={() => setIsSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 -translate-x-full flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-transform duration-200 ease-in-out",
+          "lg:static lg:translate-x-0",
+          isSidebarOpen && "translate-x-0",
+        )}
+      >
+        <div className="flex items-center justify-between p-3 lg:block">
           <span className="block px-2 py-1 text-sm font-semibold">ScholarOS</span>
           <Button
-            className="mt-2 w-full justify-start gap-2"
+            variant="ghost"
+            size="sm"
+            aria-label="Close menu"
+            onClick={() => setIsSidebarOpen(false)}
+            className="text-sidebar-foreground lg:hidden"
+          >
+            <X className="size-5" />
+          </Button>
+        </div>
+        <div className="px-3 pb-3">
+          <Button
+            className="w-full justify-start gap-2"
             variant="secondary"
             onClick={() => newChatMutation.mutate()}
             disabled={newChatMutation.isPending}
@@ -133,7 +186,10 @@ export function AppShell() {
                       deleteChatMutation.mutate(conversation.conversation_id);
                     }
                   }}
-                  className="absolute top-1/2 right-1 -translate-y-1/2 rounded p-1 text-sidebar-foreground/50 opacity-0 hover:bg-sidebar-accent hover:text-destructive group-hover:opacity-100"
+                  // Hover-to-reveal has no equivalent on touch - a lg:opacity-0 button would be
+                  // permanently invisible and untappable on a phone, since there's no hover
+                  // state to trigger it. Always visible below the lg breakpoint instead.
+                  className="absolute top-1/2 right-1 -translate-y-1/2 rounded p-1 text-sidebar-foreground/50 opacity-100 hover:bg-sidebar-accent hover:text-destructive lg:opacity-0 lg:group-hover:opacity-100"
                 >
                   <X className="size-3.5" />
                 </button>
@@ -171,12 +227,14 @@ export function AppShell() {
         </div>
       </aside>
 
-      <main className="flex flex-1 flex-col overflow-hidden">
+      {/* pt-14 clears the fixed mobile top bar (only rendered below lg) - lg:pt-0 removes it
+          again once that bar is gone and the sidebar is static instead of fixed/overlaid. */}
+      <main className="flex flex-1 flex-col overflow-hidden pt-14 lg:pt-0">
         {isChatRoute ? (
           <Outlet context={workspace} />
         ) : (
           <div className="flex-1 overflow-y-auto">
-            <div className="mx-auto max-w-5xl px-6 py-8">
+            <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
               <Outlet context={workspace} />
             </div>
           </div>
