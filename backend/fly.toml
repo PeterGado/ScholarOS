@@ -1,0 +1,32 @@
+app = "scholaros-backend"
+primary_region = "fra"
+
+[build]
+
+[env]
+  ENVIRONMENT = "production"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  # Fly's default behavior stops idle machines to save cost - fine for a stateless request/
+  # response API, but this backend's Work Item executor (ADR-006) needs to keep polling
+  # continuously even with no incoming HTTP traffic, exactly the same reason Render's free-tier
+  # sleep doesn't work for this app. Disabled so the one machine stays running.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+[checks]
+  [checks.health]
+    grace_period = "30s"
+    interval = "15s"
+    method = "GET"
+    path = "/health"
+    port = 8000
+    timeout = "5s"
+    type = "http"
