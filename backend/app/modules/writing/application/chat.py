@@ -1,3 +1,5 @@
+import logging
+
 from app.ai.providers.base import TextGenerationProvider
 from app.core.unit_of_work import UnitOfWork
 from app.modules.agent.domain.exceptions import AgentNotFoundForUserError
@@ -6,6 +8,8 @@ from app.modules.document.domain.ports import ContentStore
 from app.modules.knowledge.application.retrieval import SearchKnowledgeUseCase
 from app.modules.project.domain.repositories import ProjectRepository
 from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 from app.modules.writing.domain.context_assembly import (
     DEFAULT_MAX_CONVERSATION_MESSAGES,
@@ -456,6 +460,11 @@ class GenerateConversationReplyUseCase:
             self._uow.commit()
         except Exception:
             self._uow.rollback()
+            # 2026-09-21 security pass: this used to fail completely silently - a bad AI response
+            # or a DB error here was invisible. Best-effort by design (a summarization failure
+            # must never fail the chat reply it's attached to), but "best-effort" must not also
+            # mean "unobserved" - logged, not raised, so the reply still succeeds.
+            logger.warning("Conversation summarization failed for conversation_id=%s", conversation_id, exc_info=True)
 
     def _extract_memory_if_needed(self, conversation_id: int, context: ContextAssemblyInput) -> None:
         try:
@@ -506,3 +515,6 @@ class GenerateConversationReplyUseCase:
             self._uow.commit()
         except Exception:
             self._uow.rollback()
+            # 2026-09-21 security pass: same reasoning as _summarize_if_needed's own comment
+            # above - best-effort, never raised, but must not be silently unobserved either.
+            logger.warning("Memory extraction failed for conversation_id=%s", conversation_id, exc_info=True)

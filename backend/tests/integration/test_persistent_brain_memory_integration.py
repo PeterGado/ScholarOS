@@ -6,6 +6,8 @@ async Work Item executor, must produce Memory Records with CONVERSATION provenan
 never leak across Agents, and never fail the chat reply itself.
 """
 
+import logging
+
 import pytest
 
 from app.database.session import build_engine, build_sessionmaker, init_db
@@ -179,22 +181,25 @@ def test_memory_is_not_extracted_before_the_trigger_count_is_reached(session, st
     assert SqlAlchemyMemoryRecordRepository(session).list_current_by_agent_id(workspace.agent.agent_id) == []
 
 
-def test_a_malformed_memory_extraction_response_does_not_fail_the_chat_reply(session, storage):
+def test_a_malformed_memory_extraction_response_does_not_fail_the_chat_reply(session, storage, caplog):
     """Mirrors conversation summarization's own swallow-failure discipline
     (GenerateConversationReplyUseCase._extract_memory_if_needed's docstring): a bad extraction
-    must never turn an otherwise-successful chat reply into a failed Work Item.
+    must never turn an otherwise-successful chat reply into a failed Work Item - but (2026-09-21
+    security pass) it must also not vanish without a trace; a warning is logged.
     """
     workspace = _make_workspace(session, username="researcher")
     conversation = _start_conversation(session, workspace)
     provider = FakeTextGenerationProvider(memory_response="not valid json")
 
-    for i in range(MEMORY_EXTRACTION_TRIGGER_COUNT // 2):
-        _send_and_process(session, storage, workspace, conversation.conversation_id, f"Message {i}.", provider)
+    with caplog.at_level(logging.WARNING, logger="app.modules.writing.application.chat"):
+        for i in range(MEMORY_EXTRACTION_TRIGGER_COUNT // 2):
+            _send_and_process(session, storage, workspace, conversation.conversation_id, f"Message {i}.", provider)
 
     messages = SqlAlchemyMessageRepository(session).list_by_conversation_id(conversation.conversation_id)
     assert len(messages) == MEMORY_EXTRACTION_TRIGGER_COUNT  # every reply still persisted successfully
     assert SqlAlchemyMemoryRecordRepository(session).list_current_by_agent_id(workspace.agent.agent_id) == []
     assert WorkItemRepository(session).claim_next_queued() is None  # no failed/requeued work item left behind
+    assert any("Memory extraction failed" in record.message for record in caplog.records)
 
 
 def test_memory_records_and_provenance_do_not_leak_across_agents(session, storage):

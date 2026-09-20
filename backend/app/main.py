@@ -1,7 +1,7 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.middleware import SlowAPIMiddleware
 
@@ -79,3 +79,18 @@ app.add_middleware(
 )
 app.include_router(api_router)
 register_exception_handlers(app)
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    """2026-09-21 production security pass: FastAPI adds none of these by default. This is a
+    pure JSON API - it never intends to serve active content or be framed by anything - so the
+    CSP is deliberately the strictest possible ('default-src none') rather than an allowlist,
+    which only a real HTML-serving app (the separate Vercel frontend) would need.
+    """
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+    return response

@@ -4,6 +4,8 @@ by later context resolution) and memory inspection/supersession, including the m
 cross-agent isolation checks.
 """
 
+import logging
+
 import pytest
 
 from app.database.session import build_engine, build_sessionmaker, init_db
@@ -52,6 +54,18 @@ class FakeTextGenerationProvider:
         if "compacting an ongoing conversation" in prompt:
             return self._summary
         return self._reply
+
+
+class FailingSummaryProvider:
+    """Simulates a real summarization failure (e.g. a transient AI provider outage) - raises
+    only for the summarization prompt, so a preceding reply-generation call in the same test
+    still succeeds, isolating the summarization failure specifically.
+    """
+
+    def generate(self, prompt: str) -> str:
+        if "compacting an ongoing conversation" in prompt:
+            raise RuntimeError("Simulated provider outage during summarization.")
+        return "A reply."
 
 
 class FakeEmbeddingProvider:
@@ -159,6 +173,35 @@ def test_a_long_conversation_gets_summarized_and_the_summary_is_used_going_forwa
     prior_call_count = provider.call_count
     _send_and_process(session, storage, workspace, conversation.conversation_id, "One more message.", provider)
     assert provider.call_count == prior_call_count + 1  # only the reply call, no re-summarization yet
+
+
+def test_a_failing_summarization_does_not_fail_the_chat_reply_but_is_logged(session, storage, caplog):
+    """Mirrors the malformed-memory-extraction test's own swallow-failure discipline
+    (GenerateConversationReplyUseCase._summarize_if_needed's docstring): a summarization
+    failure (e.g. a transient AI provider outage) must never turn an otherwise-successful chat
+    reply into a failed Work Item - but (2026-09-21 security pass) it must not vanish without a
+    trace either; a warning is logged.
+    """
+    workspace = _make_workspace(session, username="researcher")
+    conversation = StartConversationUseCase(
+        SqlAlchemyConversationRepository(session), SqlAlchemyAgentRepository(session), SqlAlchemyUnitOfWork(session)
+    ).execute(user_id=workspace.agent.user_id)
+    provider = FailingSummaryProvider()
+
+    with caplog.at_level(logging.WARNING, logger="app.modules.writing.application.chat"):
+        # 11 send/reply cycles = 22 real messages, comfortably past the summarization trigger
+        # count (20) - same scale as the happy-path test above.
+        for i in range(11):
+            _send_and_process(session, storage, workspace, conversation.conversation_id, f"Message {i}.", provider)
+
+    messages = SqlAlchemyMessageRepository(session).list_by_conversation_id(conversation.conversation_id)
+    assert len(messages) == 22  # every reply still persisted successfully; no summary was added
+    assert all(m.origin != CONVERSATION_SUMMARY_ORIGIN for m in messages)
+    session.expire_all()
+    stored_conversation = session.get(ConversationModel, conversation.conversation_id)
+    assert stored_conversation.status.value != "summarized"  # the failed attempt was rolled back
+    assert WorkItemRepository(session).claim_next_queued() is None  # no failed/requeued work item left behind
+    assert any("Conversation summarization failed" in record.message for record in caplog.records)
 
 
 # --- Memory inspection: cross-agent isolation and supersession -----------------------------

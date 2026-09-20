@@ -13,6 +13,14 @@ COPY alembic ./alembic
 
 RUN pip install --no-cache-dir -e .
 
+# 2026-09-21 production security pass: no USER directive existed before this - the container
+# ran as root with no reason to (production writes go to Postgres/S3, never local disk; nothing
+# here needs root). Not a currently-exploited issue, but a real hardening gap - a process
+# compromise no longer starts with root inside the container.
+RUN groupadd --system app && useradd --system --gid app --home /app app \
+    && chown -R app:app /app
+USER app
+
 EXPOSE 8000
 
 # --workers 1: the in-process Work Item executor loop (ADR-006) assumes exactly one process -
