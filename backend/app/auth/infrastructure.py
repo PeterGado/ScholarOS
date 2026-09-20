@@ -69,6 +69,12 @@ class SqlAlchemyUserCredentialLookup(UserCredentialLookup):
         # returned directly, no separate DTO needed.
         return self._session.query(User).filter_by(username=username).one_or_none()
 
+    def get_by_google_subject(self, google_subject: str) -> UserCredential | None:
+        return self._session.query(User).filter_by(google_subject=google_subject).one_or_none()
+
+    def get_by_email(self, email: str) -> UserCredential | None:
+        return self._session.query(User).filter_by(email=email).one_or_none()
+
 
 class SqlAlchemyUserRegistrationRepository(UserRegistrationRepository):
     """Concrete UserRegistrationRepository (app.auth.repository, ADR-011) - the write
@@ -81,6 +87,14 @@ class SqlAlchemyUserRegistrationRepository(UserRegistrationRepository):
 
     def create(self, *, username: str, password_hash: str) -> UserCredential:
         row = User(username=username, password_hash=password_hash)
+        self._session.add(row)
+        self._session.flush()
+        return row
+
+    def create_from_google(
+        self, *, username: str, email: str | None, google_subject: str, display_name: str | None
+    ) -> UserCredential:
+        row = User(username=username, email=email, google_subject=google_subject, display_name=display_name)
         self._session.add(row)
         self._session.flush()
         return row

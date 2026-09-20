@@ -60,3 +60,35 @@ class InvalidInviteCodeError(AuthDomainError):
 
     def __init__(self) -> None:
         super().__init__("Invalid invite code.")
+
+
+class InvalidGoogleTokenError(AuthDomainError):
+    """Raised by Google Sign-In (2026-09-20) when the supplied ID token fails Google's own
+    signature/audience/expiry verification. Worded like InvalidCredentialsError for the same
+    reason - a forged or expired token and a well-formed-but-untrusted one look the same to the
+    caller either way.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("Invalid Google sign-in token.")
+
+
+class GoogleAccountEmailConflictError(AuthDomainError):
+    """Raised by Google Sign-In (2026-09-20) when a *brand-new* Google sign-in's verified email
+    already belongs to an existing (password-based) account. Deliberately never auto-links the
+    two - silently merging identities on an email match is a real account-takeover surface if
+    that email were ever unverified elsewhere; the user is told to use their password instead.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("An account with this email already exists. Sign in with your password instead.")
+
+
+class GoogleSignInNotConfiguredError(AuthDomainError):
+    """Raised by Google Sign-In (2026-09-20) when GOOGLE_OAUTH_CLIENT_ID isn't set yet - mirrors
+    ProviderConfigurationError's existing 503 pattern for the AI provider, so the route fails
+    cleanly instead of crashing if the button is reachable before Google Cloud setup is done.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("Google sign-in is not configured.")

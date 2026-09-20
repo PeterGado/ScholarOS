@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link, Navigate } from "react-router-dom";
-import { register } from "@/api/auth";
+import { register, loginWithGoogle } from "@/api/auth";
+import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 import { ApiError } from "@/lib/apiClient";
 import { useAuth } from "@/lib/AuthContext";
 
@@ -30,6 +31,18 @@ export function RegisterPage() {
       setError(err instanceof ApiError ? err.message : "Registration failed. Check the backend is running.");
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleGoogleCredential(idToken: string) {
+    setError(null);
+    try {
+      // Reuses this page's own invite-code field - a brand-new Google account is held to the
+      // same friends-only gate as a brand-new password account; a returning one ignores it.
+      const { access_token } = await loginWithGoogle(idToken, inviteCode);
+      setToken(access_token);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Google sign-in failed. Check the backend is running.");
     }
   }
 
@@ -85,6 +98,12 @@ export function RegisterPage() {
         >
           {isSubmitting ? "Creating account..." : "Create account"}
         </button>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="h-px flex-1 bg-border" />
+          or
+          <div className="h-px flex-1 bg-border" />
+        </div>
+        <GoogleSignInButton onCredential={handleGoogleCredential} />
         <p className="text-center text-sm text-muted-foreground">
           Already have an account?{" "}
           <Link to="/login" className="font-medium text-primary underline-offset-4 hover:underline">

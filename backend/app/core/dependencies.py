@@ -9,6 +9,8 @@ from app.auth.infrastructure import (
     SqlAlchemyUserCredentialLookup,
     SqlAlchemyUserRegistrationRepository,
 )
+from app.auth.google_oauth import verify_google_id_token
+from app.auth.google_sign_in import GoogleSignInUseCase
 from app.auth.registration import RegisterUserUseCase
 from app.auth.service import AuthService
 from app.core.config import get_settings
@@ -204,6 +206,33 @@ def get_register_user_use_case(
         auth_service,
         unit_of_work,
         required_invite_code=get_settings().registration_invite_code,
+    )
+
+
+def get_google_token_verifier():
+    """A dependency-injected seam around the one function that actually calls Google's network
+    (app.auth.google_oauth.verify_google_id_token) - overridden in e2e tests with a fake, the
+    same pattern get_content_store/get_embedding_provider already use, so no test ever needs a
+    real Google ID token or hits Google's real cert-fetching endpoint.
+    """
+    return verify_google_id_token
+
+
+def get_google_sign_in_use_case(
+    user_lookup: SqlAlchemyUserCredentialLookup = Depends(get_user_credential_lookup),
+    user_registration: SqlAlchemyUserRegistrationRepository = Depends(get_user_registration_repository),
+    auth_service: AuthService = Depends(get_auth_service),
+    unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
+    verify_id_token=Depends(get_google_token_verifier),
+) -> GoogleSignInUseCase:
+    return GoogleSignInUseCase(
+        user_lookup,
+        user_registration,
+        auth_service,
+        unit_of_work,
+        verify_id_token,
+        required_invite_code=get_settings().registration_invite_code,
+        google_client_id=get_settings().google_oauth_client_id,
     )
 
 

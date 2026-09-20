@@ -44,6 +44,10 @@ class UserCredential(Protocol):
 class UserCredentialLookup(Protocol):
     def get_by_username(self, username: str) -> UserCredential | None: ...
 
+    def get_by_google_subject(self, google_subject: str) -> UserCredential | None: ...
+
+    def get_by_email(self, email: str) -> UserCredential | None: ...
+
 
 class UserRegistrationRepository(Protocol):
     """A separate, narrow write capability (ADR-011) - deliberately not added to
@@ -54,3 +58,12 @@ class UserRegistrationRepository(Protocol):
     """
 
     def create(self, *, username: str, password_hash: str) -> UserCredential: ...
+
+    def create_from_google(
+        self, *, username: str, email: str | None, google_subject: str, display_name: str | None
+    ) -> UserCredential:
+        """Google Sign-In (2026-09-20): a separate method from `create()`, not an overload of
+        it - a Google-only account has no password to hash, and this port's own rationale above
+        is exactly "separate narrow ports rather than growing one interface to cover both."
+        """
+        ...

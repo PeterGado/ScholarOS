@@ -30,6 +30,12 @@ class User(Base):
     # valid bcrypt hash and will never verify successfully.
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Google Sign-In (2026-09-20): both nullable and independent of password_hash, since a
+    # Google-only account never sets one (the existing "" default never verifies - see the
+    # password_hash comment above). google_subject, not email, is the real identity key (Google's
+    # stable `sub` claim); email is stored for display/collision-detection only.
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
+    google_subject: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
     status: Mapped[UserStatus] = mapped_column(
         Enum(UserStatus, native_enum=False, length=16), nullable=False, default=UserStatus.ACTIVE
     )

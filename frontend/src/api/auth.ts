@@ -19,6 +19,14 @@ export async function register(
   return tokenResponseSchema.parse(response.data);
 }
 
+export async function loginWithGoogle(idToken: string, inviteCode?: string): Promise<TokenResponse> {
+  const response = await apiClient.post("/auth/google", {
+    id_token: idToken,
+    invite_code: inviteCode || null,
+  });
+  return tokenResponseSchema.parse(response.data);
+}
+
 export async function logout(): Promise<void> {
   await apiClient.post("/auth/logout");
 }

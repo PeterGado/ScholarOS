@@ -19,6 +19,16 @@ class RegisterRequest(BaseModel):
     invite_code: str | None = None
 
 
+class GoogleSignInRequest(BaseModel):
+    """Request body for POST /auth/google (2026-09-20). invite_code is always accepted, same
+    reasoning as RegisterRequest's own - it's only enforced for a brand-new account when
+    REGISTRATION_INVITE_CODE is configured; a returning Google user's is ignored entirely.
+    """
+
+    id_token: str = Field(..., min_length=1)
+    invite_code: str | None = None
+
+
 class TokenResponse(BaseModel):
     """Response body for POST /auth/login. Deliberately contains nothing but the token -
     no session_id, no timestamps, no internal fields (05_Constraints_and_Integrity.md §17).

@@ -42,10 +42,20 @@ class AuthService:
         user = self._users.get_by_username(username)
         if user is None or not verify_password(password, user.password_hash):
             raise InvalidCredentialsError()
+        return self._create_session(user.user_id)
 
+    def create_session_for_verified_identity(self, *, user_id: int) -> str:
+        """Issue a session for an identity already verified by another means (Google Sign-In,
+        2026-09-20: the ID token's signature is the verification, not a password) - skips
+        credential checking entirely, unlike login(). Never call this with a user_id that
+        hasn't actually been verified by the caller.
+        """
+        return self._create_session(user_id)
+
+    def _create_session(self, user_id: int) -> str:
         raw_token = generate_session_token()
         try:
-            self._sessions.create(user_id=user.user_id, token_hash=hash_session_token(raw_token))
+            self._sessions.create(user_id=user_id, token_hash=hash_session_token(raw_token))
             self._uow.commit()
         except Exception:
             self._uow.rollback()

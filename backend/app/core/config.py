@@ -9,6 +9,11 @@ class Settings(BaseSettings):
     environment: str = "development"
     database_url: str = "sqlite:///./scholaros.db"
     storage_root: str = "./data/documents"
+    # 2026-09-19 production security pass: no upload size limit existed anywhere before this -
+    # every upload route read an entire file into memory unconditionally regardless of size.
+    # 20MB comfortably covers real research documents/PDFs/docx writing samples at this
+    # project's scale without inviting a trivial memory/storage-cost abuse vector.
+    max_upload_size_bytes: int = 20 * 1024 * 1024
     # Object storage backend (ADR-004 §5's content-addressed store, now provider-agnostic):
     # "filesystem" (default, unchanged) or "s3" - any S3-compatible endpoint (MinIO, Cloudflare
     # R2, AWS S3 itself), selected by configuration exactly like the AI provider gateway
@@ -30,6 +35,10 @@ class Settings(BaseSettings):
     # config-only gate for a friends-testing phase, removable later (clear this var) without a
     # code change when the project owner is ready for fully public registration.
     registration_invite_code: str | None = None
+    # Google Sign-In (2026-09-20): the OAuth Client ID from Google Cloud Console, used to verify
+    # the `aud` claim of every ID token. Not a secret (it's also embedded in the frontend
+    # bundle as VITE_GOOGLE_CLIENT_ID) - unset means the feature is off (GoogleSignInNotConfiguredError).
+    google_oauth_client_id: str | None = None
     # AI Provider Abstraction (ADR-002; Backend_Slice2_Implementation_Plan.md §4, corrected
     # Stage 9): the first concrete provider is Google's Gemini via the native `google-genai`
     # SDK ("google_genai"), selected by configuration - never by business logic. The original
