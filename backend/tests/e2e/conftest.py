@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 import app.database.session as session_module
 from app.auth.hashing import hash_password
 from app.core.dependencies import get_content_store
+from app.core.rate_limit import limiter
 from app.database.session import build_engine, build_sessionmaker
 from app.database.shared_models import User
 from app.main import app
@@ -35,17 +36,26 @@ def client(db_engine, tmp_path):
     """A TestClient wired to an isolated per-test database (via the db_engine monkeypatch)
     and object store (via a dependency override) - never the real configured `scholaros.db`
     / `data/documents`.
+
+    Rate limiting (2026-09-19 production security pass) is disabled here: every request from
+    this TestClient shares one IP (`testclient`), so business-flow tests that legitimately make
+    more than a handful of requests to the same rate-limited route (e.g. uploading up to
+    MAX_RESEARCH_DOCUMENTS_PER_PROJECT documents) would otherwise be throttled by an unrelated
+    concern. Rate limiting itself is exercised separately in test_rate_limiting_api.py, which
+    re-enables it for the duration of its own tests.
     """
 
     def override_get_content_store() -> FilesystemStorage:
         return FilesystemStorage(tmp_path / "object-store")
 
     app.dependency_overrides[get_content_store] = override_get_content_store
+    limiter.enabled = False
     try:
         with TestClient(app) as test_client:
             yield test_client
     finally:
         app.dependency_overrides.clear()
+        limiter.enabled = True
 
 
 @pytest.fixture()

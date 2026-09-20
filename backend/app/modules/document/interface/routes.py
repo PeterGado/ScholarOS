@@ -1,8 +1,9 @@
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status
 
 from app.api.exception_handlers import ErrorResponse
+from app.core.config import get_settings
 from app.core.dependencies import (
     get_current_user_id,
     get_delete_research_document_use_case,
@@ -10,6 +11,8 @@ from app.core.dependencies import (
     get_retry_document_processing_use_case,
     get_upload_research_document_use_case,
 )
+from app.core.rate_limit import limiter
+from app.core.uploads import read_upload_within_limit
 from app.modules.document.application.use_cases import (
     DeleteResearchDocumentUseCase,
     ListProjectDocumentsUseCase,
@@ -31,14 +34,20 @@ router = APIRouter(prefix="/projects", tags=["documents"])
             "model": ErrorResponse,
             "description": "The referenced Project does not exist, or does not belong to the authenticated user.",
         },
+        413: {"model": ErrorResponse, "description": "The uploaded file exceeds the server's maximum allowed size."},
         422: {
             "model": ErrorResponse,
             "description": "Invalid title/format/content. Malformed request bodies use FastAPI's own validation error shape instead.",
         },
+        429: {"model": ErrorResponse, "description": "Too many uploads from this client."},
         500: {"model": ErrorResponse, "description": "Storage failure or unexpected internal failure."},
     },
 )
+# 2026-09-19 production security pass: an upload triggers real processing work (the Knowledge
+# Processing Pipeline, ADR-006) - 20/minute per IP bounds that cost without hindering normal use.
+@limiter.limit("20/minute")
 async def upload_research_document(
+    request: Request,
     project_id: int,
     file: UploadFile = File(...),
     title: str = Form(...),
@@ -61,7 +70,7 @@ async def upload_research_document(
     persistence happen in UploadResearchDocumentUseCase; exceptions are translated to HTTP
     responses by the handlers registered in app.api.exception_handlers.
     """
-    content = await file.read()
+    content = await read_upload_within_limit(file, max_bytes=get_settings().max_upload_size_bytes)
     extension = Path(file.filename).suffix.lstrip(".") if file.filename else ""
 
     document = use_case.execute(

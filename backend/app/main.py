@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi.middleware import SlowAPIMiddleware
 
 from app.ai.providers.factory import create_provider
 from app.api.exception_handlers import register_exception_handlers
@@ -10,6 +11,7 @@ from app.api.router import api_router
 from app.auth.provisioning import sync_configured_user
 from app.core.config import get_settings
 from app.core.dependencies import get_content_store
+from app.core.rate_limit import limiter
 from app.database import session as db_session_module
 from app.database.session import init_db
 from app.workers.executor import WorkItemExecutorLoop
@@ -66,6 +68,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="ScholarOS Backend", version="0.1.0", lifespan=lifespan)
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_settings().cors_allowed_origins,

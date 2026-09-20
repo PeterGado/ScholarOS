@@ -1,6 +1,7 @@
 import io
 
 from app.auth.hashing import hash_password
+from app.core.config import get_settings
 from app.database.session import build_sessionmaker
 from app.database.shared_models import User
 from app.modules.document.application.use_cases import MAX_RESEARCH_DOCUMENTS_PER_PROJECT
@@ -178,6 +179,39 @@ def test_uploading_beyond_the_per_project_limit_returns_409(client, auth_headers
     assert response.json()["error_type"] == "TooManyResearchDocumentsError"
     listing = client.get(f"/projects/{project_id}/documents", headers=auth_headers).json()["documents"]
     assert len(listing) == MAX_RESEARCH_DOCUMENTS_PER_PROJECT
+
+
+def test_uploading_a_file_over_the_size_limit_returns_413(client, auth_headers, monkeypatch):
+    monkeypatch.setattr(get_settings(), "max_upload_size_bytes", 10)
+    workspace = _create_workspace(client, auth_headers)
+    project_id = workspace["project"]["project_id"]
+
+    response = client.post(
+        f"/projects/{project_id}/documents",
+        files={"file": ("too-big.txt", io.BytesIO(b"x" * 11), "text/plain")},
+        data={"title": "Too big", "format": "txt"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 413
+    assert response.json()["error_type"] == "UploadTooLargeError"
+    listing = client.get(f"/projects/{project_id}/documents", headers=auth_headers).json()["documents"]
+    assert listing == []
+
+
+def test_uploading_a_file_exactly_at_the_size_limit_succeeds(client, auth_headers, monkeypatch):
+    monkeypatch.setattr(get_settings(), "max_upload_size_bytes", 10)
+    workspace = _create_workspace(client, auth_headers)
+    project_id = workspace["project"]["project_id"]
+
+    response = client.post(
+        f"/projects/{project_id}/documents",
+        files={"file": ("just-fits.txt", io.BytesIO(b"x" * 10), "text/plain")},
+        data={"title": "Just fits", "format": "txt"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 201
 
 
 def test_upload_missing_required_form_field_is_rejected(client, auth_headers):

@@ -1,8 +1,9 @@
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status
 
 from app.api.exception_handlers import ErrorResponse
+from app.core.config import get_settings
 from app.core.dependencies import (
     get_current_user_id,
     get_extract_writing_style_profile_use_case,
@@ -19,6 +20,8 @@ from app.core.dependencies import (
     get_supersede_memory_record_use_case,
     get_upload_writing_style_document_use_case,
 )
+from app.core.rate_limit import limiter
+from app.core.uploads import read_upload_within_limit
 from app.modules.writing.application.chat import (
     DeleteConversationUseCase,
     GetChatReplyStatusUseCase,
@@ -66,14 +69,19 @@ router = APIRouter(prefix="/writing", tags=["writing"])
     responses={
         401: {"model": ErrorResponse, "description": "Missing, malformed, unknown, or ended session."},
         404: {"model": ErrorResponse, "description": "The authenticated user has no Agent yet."},
+        413: {"model": ErrorResponse, "description": "The uploaded file exceeds the server's maximum allowed size."},
         422: {
             "model": ErrorResponse,
             "description": "Invalid title/format/content. Malformed request bodies use FastAPI's own validation error shape instead.",
         },
+        429: {"model": ErrorResponse, "description": "Too many uploads from this client."},
         500: {"model": ErrorResponse, "description": "Storage failure or unexpected internal failure."},
     },
 )
+# 2026-09-19 production security pass: same cost profile as /projects/{id}/documents uploads.
+@limiter.limit("20/minute")
 async def upload_writing_style_document(
+    request: Request,
     file: UploadFile = File(...),
     title: str = Form(...),
     format: str = Form(...),
@@ -92,7 +100,7 @@ async def upload_writing_style_document(
     No AI call, no retrieval, no Work Item, and no semantic style extraction happens here -
     this endpoint only accepts and persists source material for a later stage.
     """
-    content = await file.read()
+    content = await read_upload_within_limit(file, max_bytes=get_settings().max_upload_size_bytes)
     extension = Path(file.filename).suffix.lstrip(".") if file.filename else ""
 
     upload = use_case.execute(
@@ -139,12 +147,17 @@ def list_writing_style_documents(
         },
         409: {"model": ErrorResponse, "description": "This Writing Profile already has extracted characteristics."},
         422: {"model": ErrorResponse, "description": "No document_ids supplied, or a sample's content could not be used."},
+        429: {"model": ErrorResponse, "description": "Too many extraction requests from this client."},
         502: {"model": ErrorResponse, "description": "The AI provider request failed."},
         503: {"model": ErrorResponse, "description": "The AI provider is not configured."},
     },
 )
+# 2026-09-19 production security pass: this makes a real AI provider call - the most directly
+# cost-bearing route in the app alongside chat replies. 10/minute per IP.
+@limiter.limit("10/minute")
 async def extract_writing_style_profile(
-    request: ExtractWritingStyleProfileRequest,
+    request: Request,
+    payload: ExtractWritingStyleProfileRequest,
     user_id: int = Depends(get_current_user_id),
     use_case: ExtractWritingStyleProfileUseCase = Depends(get_extract_writing_style_profile_use_case),
 ) -> WritingStyleProfileExtractionResponse:
@@ -157,7 +170,7 @@ async def extract_writing_style_profile(
     (409) - the frozen model specifies no regeneration semantics for Profile Characteristic
     yet (Stage 4 report, Deviations).
     """
-    result = use_case.execute(user_id=user_id, document_ids=request.document_ids)
+    result = use_case.execute(user_id=user_id, document_ids=payload.document_ids)
     return WritingStyleProfileExtractionResponse.from_domain(result)
 
 
@@ -334,11 +347,16 @@ def list_conversation_messages(
             "description": "No such Conversation, or it does not belong to the authenticated user.",
         },
         422: {"model": ErrorResponse, "description": "Blank content."},
+        429: {"model": ErrorResponse, "description": "Too many messages sent from this client."},
     },
 )
+# 2026-09-19 production security pass: each message enqueues a real AI provider call (via the
+# Work Item executor) - the other most directly cost-bearing route alongside style extraction.
+@limiter.limit("20/minute")
 def send_chat_message(
+    request: Request,
     conversation_id: int,
-    request: SendChatMessageRequest,
+    payload: SendChatMessageRequest,
     user_id: int = Depends(get_current_user_id),
     use_case: SendChatMessageUseCase = Depends(get_send_chat_message_use_case),
 ) -> ChatReplyStatusResponse:
@@ -348,7 +366,7 @@ def send_chat_message(
     the AI reply is generated later, in the Work Item executor, and appears as a new Message
     once `GET /writing/conversations/{conversation_id}/messages` is polled again.
     """
-    work_item = use_case.execute(user_id=user_id, conversation_id=conversation_id, content=request.content)
+    work_item = use_case.execute(user_id=user_id, conversation_id=conversation_id, content=payload.content)
     return ChatReplyStatusResponse.from_domain(conversation_id=conversation_id, work_item=work_item)
 
 

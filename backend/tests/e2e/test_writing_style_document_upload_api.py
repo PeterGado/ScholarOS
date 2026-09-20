@@ -1,6 +1,7 @@
 import io
 
 from app.auth.hashing import hash_password
+from app.core.config import get_settings
 from app.database.session import build_sessionmaker
 from app.database.shared_models import User
 from app.modules.document.infrastructure.repositories import SqlAlchemyDocumentRepository
@@ -91,6 +92,21 @@ def test_upload_style_document_without_authentication_returns_401(client, auth_h
 
     assert response.status_code == 401
     assert response.json()["error_type"] == "InvalidSessionError"
+
+
+def test_uploading_a_style_document_over_the_size_limit_returns_413(client, auth_headers, monkeypatch):
+    monkeypatch.setattr(get_settings(), "max_upload_size_bytes", 10)
+    _create_workspace(client, auth_headers)
+
+    response = client.post(
+        "/writing/style-profile/documents",
+        files={"file": ("too-big.pdf", io.BytesIO(b"x" * 11), "application/pdf")},
+        data={"title": "Too big", "format": "pdf"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 413
+    assert response.json()["error_type"] == "UploadTooLargeError"
 
 
 def test_upload_style_document_for_a_user_with_no_agent_returns_404(client, auth_headers):

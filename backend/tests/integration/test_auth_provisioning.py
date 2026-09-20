@@ -133,27 +133,38 @@ def test_case_b_stale_hash_is_synchronized_to_the_configured_hash(db_session):
     assert user.password_hash != stale_hash
 
 
-def test_case_c_existing_user_with_a_different_username_is_renamed_to_match_configuration(db_session):
-    """The database row is a *cache* of configuration (ADR-010 Decision item 1) - a username
-    change updates that same cached identity rather than creating a second row.
+def test_case_c_a_changed_configured_username_provisions_a_new_row_and_leaves_the_old_one(db_session):
+    """2026-09-19: since ADR-011 self-service registration, a lone existing row is no longer
+    guaranteed to be the pre-provisioned owner account rather than a real registered user, so
+    renaming "the only row" is no longer safe. A changed AUTH_USERNAME now provisions a new row
+    for the new username and leaves whatever row used to hold the old one untouched - it simply
+    stops being synced by this function, exactly like any other non-owner account.
     """
     db_session.add(User(username="old-name", password_hash=VALID_HASH))
     db_session.commit()
 
     sync_configured_user(db_session, username="new-name", password_hash=VALID_HASH)
 
-    assert db_session.query(User).count() == 1
-    assert db_session.query(User).one().username == "new-name"
+    assert db_session.query(User).count() == 2
+    usernames = {user.username for user in db_session.query(User).all()}
+    assert usernames == {"old-name", "new-name"}
 
 
-def test_multiple_existing_users_raises_rather_than_guessing(db_session):
-    """A genuine ambiguity ADR-010 does not resolve - reported, not silently decided."""
-    db_session.add(User(username="a", password_hash=VALID_HASH))
-    db_session.add(User(username="b", password_hash=VALID_HASH))
+def test_other_existing_users_are_left_untouched(db_session):
+    """2026-09-19: real production users created via self-service registration (ADR-011) must
+    not block, or be affected by, provisioning the separate owner account - the exact scenario
+    that crash-looped the real deployed app before this fix (`sync_configured_user` used to
+    raise whenever more than one User row existed at all).
+    """
+    db_session.add(User(username="a-friend", password_hash=VALID_HASH))
+    db_session.add(User(username="another-friend", password_hash=VALID_HASH))
     db_session.commit()
 
-    with pytest.raises(InvalidAuthConfigurationError):
-        sync_configured_user(db_session, username="researcher", password_hash=VALID_HASH)
+    sync_configured_user(db_session, username="researcher", password_hash=VALID_HASH)
+
+    assert db_session.query(User).count() == 3
+    researcher = db_session.query(User).filter(User.username == "researcher").one()
+    assert researcher.password_hash == VALID_HASH
 
 
 # --- Idempotency -------------------------------------------------------------------

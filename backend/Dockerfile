@@ -18,4 +18,7 @@ EXPOSE 8000
 # --workers 1: the in-process Work Item executor loop (ADR-006) assumes exactly one process -
 # running more would mean multiple executors polling the same queue redundantly. Fly.io scales
 # by running more machines, not more uvicorn workers per machine, for this reason.
-CMD alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
+# --proxy-headers: Fly.io terminates TLS and proxies every request to this container, so without
+# this flag every request appears to come from Fly's internal proxy IP - the IP-based rate
+# limiting added 2026-09-19 needs the real client IP from X-Forwarded-For instead.
+CMD alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1 --proxy-headers
