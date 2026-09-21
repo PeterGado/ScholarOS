@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Enum, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Enum, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
@@ -57,6 +57,11 @@ class KnowledgeChunk(Base):
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
+    # 2026-09-21: real-traffic audit - the hottest missing index found. Every search request and
+    # every chat message (which always searches first) filters chunks by exactly
+    # (agent_id, status) via a join in KnowledgeChunkEmbeddingRepository.list_by_agent_id.
+    __table_args__ = (Index("ix_knowledge_chunks_agent_id_status", "agent_id", "status"),)
+
 
 class ChunkEvidenceLink(Base):
     """First-class evidence association between a Knowledge Chunk and the Research Document
@@ -64,7 +69,15 @@ class ChunkEvidenceLink(Base):
     """
 
     __tablename__ = "chunk_evidence_links"
-    __table_args__ = (UniqueConstraint("chunk_id", "document_id", name="uq_chunk_evidence_link_chunk_document"),)
+    __table_args__ = (
+        UniqueConstraint("chunk_id", "document_id", name="uq_chunk_evidence_link_chunk_document"),
+        # 2026-09-21: only document_id needs a new index here - chunk_id is already the leading
+        # column of the unique constraint above, and Postgres can use a composite index's
+        # leading column alone (the btree prefix rule) for a plain `WHERE chunk_id = ?` query.
+        # document_id is the second column, which that same index cannot serve efficiently for
+        # `WHERE document_id = ?` alone - exactly what get_by_document_id/list_by_document_id use.
+        Index("ix_chunk_evidence_links_document_id", "document_id"),
+    )
 
     link_id: Mapped[int] = mapped_column(primary_key=True)
     chunk_id: Mapped[int] = mapped_column(ForeignKey("knowledge_chunks.chunk_id"), nullable=False)

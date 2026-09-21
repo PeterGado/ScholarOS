@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Enum, ForeignKey, String
+from sqlalchemy import Enum, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
@@ -42,3 +42,8 @@ class ResearchDocument(Base):
     ingested_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
     processed_at: Mapped[datetime | None] = mapped_column(nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+    # 2026-09-21: real-traffic audit found this FK column filtered on every "list a project's
+    # documents" call (ListProjectDocumentsUseCase) with no index at all - Postgres only
+    # auto-indexes primary keys/unique constraints, not plain FK columns.
+    __table_args__ = (Index("ix_research_documents_project_id", "project_id"),)

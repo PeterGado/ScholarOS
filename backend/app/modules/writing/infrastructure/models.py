@@ -83,6 +83,9 @@ class ProfileCharacteristic(Base):
     """A single preserved stylistic attribute (04_Logical_Data_Model.md §3.12; DR-010, DR-012)."""
 
     __tablename__ = "profile_characteristics"
+    # 2026-09-21: real-traffic audit - filtered on every "list a Writing Profile's
+    # characteristics" call, with no index at all before this.
+    __table_args__ = (Index("ix_profile_characteristics_profile_id", "profile_id"),)
 
     characteristic_id: Mapped[int] = mapped_column(primary_key=True)
     profile_id: Mapped[int] = mapped_column(ForeignKey("writing_profiles.profile_id"), nullable=False)
@@ -100,6 +103,10 @@ class ProfileCharacteristicSource(Base):
     """
 
     __tablename__ = "profile_characteristic_sources"
+    # 2026-09-21: real-traffic audit - no new index needed here. The only real query against
+    # this table filters by characteristic_id alone (list_by_characteristic_id), which is
+    # already the leading column of the unique constraint below - Postgres can use a composite
+    # index's leading column alone (the btree prefix rule) for that lookup.
     __table_args__ = (
         UniqueConstraint("characteristic_id", "document_id", name="uq_profile_characteristic_source"),
     )
@@ -118,6 +125,9 @@ class MemoryRecord(Base):
     """
 
     __tablename__ = "memory_records"
+    # 2026-09-21: real-traffic audit - runs on every chat reply's context assembly
+    # (list_current_by_agent_id filters exactly agent_id + status), no index at all before this.
+    __table_args__ = (Index("ix_memory_records_agent_id_status", "agent_id", "status"),)
 
     record_id: Mapped[int] = mapped_column(primary_key=True)
     agent_id: Mapped[int] = mapped_column(ForeignKey("agents.agent_id"), nullable=False)
@@ -160,6 +170,9 @@ class MemoryProvenanceLink(Base):
             "AND conversation_id IS NULL AND element_id IS NULL)",
             name="ck_memory_provenance_link_exclusive_target",
         ),
+        # 2026-09-21: real-traffic audit - provenance lookup per Memory Record
+        # (list_by_record_id), no index at all before this.
+        Index("ix_memory_provenance_links_record_id", "record_id"),
     )
 
     link_id: Mapped[int] = mapped_column(primary_key=True)
@@ -177,6 +190,9 @@ class Conversation(Base):
     """Project-scoped interaction history (04_Logical_Data_Model.md §3.9; WR-034)."""
 
     __tablename__ = "conversations"
+    # 2026-09-21: real-traffic audit - listing a user's conversations filters exactly
+    # agent_id + deleted_at (ListConversationsUseCase), no index at all before this.
+    __table_args__ = (Index("ix_conversations_agent_id_deleted_at", "agent_id", "deleted_at"),)
 
     conversation_id: Mapped[int] = mapped_column(primary_key=True)
     agent_id: Mapped[int] = mapped_column(ForeignKey("agents.agent_id"), nullable=False)
@@ -193,6 +209,10 @@ class Message(Base):
     """An individual exchange within a Conversation (04_Logical_Data_Model.md §3.10; AIR-006)."""
 
     __tablename__ = "messages"
+    # 2026-09-21: real-traffic audit - no new index needed here. Every real query
+    # (count_by_conversation_id/list_by_conversation_id) filters `WHERE conversation_id = ?`
+    # alone, and conversation_id is already the leading column of the unique constraint below,
+    # so the btree-prefix rule already serves it without a dedicated index.
     __table_args__ = (UniqueConstraint("conversation_id", "sequence", name="uq_message_conversation_sequence"),)
 
     message_id: Mapped[int] = mapped_column(primary_key=True)
@@ -224,6 +244,9 @@ class MessageContextLink(Base):
             "AND element_id IS NULL AND chunk_id IS NULL)",
             name="ck_message_context_link_exclusive_target",
         ),
+        # 2026-09-21: real-traffic audit - context-link lookup per message (list_by_message_id),
+        # no index at all before this.
+        Index("ix_message_context_links_message_id", "message_id"),
     )
 
     link_id: Mapped[int] = mapped_column(primary_key=True)
