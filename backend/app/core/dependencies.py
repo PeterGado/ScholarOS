@@ -16,6 +16,7 @@ from app.auth.google_sign_in import GoogleSignInUseCase
 from app.auth.registration import RegisterUserUseCase
 from app.auth.service import AuthService
 from app.core.config import get_settings
+from app.database.rls_context import current_user_id
 from app.database.session import get_db
 from app.database.unit_of_work import SqlAlchemyUnitOfWork
 from app.modules.agent.application.reset_workspace import ResetAgentWorkspaceUseCase
@@ -269,7 +270,15 @@ def get_current_user_id(
     registered in app.api.exception_handlers. There is exactly one identity source: the
     authenticated session. No bootstrap fallback, no client-supplied user_id.
     """
-    return auth_service.verify_token(raw_token).user_id
+    user_id = auth_service.verify_token(raw_token).user_id
+    # Row-Level Security (2026-09-21): sets app.database.rls_context.current_user_id, the
+    # ContextVar the Postgres-only "begin" listener in app.database.session reads to populate
+    # every RLS policy's session variable for the rest of this request - set here because this
+    # is the exact moment identity becomes known (verify_token's own commit, immediately
+    # above, necessarily runs with no user context yet - see the RLS migration's docstring for
+    # why that's fine).
+    current_user_id.set(user_id)
+    return user_id
 
 
 def get_embedding_provider() -> EmbeddingProvider:

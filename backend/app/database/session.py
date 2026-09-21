@@ -4,6 +4,7 @@ from sqlalchemy import Engine, create_engine, event, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import get_settings
+from app.database.rls_context import current_user_id
 
 
 def normalize_database_url(database_url: str) -> str:
@@ -85,6 +86,32 @@ def build_engine(database_url: str) -> Engine:
         def _emit_explicit_sqlite_begin(conn):  # noqa: ANN001
             conn.exec_driver_sql("BEGIN")
 
+    else:
+        # Row-Level Security (2026-09-21): every RLS policy (see the "add row level security
+        # policies" migration) reads a `app.current_user_id` Postgres session variable, scoped
+        # per-transaction via `set_config(..., true)` - the function form of `SET LOCAL`, which
+        # takes a normal parameterized value so there's never any string-escaping to get right.
+        # Fires on every new transaction, not once per request/connection: a single request
+        # routinely does 2-3+ commits on the same pooled connection (e.g. AuthService.
+        # verify_token's own commit at request start, then a use case's own commit(s)), and
+        # `SET LOCAL`'s scope ends with each commit - re-issuing it on every "begin" is what
+        # makes that safe rather than something to special-case per commit site. Also required
+        # because Neon's own connection string routes through its pooler (transaction-mode
+        # PgBouncer) - a session-level SET would leak across unrelated requests that happen to
+        # share a pooled physical connection at that layer, on top of SQLAlchemy's own pool.
+        # When no user is authenticated yet (e.g. the token-lookup transaction inside
+        # verify_token itself, before the user id is known), this simply does nothing - every
+        # policy resolves the missing session variable to NULL (`current_setting(..., true)`),
+        # and `column = NULL` is always false in SQL, so RLS fails closed with no special-casing
+        # needed anywhere for the pre-authentication case.
+        @event.listens_for(engine, "begin")
+        def _set_rls_user_context(conn):  # noqa: ANN001
+            user_id = current_user_id.get()
+            if user_id is not None:
+                conn.exec_driver_sql(
+                    "SELECT set_config('app.current_user_id', %s, true)", (str(user_id),)
+                )
+
     return engine
 
 
@@ -102,6 +129,10 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+        # Row-Level Security (2026-09-21): reset so this request's user id never leaks into
+        # whatever request a worker task handles next - piggybacks on this dependency's own
+        # existing per-request `finally`, no separate middleware needed.
+        current_user_id.set(None)
 
 
 def init_db(target_engine: Engine | None = None) -> None:

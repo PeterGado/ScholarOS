@@ -8,6 +8,13 @@ class Settings(BaseSettings):
 
     environment: str = "development"
     database_url: str = "sqlite:///./scholaros.db"
+    # Row-Level Security (2026-09-21): Postgres-only, unused until the app is actually cut over
+    # to a restricted, non-owner DB role (see the RLS rollout plan) - falls back to
+    # `database_url` when unset, so SQLite dev/test and the pre-cutover deploy steps are
+    # completely unaffected. `database_url` itself keeps being used for Alembic migrations
+    # (alembic/env.py reads it directly, unchanged) - the owner role always runs DDL, the app
+    # role never gets DDL rights even if misconfigured.
+    app_database_url: str | None = None
     storage_root: str = "./data/documents"
     # 2026-09-19 production security pass: no upload size limit existed anywhere before this -
     # every upload route read an entire file into memory unconditionally regardless of size.
