@@ -18,6 +18,7 @@ if config.config_file_name is not None:
 # runs - the exact same import list `app.database.session.init_db` uses, kept in sync
 # deliberately (a model missing from one but not the other would silently diverge what
 # `create_all` and Alembic each believe the schema is).
+from app.ai.models import AiUsageRecord  # noqa: E402,F401
 from app.auth.models import AuthSession  # noqa: E402,F401
 from app.database.base import Base  # noqa: E402
 from app.database.shared_models import User  # noqa: E402,F401

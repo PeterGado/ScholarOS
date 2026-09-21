@@ -1,5 +1,6 @@
 import pytest
 
+from app.ai.usage_guard import AiUsageGuard
 from app.database.session import build_engine, build_sessionmaker, init_db
 from app.database.shared_models import User
 from app.database.unit_of_work import SqlAlchemyUnitOfWork
@@ -50,7 +51,9 @@ def _upload_document(session, storage, content: bytes, *, format: str = "txt") -
     )
 
     documents = SqlAlchemyDocumentRepository(session)
-    upload_use_case = UploadResearchDocumentUseCase(documents, projects, agents, storage, uow, WorkItemRepository(session))
+    upload_use_case = UploadResearchDocumentUseCase(
+        documents, projects, agents, storage, uow, WorkItemRepository(session), AiUsageGuard(None, None, daily_token_cap=None)
+    )
     document = upload_use_case.execute(
         project_id=workspace.project.project_id,
         user_id=user.user_id,

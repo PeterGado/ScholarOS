@@ -1,5 +1,6 @@
 import pytest
 
+from app.ai.usage_guard import AiUsageGuard
 from app.modules.agent.domain.entities import Agent
 from app.modules.agent.domain.repositories import AgentRepository
 from app.modules.document.application.use_cases import (
@@ -132,7 +133,9 @@ def _build_use_case(project_id=1, agents: dict[int, Agent] | None = None):
     content_store = FakeContentStore()
     uow = FakeUnitOfWork()
     work_items = FakeWorkItemEnqueuer()
-    use_case = UploadResearchDocumentUseCase(documents, projects, agent_repository, content_store, uow, work_items)
+    use_case = UploadResearchDocumentUseCase(
+        documents, projects, agent_repository, content_store, uow, work_items, AiUsageGuard(None, None, daily_token_cap=None)
+    )
     return use_case, documents, content_store, uow, work_items
 
 

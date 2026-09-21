@@ -1,6 +1,7 @@
 import pytest
 
 from app.ai.exceptions import ProviderRequestError
+from app.ai.usage_guard import AiUsageGuard
 from app.database.session import build_engine, build_sessionmaker, init_db
 from app.database.shared_models import User
 from app.database.unit_of_work import SqlAlchemyUnitOfWork
@@ -99,7 +100,8 @@ def _build_extraction_use_case(session, storage, provider):
     sources = SqlAlchemyProfileCharacteristicSourceRepository(session)
     uow = SqlAlchemyUnitOfWork(session)
     use_case = ExtractWritingStyleProfileUseCase(
-        agents, projects, documents, storage, profiles, characteristics, sources, provider, uow
+        agents, projects, documents, storage, profiles, characteristics, sources, provider, uow,
+        AiUsageGuard(None, None, daily_token_cap=None),
     )
     return use_case, profiles, characteristics, sources
 

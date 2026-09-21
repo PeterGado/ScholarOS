@@ -8,6 +8,7 @@ import logging
 
 import pytest
 
+from app.ai.usage_guard import AiUsageGuard
 from app.database.session import build_engine, build_sessionmaker, init_db
 from app.database.shared_models import User
 from app.database.unit_of_work import SqlAlchemyUnitOfWork
@@ -115,6 +116,7 @@ def _search_knowledge_use_case(session) -> SearchKnowledgeUseCase:
         SqlAlchemyChunkEvidenceLinkRepository(session),
         SqlAlchemyDocumentRepository(session),
         SqlAlchemyLexicalSearchRepository(session),
+        AiUsageGuard(None, None, daily_token_cap=None),
     )
 
 
@@ -131,6 +133,7 @@ def _send_and_process(session, storage, workspace, conversation_id, content, pro
         WorkItemRepository(session),
         storage,
         SqlAlchemyUnitOfWork(session),
+        AiUsageGuard(None, None, daily_token_cap=None),
     )
     use_case.execute(user_id=workspace.agent.user_id, conversation_id=conversation_id, content=content)
     process_one_work_item(

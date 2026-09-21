@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from app.ai.usage_guard import AiUsageGuard
 from app.core.unit_of_work import UnitOfWork
 from app.modules.agent.domain.repositories import AgentRepository
 from app.modules.document.domain.entities import ResearchDocument
@@ -55,6 +56,7 @@ class UploadResearchDocumentUseCase:
         content_store: ContentStore,
         unit_of_work: UnitOfWork,
         work_item_enqueuer: WorkItemEnqueuer,
+        ai_usage_guard: AiUsageGuard,
     ) -> None:
         self._documents = document_repository
         self._projects = project_repository
@@ -62,6 +64,7 @@ class UploadResearchDocumentUseCase:
         self._content_store = content_store
         self._uow = unit_of_work
         self._work_items = work_item_enqueuer
+        self._ai_usage_guard = ai_usage_guard
 
     def execute(
         self,
@@ -89,6 +92,13 @@ class UploadResearchDocumentUseCase:
 
         if not content:
             raise EmptyDocumentContentError()
+
+        # AI usage cap (2026-09-21 security pass): estimated directly from the raw uploaded
+        # bytes (classification + embedding cost, later, in the Work Item executor, scales with
+        # document size) - a byte-length calc, not app.ai.token_estimate.estimate_tokens(str),
+        # since content is bytes, not decoded text (and decoding untrusted upload bytes just to
+        # estimate a count isn't worth the cost/risk).
+        self._ai_usage_guard.check_and_record(user_id=user_id, estimated_tokens=max(1, len(content) // 4))
 
         content_reference = self._content_store.save(content, extension=extension)
 

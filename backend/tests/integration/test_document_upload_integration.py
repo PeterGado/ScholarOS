@@ -1,5 +1,6 @@
 import pytest
 
+from app.ai.usage_guard import AiUsageGuard
 from app.database.session import build_engine, build_sessionmaker, init_db
 from app.database.shared_models import User
 from app.database.unit_of_work import SqlAlchemyUnitOfWork
@@ -53,7 +54,9 @@ def test_upload_persists_document_and_writes_content_to_storage(session, storage
     projects = SqlAlchemyProjectRepository(session)
     agents = SqlAlchemyAgentRepository(session)
     uow = SqlAlchemyUnitOfWork(session)
-    use_case = UploadResearchDocumentUseCase(documents, projects, agents, storage, uow, WorkItemRepository(session))
+    use_case = UploadResearchDocumentUseCase(
+        documents, projects, agents, storage, uow, WorkItemRepository(session), AiUsageGuard(None, None, daily_token_cap=None)
+    )
 
     document = use_case.execute(
         project_id=workspace.project.project_id,
@@ -78,7 +81,9 @@ def test_upload_against_a_nonexistent_project_writes_nothing(session, storage, t
     projects = SqlAlchemyProjectRepository(session)
     agents = SqlAlchemyAgentRepository(session)
     uow = SqlAlchemyUnitOfWork(session)
-    use_case = UploadResearchDocumentUseCase(documents, projects, agents, storage, uow, WorkItemRepository(session))
+    use_case = UploadResearchDocumentUseCase(
+        documents, projects, agents, storage, uow, WorkItemRepository(session), AiUsageGuard(None, None, daily_token_cap=None)
+    )
 
     with pytest.raises(ProjectNotFoundError):
         use_case.execute(project_id=999, user_id=workspace.agent.user_id, title="Orphan", format="pdf", content=b"data")
@@ -93,7 +98,9 @@ def test_multiple_documents_can_be_uploaded_to_the_same_project(session, storage
     projects = SqlAlchemyProjectRepository(session)
     agents = SqlAlchemyAgentRepository(session)
     uow = SqlAlchemyUnitOfWork(session)
-    use_case = UploadResearchDocumentUseCase(documents, projects, agents, storage, uow, WorkItemRepository(session))
+    use_case = UploadResearchDocumentUseCase(
+        documents, projects, agents, storage, uow, WorkItemRepository(session), AiUsageGuard(None, None, daily_token_cap=None)
+    )
 
     use_case.execute(
         project_id=workspace.project.project_id, user_id=workspace.agent.user_id, title="A", format="pdf", content=b"content A"
@@ -120,7 +127,9 @@ def test_upload_by_a_different_user_against_someone_elses_project_is_rejected(se
     projects = SqlAlchemyProjectRepository(session)
     agents = SqlAlchemyAgentRepository(session)
     uow = SqlAlchemyUnitOfWork(session)
-    use_case = UploadResearchDocumentUseCase(documents, projects, agents, storage, uow, WorkItemRepository(session))
+    use_case = UploadResearchDocumentUseCase(
+        documents, projects, agents, storage, uow, WorkItemRepository(session), AiUsageGuard(None, None, daily_token_cap=None)
+    )
 
     with pytest.raises(ProjectNotFoundError):
         use_case.execute(

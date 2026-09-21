@@ -1,5 +1,6 @@
 import pytest
 
+from app.ai.usage_guard import AiUsageGuard
 from app.modules.agent.domain.entities import Agent
 from app.modules.agent.domain.exceptions import AgentNotFoundForUserError
 from app.modules.agent.domain.repositories import AgentRepository
@@ -143,6 +144,7 @@ def _build_use_case(
         evidence_links or FakeEvidenceLinkRepository(),
         documents or FakeDocumentRepository(),
         lexical_search or FakeLexicalSearchRepository(),
+        AiUsageGuard(None, None, daily_token_cap=None),
     )
 
 

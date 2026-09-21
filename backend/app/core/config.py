@@ -50,6 +50,15 @@ class Settings(BaseSettings):
     ai_api_key: str | None = None
     ai_model: str = "gemini-3.6-flash"
     ai_embedding_model: str = "gemini-embedding-001"
+    # AI usage cap (2026-09-21 security pass, ADR-011's deferred per-user quota item): rate
+    # limiting bounds the *rate* of AI-triggering requests, not the *total* - a sustained user
+    # within the rate limit could still drive unlimited real Gemini cost. Defaults ON (unlike
+    # registration_invite_code/google_oauth_client_id, which default off because they need
+    # external setup first) - this needs none, so it closes the gap the moment this deploys.
+    # 500,000 tokens/user/24h is a rough starting point (roughly a few hundred typical chat
+    # exchanges - app.ai.token_estimate's chars/4 heuristic, not exact billing), tunable via
+    # this var once real usage is observed. Set to null to disable entirely.
+    ai_daily_token_cap_per_user: int | None = 500_000
     # Frontend milestone (2026-09-16): a browser-based frontend on its own origin (the Vite
     # dev server) cannot reach this API at all without CORS headers - not a design choice,
     # every cross-origin browser request is blocked by default. Defaults cover the Vite dev

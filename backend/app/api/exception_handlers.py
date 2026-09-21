@@ -3,7 +3,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from slowapi.errors import RateLimitExceeded
 
-from app.ai.exceptions import ProviderConfigurationError, ProviderRequestError
+from app.ai.exceptions import AiUsageQuotaExceededError, ProviderConfigurationError, ProviderRequestError
 from app.auth.exceptions import (
     GoogleAccountEmailConflictError,
     GoogleSignInNotConfiguredError,
@@ -14,7 +14,7 @@ from app.auth.exceptions import (
     UsernameAlreadyTakenError,
     WeakPasswordError,
 )
-from app.core.exceptions import ScholarOSError, UploadTooLargeError
+from app.core.exceptions import ScholarOSError, UnsupportedUploadFormatError, UploadTooLargeError
 from app.modules.agent.domain.exceptions import AgentAlreadyExistsForUserError, AgentNotFoundForUserError
 from app.modules.document.domain.exceptions import (
     DocumentCannotBeDeletedError,
@@ -118,6 +118,14 @@ async def _handle_rate_limit_exceeded(request: Request, exc: Exception) -> JSONR
     return response
 
 
+async def _handle_usage_quota_exceeded(request: Request, exc: Exception) -> JSONResponse:
+    # Same 429 status as rate limiting, but a distinct error_type - "out of budget for today",
+    # not "slow down." No Retry-After: unlike a rate-limit window (a fixed number of seconds),
+    # the usage window is a rolling 24h ledger sum, so there is no single well-defined moment to
+    # point a client back to.
+    return _respond(status.HTTP_429_TOO_MANY_REQUESTS, type(exc).__name__, str(exc))
+
+
 async def _handle_domain_error(request: Request, exc: Exception) -> JSONResponse:
     """Fallback for any ScholarOSError subclass not given a more specific mapping above."""
     return _respond(status.HTTP_400_BAD_REQUEST, type(exc).__name__, str(exc))
@@ -163,6 +171,8 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(GoogleAccountEmailConflictError, _handle_conflict)
     app.add_exception_handler(GoogleSignInNotConfiguredError, _handle_service_unavailable)
     app.add_exception_handler(UploadTooLargeError, _handle_payload_too_large)
+    app.add_exception_handler(UnsupportedUploadFormatError, _handle_invalid_input)
+    app.add_exception_handler(AiUsageQuotaExceededError, _handle_usage_quota_exceeded)
     app.add_exception_handler(RateLimitExceeded, _handle_rate_limit_exceeded)
     app.add_exception_handler(ProviderConfigurationError, _handle_provider_unavailable)
     app.add_exception_handler(ProviderRequestError, _handle_provider_request_failure)

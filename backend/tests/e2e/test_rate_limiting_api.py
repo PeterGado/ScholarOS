@@ -124,6 +124,21 @@ def test_send_chat_message_beyond_the_per_minute_limit_returns_429(client, auth_
     assert response.json()["error_type"] == "RateLimitExceeded"
 
 
+def test_search_beyond_the_per_minute_limit_returns_429(client, auth_headers):
+    """2026-09-21: found with no rate limit at all while mapping AI call sites for the usage-cap
+    work - now fixed, same 20/minute tier as the other AI-adjacent routes.
+    """
+    _create_workspace(client, auth_headers)
+    for _ in range(20):
+        response = client.get("/knowledge/search", params={"q": "anything"}, headers=auth_headers)
+        assert response.status_code == 200
+
+    response = client.get("/knowledge/search", params={"q": "one too many"}, headers=auth_headers)
+
+    assert response.status_code == 429
+    assert response.json()["error_type"] == "RateLimitExceeded"
+
+
 def test_a_429_response_includes_a_retry_after_header(client, provisioned_user):
     for _ in range(10):
         client.post("/auth/login", json={"username": AUTH_USERNAME, "password": "wrong-password"})

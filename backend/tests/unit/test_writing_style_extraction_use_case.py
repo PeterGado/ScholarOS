@@ -1,6 +1,7 @@
 import pytest
 
 from app.ai.exceptions import ProviderRequestError
+from app.ai.usage_guard import AiUsageGuard
 from app.modules.agent.domain.entities import Agent
 from app.modules.agent.domain.exceptions import AgentNotFoundForUserError
 from app.modules.agent.domain.repositories import AgentRepository
@@ -204,7 +205,8 @@ def _build(
     uow = FakeUnitOfWork()
 
     use_case = ExtractWritingStyleProfileUseCase(
-        agent_repository, project_repository, document_repository, content_store, profiles, characteristics, sources, provider, uow
+        agent_repository, project_repository, document_repository, content_store, profiles, characteristics, sources, provider, uow,
+        AiUsageGuard(None, None, daily_token_cap=None),
     )
     return use_case, profiles, characteristics, sources, uow, provider
 

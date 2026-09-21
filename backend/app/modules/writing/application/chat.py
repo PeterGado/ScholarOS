@@ -1,6 +1,8 @@
 import logging
 
 from app.ai.providers.base import TextGenerationProvider
+from app.ai.token_estimate import estimate_tokens
+from app.ai.usage_guard import AiUsageGuard
 from app.core.unit_of_work import UnitOfWork
 from app.modules.agent.domain.exceptions import AgentNotFoundForUserError
 from app.modules.agent.domain.repositories import AgentRepository
@@ -178,6 +180,7 @@ class SendChatMessageUseCase:
         work_item_enqueuer: WorkItemEnqueuer,
         content_store: ContentStore,
         unit_of_work: UnitOfWork,
+        ai_usage_guard: AiUsageGuard,
     ) -> None:
         self._conversations = conversation_repository
         self._messages = message_repository
@@ -190,6 +193,7 @@ class SendChatMessageUseCase:
         self._work_items = work_item_enqueuer
         self._content_store = content_store
         self._uow = unit_of_work
+        self._ai_usage_guard = ai_usage_guard
 
     def execute(self, *, user_id: int, conversation_id: int, content: str) -> WorkItem:
         conversation = self._conversations.get_by_id(conversation_id)
@@ -264,6 +268,14 @@ class SendChatMessageUseCase:
             )
         )
         self._uow.commit()
+
+        # AI usage cap (2026-09-21 security pass): estimated from the actual prompt the Work
+        # Item's later generate() call will use, via the same assemble_context() call the
+        # executor makes - reused, not duplicated logic, just called one step earlier so the
+        # cap can be checked before enqueueing rather than after the fact.
+        self._ai_usage_guard.check_and_record(
+            user_id=user_id, estimated_tokens=estimate_tokens(assemble_context(context).prompt)
+        )
 
         payload_reference, idempotency_key = build_generate_chat_reply_payload_reference(
             conversation_id, user_message.message_id, context, self._content_store

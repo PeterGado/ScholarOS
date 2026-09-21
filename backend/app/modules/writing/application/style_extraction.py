@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 
 from app.ai.providers.base import TextGenerationProvider
+from app.ai.token_estimate import estimate_tokens
+from app.ai.usage_guard import AiUsageGuard
 from app.core.unit_of_work import UnitOfWork
 from app.modules.agent.domain.exceptions import AgentNotFoundForUserError
 from app.modules.agent.domain.repositories import AgentRepository
@@ -97,6 +99,7 @@ class ExtractWritingStyleProfileUseCase:
         profile_characteristic_source_repository: ProfileCharacteristicSourceRepository,
         text_provider: TextGenerationProvider,
         unit_of_work: UnitOfWork,
+        ai_usage_guard: AiUsageGuard,
     ) -> None:
         self._agents = agent_repository
         self._projects = project_repository
@@ -107,6 +110,7 @@ class ExtractWritingStyleProfileUseCase:
         self._sources = profile_characteristic_source_repository
         self._text_provider = text_provider
         self._uow = unit_of_work
+        self._ai_usage_guard = ai_usage_guard
 
     def execute(self, *, user_id: int, document_ids: list[int]) -> WritingStyleProfileExtraction:
         agent = self._agents.get_by_user_id(user_id)
@@ -126,6 +130,11 @@ class ExtractWritingStyleProfileUseCase:
         if profile is not None and self._characteristics.list_by_profile_id(profile.profile_id):
             raise WritingProfileAlreadyExtractedError(profile_id=profile.profile_id)
 
+        # AI usage cap (2026-09-21 security pass): estimated from the pooled sample text that
+        # extract_style_characteristics will actually send to the provider.
+        self._ai_usage_guard.check_and_record(
+            user_id=user_id, estimated_tokens=estimate_tokens("\n\n".join(samples))
+        )
         extracted = extract_style_characteristics(samples, self._text_provider)
 
         try:

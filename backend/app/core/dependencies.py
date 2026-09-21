@@ -3,6 +3,8 @@ from sqlalchemy.orm import Session
 
 from app.ai.providers.base import EmbeddingProvider, TextGenerationProvider
 from app.ai.providers.factory import create_provider
+from app.ai.usage_guard import AiUsageGuard
+from app.ai.usage_infrastructure import SqlAlchemyAiUsageRepository
 from app.auth.dependencies import extract_bearer_token
 from app.auth.infrastructure import (
     SqlAlchemyAuthSessionRepository,
@@ -98,6 +100,17 @@ def get_unit_of_work(db: Session = Depends(get_db)) -> SqlAlchemyUnitOfWork:
     return SqlAlchemyUnitOfWork(db)
 
 
+def get_ai_usage_repository(db: Session = Depends(get_db)) -> SqlAlchemyAiUsageRepository:
+    return SqlAlchemyAiUsageRepository(db)
+
+
+def get_ai_usage_guard(
+    repository: SqlAlchemyAiUsageRepository = Depends(get_ai_usage_repository),
+    unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
+) -> AiUsageGuard:
+    return AiUsageGuard(repository, unit_of_work, daily_token_cap=get_settings().ai_daily_token_cap_per_user)
+
+
 def get_create_project_use_case(
     project_repository: SqlAlchemyProjectRepository = Depends(get_project_repository),
 ) -> CreateProjectUseCase:
@@ -138,9 +151,16 @@ def get_upload_research_document_use_case(
     content_store: ContentStore = Depends(get_content_store),
     unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
     work_item_repository: WorkItemRepository = Depends(get_work_item_repository),
+    ai_usage_guard: AiUsageGuard = Depends(get_ai_usage_guard),
 ) -> UploadResearchDocumentUseCase:
     return UploadResearchDocumentUseCase(
-        document_repository, project_repository, agent_repository, content_store, unit_of_work, work_item_repository
+        document_repository,
+        project_repository,
+        agent_repository,
+        content_store,
+        unit_of_work,
+        work_item_repository,
+        ai_usage_guard,
     )
 
 
@@ -333,6 +353,7 @@ def get_extract_writing_style_profile_use_case(
     ),
     text_provider: TextGenerationProvider = Depends(get_text_generation_provider),
     unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
+    ai_usage_guard: AiUsageGuard = Depends(get_ai_usage_guard),
 ) -> ExtractWritingStyleProfileUseCase:
     return ExtractWritingStyleProfileUseCase(
         agent_repository,
@@ -344,6 +365,7 @@ def get_extract_writing_style_profile_use_case(
         profile_characteristic_source_repository,
         text_provider,
         unit_of_work,
+        ai_usage_guard,
     )
 
 
@@ -355,6 +377,7 @@ def get_search_knowledge_use_case(
     evidence_link_repository: SqlAlchemyChunkEvidenceLinkRepository = Depends(get_chunk_evidence_link_repository),
     document_repository: SqlAlchemyDocumentRepository = Depends(get_document_repository),
     lexical_search_repository: SqlAlchemyLexicalSearchRepository = Depends(get_lexical_search_repository),
+    ai_usage_guard: AiUsageGuard = Depends(get_ai_usage_guard),
 ) -> SearchKnowledgeUseCase:
     return SearchKnowledgeUseCase(
         agent_repository,
@@ -364,6 +387,7 @@ def get_search_knowledge_use_case(
         evidence_link_repository,
         document_repository,
         lexical_search_repository,
+        ai_usage_guard,
     )
 
 
@@ -431,6 +455,7 @@ def get_send_chat_message_use_case(
     work_item_repository: WorkItemRepository = Depends(get_work_item_repository),
     content_store: ContentStore = Depends(get_content_store),
     unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
+    ai_usage_guard: AiUsageGuard = Depends(get_ai_usage_guard),
 ) -> SendChatMessageUseCase:
     return SendChatMessageUseCase(
         conversation_repository,
@@ -444,6 +469,7 @@ def get_send_chat_message_use_case(
         work_item_repository,
         content_store,
         unit_of_work,
+        ai_usage_guard,
     )
 
 

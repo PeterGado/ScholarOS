@@ -113,6 +113,7 @@ def init_db(target_engine: Engine | None = None) -> None:
     registered on the shared metadata before create_all runs - the model registration
     mechanism for this modular-monolith structure (ADR-003).
     """
+    from app.ai.models import AiUsageRecord  # noqa: F401
     from app.auth.models import AuthSession  # noqa: F401
     from app.database.base import Base
     from app.database.shared_models import User  # noqa: F401

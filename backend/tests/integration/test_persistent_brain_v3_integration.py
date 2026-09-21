@@ -7,6 +7,7 @@ assembled prompt) - not a hand-built ContextAssemblyInput, directly answering th
 
 import pytest
 
+from app.ai.usage_guard import AiUsageGuard
 from app.database.session import build_engine, build_sessionmaker, init_db
 from app.database.shared_models import User
 from app.database.unit_of_work import SqlAlchemyUnitOfWork
@@ -132,6 +133,7 @@ def test_only_the_most_recent_memories_reach_a_real_chat_prompt(session, storage
         SqlAlchemyChunkEvidenceLinkRepository(session),
         SqlAlchemyDocumentRepository(session),
         SqlAlchemyLexicalSearchRepository(session),
+        AiUsageGuard(None, None, daily_token_cap=None),
     )
     send_message = SendChatMessageUseCase(
         SqlAlchemyConversationRepository(session),
@@ -145,6 +147,7 @@ def test_only_the_most_recent_memories_reach_a_real_chat_prompt(session, storage
         WorkItemRepository(session),
         storage,
         SqlAlchemyUnitOfWork(session),
+        AiUsageGuard(None, None, daily_token_cap=None),
     )
     send_message.execute(user_id=workspace.agent.user_id, conversation_id=conversation.conversation_id, content="Hello.")
 

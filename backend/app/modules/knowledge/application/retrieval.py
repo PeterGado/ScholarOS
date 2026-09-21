@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 
 from app.ai.providers.base import EmbeddingProvider
+from app.ai.token_estimate import estimate_tokens
+from app.ai.usage_guard import AiUsageGuard
 from app.modules.agent.domain.exceptions import AgentNotFoundForUserError
 from app.modules.agent.domain.repositories import AgentRepository
 from app.modules.document.domain.repositories import DocumentRepository
@@ -62,6 +64,7 @@ class SearchKnowledgeUseCase:
         evidence_link_repository: ChunkEvidenceLinkRepository,
         document_repository: DocumentRepository,
         lexical_search_repository: LexicalSearchRepository,
+        ai_usage_guard: AiUsageGuard,
     ) -> None:
         self._agents = agent_repository
         self._embedding_provider = embedding_provider
@@ -70,6 +73,7 @@ class SearchKnowledgeUseCase:
         self._evidence_links = evidence_link_repository
         self._documents = document_repository
         self._lexical_search = lexical_search_repository
+        self._ai_usage_guard = ai_usage_guard
 
     def execute(self, *, user_id: int, query: str, top_k: int = DEFAULT_TOP_K) -> list[SearchResult]:
         agent = self._agents.get_by_user_id(user_id)
@@ -87,6 +91,11 @@ class SearchKnowledgeUseCase:
         semantic_ranking: list[int] = []
         candidates = self._embeddings.list_by_agent_id(agent.agent_id)
         if candidates:
+            # AI usage cap (2026-09-21 security pass): checked only on this branch - when there
+            # are no embeddings yet, no provider call happens at all (the short-circuit above),
+            # so charging usage unconditionally would bill searches that never actually cost
+            # anything.
+            self._ai_usage_guard.check_and_record(user_id=user_id, estimated_tokens=estimate_tokens(query))
             query_vector = self._embedding_provider.embed(query)
             semantic_ranking = [chunk_id for chunk_id, _ in rank_by_similarity(query_vector, candidates)]
 

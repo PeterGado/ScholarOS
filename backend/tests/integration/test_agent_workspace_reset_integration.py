@@ -9,6 +9,7 @@ that a second agent's data is completely untouched.
 import pytest
 from sqlalchemy import text
 
+from app.ai.usage_guard import AiUsageGuard
 from app.database.session import build_engine, build_sessionmaker, init_db
 from app.database.shared_models import User
 from app.database.unit_of_work import SqlAlchemyUnitOfWork
@@ -198,6 +199,7 @@ def _fully_populate_a_workspace(session, storage, *, username: str) -> tuple[int
         agents, projects, SqlAlchemyDocumentRepository(session), storage,
         SqlAlchemyWritingProfileRepository(session), SqlAlchemyProfileCharacteristicRepository(session),
         SqlAlchemyProfileCharacteristicSourceRepository(session), FakeTextGenerationProviderForStyle(), uow,
+        AiUsageGuard(None, None, daily_token_cap=None),
     ).execute(user_id=user.user_id, document_ids=[style_upload.document.document_id])
 
     # Message Context Link, linking the earlier message to the Memory Record it produced.
