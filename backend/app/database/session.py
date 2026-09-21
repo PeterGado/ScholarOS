@@ -119,7 +119,15 @@ def build_sessionmaker(engine: Engine) -> sessionmaker[Session]:
     return sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
-engine = build_engine(get_settings().database_url)
+# Row-Level Security cutover (2026-09-21, step 4 of the rollout): the running app connects as
+# `app_database_url` when set (the restricted, non-owner `scholaros_app` role - RLS policies
+# from the "add row level security policies" migration only actually restrict this role, since
+# the owner role they were dormant under has `rolbypassrls`, confirmed live against
+# production). Falls back to `database_url` when unset (local SQLite dev/test, and any
+# not-yet-cut-over Postgres deploy) - Alembic (alembic/env.py) is unaffected and keeps reading
+# `database_url` directly, so migrations always run with the owner role's DDL rights regardless
+# of this setting.
+engine = build_engine(get_settings().app_database_url or get_settings().database_url)
 SessionLocal = build_sessionmaker(engine)
 
 

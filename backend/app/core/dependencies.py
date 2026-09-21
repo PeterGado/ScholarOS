@@ -1,4 +1,5 @@
 from fastapi import Depends
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
 from app.ai.providers.base import EmbeddingProvider, TextGenerationProvider
@@ -257,7 +258,7 @@ def get_google_sign_in_use_case(
     )
 
 
-def get_current_user_id(
+async def get_current_user_id(
     raw_token: str = Depends(extract_bearer_token),
     auth_service: AuthService = Depends(get_auth_service),
 ) -> int:
@@ -269,8 +270,23 @@ def get_current_user_id(
     composed pieces as InvalidSessionError, translated to 401 by the handler already
     registered in app.api.exception_handlers. There is exactly one identity source: the
     authenticated session. No bootstrap fallback, no client-supplied user_id.
+
+    Row-Level Security (2026-09-21) made this `async def` instead of a plain `def` -
+    deliberately, not cosmetically: FastAPI/Starlette runs every sync (`def`) dependency via
+    `run_in_threadpool`, which copies the current context into a new thread to run it - any
+    `ContextVar.set()` made *inside* that copy is silently lost the moment the thread call
+    returns, never reaching the context the rest of the request continues in. This was a real
+    bug, caught by a genuine end-to-end smoke test (register -> login -> create workspace
+    through the actual running app, not a unit test) before this ever reached production: the
+    RLS session variable stayed unset for every write, and every INSERT failed its `WITH CHECK`
+    clause. Awaiting the blocking `verify_token` call via `run_in_threadpool` still keeps the
+    actual DB I/O off the event loop; the difference is that `current_user_id.set(...)` below
+    now runs after that `await` returns, back in this coroutine's own (un-copied) task context -
+    which is exactly the context every later sync dependency's threadpool copy is taken *from*,
+    so the value set here is correctly visible to them.
     """
-    user_id = auth_service.verify_token(raw_token).user_id
+    identity = await run_in_threadpool(auth_service.verify_token, raw_token)
+    user_id = identity.user_id
     # Row-Level Security (2026-09-21): sets app.database.rls_context.current_user_id, the
     # ContextVar the Postgres-only "begin" listener in app.database.session reads to populate
     # every RLS policy's session variable for the rest of this request - set here because this

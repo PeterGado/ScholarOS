@@ -306,3 +306,70 @@ def test_a_real_repository_get_by_id_is_blocked_by_rls_even_though_it_does_not_f
     assert own_agent is not None
     assert own_agent.agent_id == agent_a
     assert other_agent is None
+
+
+@pytest.fixture()
+def rls_client(owner_engine, restricted_engine, monkeypatch):
+    """Drives the REAL running app (FastAPI TestClient, real HTTP, real dependency injection)
+    with its module-level engine/session pointed at the restricted role - not a raw SQL/
+    repository shortcut like the tests above. This is the only fixture in this file that would
+    have caught the real bug found while building this feature: `get_current_user_id`
+    (app/core/dependencies.py) originally set the RLS contextvar from a plain sync `def`
+    dependency, which FastAPI runs via `run_in_threadpool` - a `ContextVar.set()` made inside
+    that copied thread context is silently lost the moment the thread call returns, so the
+    value never reached the later, separately-threadpooled code that actually issued the
+    INSERT/SELECT. Every write failed its RLS `WITH CHECK` clause in a real smoke test before
+    this was caught and fixed (made `get_current_user_id` `async def` instead - see its
+    docstring). None of the other tests in this file exercise FastAPI's dependency injection at
+    all, so none of them would have caught this - only a real end-to-end request does.
+    """
+    import app.database.session as session_module
+    from app.core.rate_limit import limiter
+    from app.main import app
+
+    engine = build_engine(_restricted_role_url(POSTGRES_TEST_URL))
+    session_factory = build_sessionmaker(engine)
+    monkeypatch.setattr(session_module, "engine", engine)
+    monkeypatch.setattr(session_module, "SessionLocal", session_factory)
+    limiter.enabled = False
+    try:
+        from fastapi.testclient import TestClient
+
+        with TestClient(app) as test_client:
+            yield test_client
+    finally:
+        limiter.enabled = True
+        engine.dispose()
+
+
+def test_a_real_authenticated_write_succeeds_end_to_end_through_the_real_app_as_the_restricted_role(rls_client):
+    """The actual regression test for the async/threadpool contextvar bug described in
+    `rls_client`'s docstring: register -> login -> create a workspace (a real INSERT subject to
+    RLS's WITH CHECK) through the real HTTP API, then confirm a second user can't see the
+    first's agent through the same real API - both the write path and cross-user isolation,
+    exercised the way the deployed app is actually driven, not a shortcut.
+    """
+    r = rls_client.post("/auth/register", json={"username": "rls-e2e-user-a", "password": "s3cret-pass"})
+    assert r.status_code == 201, r.text
+    headers_a = {"Authorization": f"Bearer {r.json()['access_token']}"}
+
+    r = rls_client.post("/auth/register", json={"username": "rls-e2e-user-b", "password": "s3cret-pass"})
+    assert r.status_code == 201, r.text
+    headers_b = {"Authorization": f"Bearer {r.json()['access_token']}"}
+
+    r = rls_client.post("/agents", json={"project_title": "Thesis A", "project_topic": "Topic A"}, headers=headers_a)
+    assert r.status_code == 201, r.text
+    agent_a_id = r.json()["agent"]["agent_id"]
+
+    r = rls_client.post("/agents", json={"project_title": "Thesis B", "project_topic": "Topic B"}, headers=headers_b)
+    assert r.status_code == 201, r.text
+    agent_b_id = r.json()["agent"]["agent_id"]
+
+    r = rls_client.get("/agents", headers=headers_a)
+    assert r.status_code == 200, r.text
+    assert r.json()["agent"]["agent_id"] == agent_a_id
+
+    r = rls_client.get("/agents", headers=headers_b)
+    assert r.status_code == 200, r.text
+    assert r.json()["agent"]["agent_id"] == agent_b_id
+    assert agent_a_id != agent_b_id
