@@ -13,3 +13,14 @@ class UploadTooLargeError(ScholarOSError):
     def __init__(self, *, max_bytes: int) -> None:
         super().__init__(f"Uploaded file exceeds the maximum allowed size of {max_bytes} bytes.")
         self.max_bytes = max_bytes
+
+
+class UnsupportedUploadFormatError(ScholarOSError):
+    """Raised by any file-upload route (research documents, writing-style samples) when the
+    uploaded content isn't recognized as plain text, .docx, or PDF (app.core.document_formats)
+    - the only formats the Knowledge Processing Pipeline can ever extract text from. Same
+    cross-cutting rationale as UploadTooLargeError: shared by two modules, not owned by either.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("Unsupported file format. Only plain text, .docx, and PDF are supported.")

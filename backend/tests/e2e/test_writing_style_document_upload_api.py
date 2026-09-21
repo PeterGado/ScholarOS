@@ -109,6 +109,20 @@ def test_uploading_a_style_document_over_the_size_limit_returns_413(client, auth
     assert response.json()["error_type"] == "UploadTooLargeError"
 
 
+def test_uploading_an_unsupported_style_document_type_returns_422(client, auth_headers):
+    _create_workspace(client, auth_headers)
+
+    response = client.post(
+        "/writing/style-profile/documents",
+        files={"file": ("essay.pdf", io.BytesIO(b"\xff\xfebinary garbage"), "application/pdf")},
+        data={"title": "Not a real document", "format": "pdf"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error_type"] == "UnsupportedUploadFormatError"
+
+
 def test_upload_style_document_for_a_user_with_no_agent_returns_404(client, auth_headers):
     """No /agents call was made for this authenticated user - AgentNotFoundForUserError, not a
     generic 500, matching the same pattern already established for GET /knowledge/search.

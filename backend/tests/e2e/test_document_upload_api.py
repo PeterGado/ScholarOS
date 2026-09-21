@@ -214,6 +214,23 @@ def test_uploading_a_file_exactly_at_the_size_limit_succeeds(client, auth_header
     assert response.status_code == 201
 
 
+def test_uploading_an_unsupported_file_type_returns_422(client, auth_headers):
+    workspace = _create_workspace(client, auth_headers)
+    project_id = workspace["project"]["project_id"]
+
+    response = client.post(
+        f"/projects/{project_id}/documents",
+        files={"file": ("source.pdf", io.BytesIO(b"\xff\xfebinary garbage"), "application/pdf")},
+        data={"title": "Not a real document", "format": "pdf"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error_type"] == "UnsupportedUploadFormatError"
+    listing = client.get(f"/projects/{project_id}/documents", headers=auth_headers).json()["documents"]
+    assert listing == []  # rejected before ever being stored or queued
+
+
 def test_upload_missing_required_form_field_is_rejected(client, auth_headers):
     workspace = _create_workspace(client, auth_headers)
     project_id = workspace["project"]["project_id"]
@@ -304,7 +321,7 @@ def test_deleting_a_pending_document_returns_204_and_it_disappears_from_listing(
     project_id = workspace["project"]["project_id"]
     upload = client.post(
         f"/projects/{project_id}/documents",
-        files={"file": ("source.pdf", io.BytesIO(b"\xff\xfebinary garbage"), "application/pdf")},
+        files={"file": ("source.pdf", io.BytesIO(b"Some content."), "application/pdf")},
         data={"title": "Stuck upload", "format": "pdf"},
         headers=auth_headers,
     )
@@ -322,7 +339,10 @@ def test_deleting_a_failed_document_returns_204(client, auth_headers, db_engine,
     project_id = workspace["project"]["project_id"]
     upload = client.post(
         f"/projects/{project_id}/documents",
-        files={"file": ("source.pdf", io.BytesIO(b"\xff\xfebinary garbage" * 5), "application/pdf")},
+        # Real PDF magic bytes (passes the upload-time format sniff) followed by garbage that
+        # isn't valid PDF structure - accepted at upload, fails only once real processing
+        # actually tries to parse it (pypdf.errors.PdfStreamError, a PdfReadError subclass).
+        files={"file": ("source.pdf", io.BytesIO(b"%PDF-corrupt garbage that is not a real pdf" * 5), "application/pdf")},
         data={"title": "Unsupported format", "format": "pdf"},
         headers=auth_headers,
     )
@@ -421,7 +441,10 @@ def test_deleting_another_users_document_is_rejected_as_not_found(client, db_eng
 def _fail_a_document(client, auth_headers, db_engine, tmp_path, project_id: int) -> int:
     upload = client.post(
         f"/projects/{project_id}/documents",
-        files={"file": ("source.pdf", io.BytesIO(b"\xff\xfebinary garbage" * 5), "application/pdf")},
+        # Real PDF magic bytes (passes the upload-time format sniff) followed by garbage that
+        # isn't valid PDF structure - accepted at upload, fails only once real processing
+        # actually tries to parse it (pypdf.errors.PdfStreamError, a PdfReadError subclass).
+        files={"file": ("source.pdf", io.BytesIO(b"%PDF-corrupt garbage that is not a real pdf" * 5), "application/pdf")},
         data={"title": "Unsupported format", "format": "pdf"},
         headers=auth_headers,
     )

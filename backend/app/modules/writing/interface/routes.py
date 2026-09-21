@@ -20,6 +20,8 @@ from app.core.dependencies import (
     get_supersede_memory_record_use_case,
     get_upload_writing_style_document_use_case,
 )
+from app.core.document_formats import looks_like_a_supported_document
+from app.core.exceptions import UnsupportedUploadFormatError
 from app.core.rate_limit import limiter
 from app.core.uploads import read_upload_within_limit
 from app.modules.writing.application.chat import (
@@ -72,7 +74,7 @@ router = APIRouter(prefix="/writing", tags=["writing"])
         413: {"model": ErrorResponse, "description": "The uploaded file exceeds the server's maximum allowed size."},
         422: {
             "model": ErrorResponse,
-            "description": "Invalid title/format/content. Malformed request bodies use FastAPI's own validation error shape instead.",
+            "description": "Invalid title/format/content, or a file that isn't plain text/.docx/PDF. Malformed request bodies use FastAPI's own validation error shape instead.",
         },
         429: {"model": ErrorResponse, "description": "Too many uploads from this client."},
         500: {"model": ErrorResponse, "description": "Storage failure or unexpected internal failure."},
@@ -101,6 +103,8 @@ async def upload_writing_style_document(
     this endpoint only accepts and persists source material for a later stage.
     """
     content = await read_upload_within_limit(file, max_bytes=get_settings().max_upload_size_bytes)
+    if not looks_like_a_supported_document(content):
+        raise UnsupportedUploadFormatError()
     extension = Path(file.filename).suffix.lstrip(".") if file.filename else ""
 
     upload = use_case.execute(
