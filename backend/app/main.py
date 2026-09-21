@@ -1,8 +1,11 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import sentry_sdk
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.starlette import StarletteIntegration
 from slowapi.middleware import SlowAPIMiddleware
 
 from app.ai.providers.factory import create_provider
@@ -66,6 +69,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if executor_loop is not None:
         await executor_loop.stop()
 
+
+# Sentry (2026-09-21): a no-op if SENTRY_DSN isn't configured - init() is simply never called,
+# and sentry_sdk.capture_exception (app.api.exception_handlers._handle_unexpected_error) is
+# always a safe no-op before init(), by the SDK's own design. traces_sample_rate=0.0: error
+# tracking only, no performance tracing - not what was asked for, and a separate cost/quota
+# concern. Every exception in this app is already caught by our own registered handlers before
+# Starlette would ever see one as truly "unhandled" - the integrations below add request context
+# to captured events, they don't provide auto-capture on their own; the explicit
+# capture_exception call in _handle_unexpected_error is what actually reports anything.
+if get_settings().sentry_dsn:
+    sentry_sdk.init(
+        dsn=get_settings().sentry_dsn,
+        environment=get_settings().environment,
+        integrations=[StarletteIntegration(), FastApiIntegration()],
+        traces_sample_rate=0.0,
+    )
 
 app = FastAPI(title="ScholarOS Backend", version="0.1.0", lifespan=lifespan)
 app.state.limiter = limiter

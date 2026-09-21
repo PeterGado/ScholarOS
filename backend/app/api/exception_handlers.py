@@ -1,3 +1,4 @@
+import sentry_sdk
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -132,8 +133,14 @@ async def _handle_domain_error(request: Request, exc: Exception) -> JSONResponse
 
 
 async def _handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:
-    # Deliberately does not forward str(exc) or any traceback - never expose internals for a
-    # genuinely unanticipated failure.
+    # Deliberately does not forward str(exc) or any traceback in the response - never expose
+    # internals for a genuinely unanticipated failure. Sentry (2026-09-21) is the one place a
+    # real crash gets reported anywhere - deliberately not called from any other handler
+    # (expected domain errors/4xx responses are normal control flow, not crashes, per the
+    # explicit scope decision this integration was built to). Safe to call unconditionally:
+    # capture_exception is a no-op before sentry_sdk.init() (app.main), i.e. whenever
+    # SENTRY_DSN isn't configured.
+    sentry_sdk.capture_exception(exc)
     return _respond(status.HTTP_500_INTERNAL_SERVER_ERROR, "InternalError", "An unexpected internal error occurred.")
 
 

@@ -72,6 +72,11 @@ class Settings(BaseSettings):
     # var (a JSON array of origins, e.g. ["http://localhost:5173"] - pydantic-settings' own
     # default parsing for a list field) for any other deployment origin.
     cors_allowed_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    # Sentry (2026-09-21): unset means the feature is off (sentry_sdk.init is never called, and
+    # sentry_sdk.capture_exception is always a safe no-op before init - see app.main and
+    # app.api.exception_handlers). Not a secret in the usual sense (a DSN is write-only, it
+    # can't be used to read data out of Sentry), but treated like other config here regardless.
+    sentry_dsn: str | None = None
 
 
 @lru_cache
