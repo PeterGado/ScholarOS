@@ -131,18 +131,19 @@ def test_human_sounding_writing_guidance_survives_truncation_alongside_grounding
 
 def test_truncation_prefers_sentence_boundaries():
     # max_characters is calibrated so PROJECT TOPIC, PROJECT DESCRIPTION, and the reserved
-    # GROUNDING RULES + HUMAN-SOUNDING WRITING tail sections all fit in full, leaving just
-    # enough room for WRITING INSTRUCTIONS to be truncated - at a sentence boundary - after its
-    # first sentence.
+    # BUILT-IN SYSTEM GUIDANCE + GROUNDING RULES + HUMAN-SOUNDING WRITING tail sections all fit
+    # in full, leaving just enough room for WRITING INSTRUCTIONS to be truncated - at a sentence
+    # boundary - after its first sentence. (2026-09-21: recalibrated after BUILT-IN SYSTEM
+    # GUIDANCE moved into the reserved tail, which reserves more space up front than before.)
     context = ContextAssemblyInput(
         topic="Topic",
         instructions="First instruction sentence. Second instruction sentence.",
-        max_characters=1412,
+        max_characters=2280,
     )
 
     assembled = assemble_context(context)
 
-    assert len(assembled.prompt) <= 1412
+    assert len(assembled.prompt) <= 2280
     assert "First instruction sentence." in assembled.prompt
     assert "Second instruction sentence" not in assembled.prompt
 
@@ -155,6 +156,7 @@ def test_truncation_prefers_sentence_boundaries():
         {"max_characters": 0},
         {"max_evidence": 0},
         {"max_conversation_messages": 0},
+        {"max_conversation_context_characters": 0},
         {"max_memories": 0},
     ),
 )
@@ -259,6 +261,69 @@ def test_conversation_context_is_bounded_to_the_most_recent_messages():
 
     assert "Message 14." in assembled.prompt  # most recent survives
     assert "Message 0." not in assembled.prompt  # oldest is dropped
+
+
+def test_a_few_long_prior_replies_do_not_crowd_out_every_later_section():
+    """Regression test for a real production defect (2026-09-21): a conversation containing a
+    handful of long prior AI-generated replies (a several-thousand-character chapter, easily)
+    consumed nearly the entire overall character budget, since conversation history had no
+    character bound of its own - only a message-count bound. Every section listed after it in
+    assemble_context's fixed order (research evidence, writing style, current project memory,
+    and BUILT-IN SYSTEM GUIDANCE) was silently dropped as a result, even under this function's
+    own default, generous max_characters.
+    """
+    long_reply = "Paragraph. " * 800  # ~8800 characters - realistic for a previously-written chapter
+    messages = tuple(
+        ContextConversationMessage(
+            direction=MessageDirection.USER_REQUEST if i % 2 == 0 else MessageDirection.SYSTEM_RESPONSE,
+            content=f"Short question {i}." if i % 2 == 0 else long_reply,
+        )
+        for i in range(6)
+    )
+    context = ContextAssemblyInput(
+        topic="Topic",
+        instructions="Only the background section.",
+        conversation_messages=messages,
+        style_signals=(ContextStyleSignal(ProfileCharacteristicType.STRUCTURE, "Short paragraphs.", 0.9),),
+        memories=(ContextMemory(MemoryRecordType.DECISION, "Use LIDAR survey data."),),
+    )
+
+    assembled = assemble_context(context)
+
+    assert "## BUILT-IN KNOWLEDGE / SYSTEM GUIDANCE" in assembled.prompt
+    assert BUILTIN_SYSTEM_GUIDANCE in assembled.prompt
+    assert "## WRITING STYLE AND TONE" in assembled.prompt
+    assert "Short paragraphs." in assembled.prompt
+    assert "## CURRENT PROJECT MEMORY" in assembled.prompt
+    assert "Use LIDAR survey data." in assembled.prompt
+
+
+def test_conversation_context_has_its_own_character_budget_independent_of_message_count():
+    """A handful of very long messages, well under max_conversation_messages, must still be
+    trimmed by their own character sub-budget - not just by count.
+    """
+    long_reply = "Paragraph. " * 800  # ~8800 characters
+    messages = (
+        ContextConversationMessage(direction=MessageDirection.USER_REQUEST, content="Oldest question."),
+        ContextConversationMessage(direction=MessageDirection.SYSTEM_RESPONSE, content=long_reply),
+        ContextConversationMessage(direction=MessageDirection.USER_REQUEST, content="Newest question."),
+    )
+    context = ContextAssemblyInput(
+        topic="Topic",
+        instructions="Instructions",
+        conversation_messages=messages,
+        max_conversation_context_characters=200,
+    )
+
+    assembled = assemble_context(context)
+
+    assert "Newest question." in assembled.prompt  # most recent survives intact
+    assert "Oldest question." not in assembled.prompt  # trimmed from the oldest end first
+
+
+def test_default_max_conversation_context_characters_is_four_thousand():
+    context = ContextAssemblyInput(topic="Topic", instructions="Instructions")
+    assert context.max_conversation_context_characters == 4000
 
 
 # --- Persistent Brain: built-in writing style (Decision 6/C) -------------------------------

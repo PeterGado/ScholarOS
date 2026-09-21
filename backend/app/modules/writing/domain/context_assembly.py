@@ -14,6 +14,18 @@ recent N) rather than summarization/compaction - sufficient, deterministic, and 
 this milestone; true compaction is noted as future work, not implemented here.
 """
 
+DEFAULT_MAX_CONVERSATION_CONTEXT_CHARACTERS = 4000
+"""Conversation history's own character sub-budget, independent of `max_conversation_messages`
+(2026-09-21 real-usage fix). Before this, conversation history had no character bound of its
+own - only a message-COUNT bound - so a handful of long prior AI replies (a previously-written,
+several-thousand-character chapter, found live in real production usage) could consume nearly
+the entire prompt's overall character budget, crowding out every section listed after it in
+`assemble_context`'s fixed order, including BUILT-IN SYSTEM GUIDANCE (now a protected tail
+section for the same reason - see `assemble_context`'s own docstring). Trimmed from the OLDEST
+end (see `_format_conversation`), keeping the most recent turns intact - recency matters most
+for conversational continuity, and dropping whole messages reads better than a mid-message cut.
+"""
+
 DEFAULT_MAX_MEMORIES = 20
 """Persistent Brain v3 audit fix: `MemoryRecord` accumulates without limit (a Memory Record is
 never deleted, only superseded), and prior to this fix every current record was rendered into
@@ -63,13 +75,25 @@ see _fit_sections_reserving_tail, generalized to reserve both.
 BUILTIN_SYSTEM_GUIDANCE = (
     "You are ScholarOS's writing assistant, operating inside one user's private Agent "
     "Workspace. Use the project topic, project description, conversation context, research "
-    "evidence, writing style guidance, and current project memory above as your primary "
-    "context for this request. When research evidence is not available, rely on your own "
-    "general knowledge and say so rather than inventing sources or citations."
+    "evidence, writing style guidance, and current project memory above as background context "
+    "for this request. When research evidence is not available, rely on your own general "
+    "knowledge and say so rather than inventing sources or citations.\n\n"
+    "WRITING INSTRUCTIONS above states exactly what to produce right now - follow its stated "
+    "scope precisely. If it asks for one specific section or a narrower slice of something "
+    "written earlier, produce only that: do not restate, repeat, or continue material already "
+    "covered in RELEVANT CONVERSATION CONTEXT just because it exists there, and do not expand "
+    "scope to a fuller draft than what was actually asked for."
 )
 """Built-in system-level behavior (Persistent Brain §6 point 1: "built-in system behavior" as
 one of the context sources generation can fall back on even when every optional source is
 absent). Fixed and always present - distinct from writing style/tone guidance above.
+
+The second paragraph (2026-09-21) closes a real gap found in production: a long conversation
+containing prior full-chapter replies pushed the model toward continuing/repeating that
+established pattern even when the current instruction asked for one specific, narrower section -
+the instruction itself was followed (the right section), but scope crept to include material
+already produced earlier. Explicit, not implicit, because the model has no other signal in this
+prompt telling it that conversation history is background, not a template to keep extending.
 """
 
 
@@ -133,6 +157,7 @@ class ContextAssemblyInput:
     max_characters: int = DEFAULT_CONTEXT_CHARACTER_LIMIT
     max_evidence: int = DEFAULT_MAX_EVIDENCE
     max_conversation_messages: int = DEFAULT_MAX_CONVERSATION_MESSAGES
+    max_conversation_context_characters: int = DEFAULT_MAX_CONVERSATION_CONTEXT_CHARACTERS
     max_memories: int = DEFAULT_MAX_MEMORIES
 
 
@@ -149,6 +174,13 @@ def assemble_context(context: ContextAssemblyInput) -> AssembledContext:
     an empty `evidence` tuple is a valid, first-class input, not an error - the caller decides
     whether to require evidence, this pure function never does. Absent optional sources render
     a clean placeholder rather than being omitted, matching every existing section's precedent.
+
+    BUILT-IN KNOWLEDGE / SYSTEM GUIDANCE (2026-09-21) is a protected tail section, not a normal
+    one: a real production conversation showed conversation history alone (a few long prior AI
+    replies) consuming nearly the whole character budget, silently dropping every section after
+    it in the old fixed order - including this one, the section that tells the model to treat
+    WRITING INSTRUCTIONS as authoritative rather than just continuing the pattern visible in
+    conversation history. It must never be the section pressure drops.
     """
     _validate_input(context)
 
@@ -159,13 +191,16 @@ def assemble_context(context: ContextAssemblyInput) -> AssembledContext:
         ("PROJECT TOPIC", context.topic),
         ("PROJECT DESCRIPTION", _format_description(context.description)),
         ("WRITING INSTRUCTIONS", context.instructions),
-        ("RELEVANT CONVERSATION CONTEXT", _format_conversation(recent_messages)),
+        ("RELEVANT CONVERSATION CONTEXT", _format_conversation(recent_messages, context.max_conversation_context_characters)),
         ("RESEARCH EVIDENCE", _format_evidence(evidence)),
         ("WRITING STYLE AND TONE", _format_style_signals(context.style_signals)),
         ("CURRENT PROJECT MEMORY", _format_memories(bounded_memories)),
-        ("BUILT-IN KNOWLEDGE / SYSTEM GUIDANCE", BUILTIN_SYSTEM_GUIDANCE),
     ]
-    tail_sections = [_grounding_rules(has_evidence=bool(evidence)), ("HUMAN-SOUNDING WRITING", HUMANIZER_GUIDANCE)]
+    tail_sections = [
+        ("BUILT-IN KNOWLEDGE / SYSTEM GUIDANCE", BUILTIN_SYSTEM_GUIDANCE),
+        _grounding_rules(has_evidence=bool(evidence)),
+        ("HUMAN-SOUNDING WRITING", HUMANIZER_GUIDANCE),
+    ]
 
     prompt = _fit_sections_reserving_tail(sections, tail_sections, context.max_characters)
     return AssembledContext(prompt=prompt, evidence=evidence)
@@ -184,6 +219,8 @@ def _validate_input(context: ContextAssemblyInput) -> None:
         raise InvalidContextAssemblyInputError("max_evidence must be positive")
     if context.max_conversation_messages < 1:
         raise InvalidContextAssemblyInputError("max_conversation_messages must be positive")
+    if context.max_conversation_context_characters < 1:
+        raise InvalidContextAssemblyInputError("max_conversation_context_characters must be positive")
     if context.max_memories < 1:
         raise InvalidContextAssemblyInputError("max_memories must be positive")
 
@@ -204,7 +241,10 @@ def _format_description(description: str | None) -> str:
     return description.strip()
 
 
-def _format_conversation(messages: tuple[ContextConversationMessage, ...]) -> str:
+def _format_conversation(
+    messages: tuple[ContextConversationMessage, ...],
+    max_characters: int = DEFAULT_MAX_CONVERSATION_CONTEXT_CHARACTERS,
+) -> str:
     if not messages:
         return "No relevant prior conversation was available."
 
@@ -212,16 +252,32 @@ def _format_conversation(messages: tuple[ContextConversationMessage, ...]) -> st
         MessageDirection.USER_REQUEST: "User",
         MessageDirection.SYSTEM_RESPONSE: "Assistant",
     }
-    lines = [
-        (
-            f"[Earlier conversation summary]: {message.content.strip()}"
-            if message.is_summary
-            else f"{labels.get(message.direction, message.direction.value)}: {message.content.strip()}"
-        )
-        for message in messages
-        if message.content.strip()
-    ]
-    return "\n".join(lines) or "No relevant prior conversation was available."
+
+    def render(message: ContextConversationMessage) -> str | None:
+        if not message.content.strip():
+            return None
+        if message.is_summary:
+            return f"[Earlier conversation summary]: {message.content.strip()}"
+        return f"{labels.get(message.direction, message.direction.value)}: {message.content.strip()}"
+
+    # Trimmed from the OLDEST end (iterating newest-first, then reversing) so the most recent
+    # turns - the ones most relevant to the current request - always survive intact, rather
+    # than a handful of long prior replies silently consuming the whole sub-budget and pushing
+    # out the turns that actually matter for understanding the current request.
+    kept: list[str] = []
+    remaining = max_characters
+    for message in reversed(messages):
+        line = render(message)
+        if line is None:
+            continue
+        cost = len(line) + (1 if kept else 0)  # + the "\n" separator joining it to what follows
+        if cost > remaining:
+            break
+        kept.append(line)
+        remaining -= cost
+
+    kept.reverse()
+    return "\n".join(kept) or "No relevant prior conversation was available."
 
 
 def _format_evidence(evidence: tuple[ContextEvidence, ...]) -> str:
