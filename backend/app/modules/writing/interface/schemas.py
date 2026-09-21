@@ -170,7 +170,11 @@ class ConversationListResponse(BaseModel):
 
 
 class SendChatMessageRequest(BaseModel):
-    content: str = Field(..., min_length=1)
+    # 2026-09-21: no upper bound existed anywhere on a chat message's length - the last open
+    # item from the security ledger's "no max request/body size" gap. 8000 characters
+    # comfortably covers real multi-paragraph instructions without being an unbounded field a
+    # client could use to send an arbitrarily large request body.
+    content: str = Field(..., min_length=1, max_length=8000)
 
 
 class ChatMessageResponse(BaseModel):

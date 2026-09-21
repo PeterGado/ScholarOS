@@ -1,6 +1,7 @@
 from typing import Protocol
 
 from google import genai
+from google.genai import types
 
 from app.ai.exceptions import ProviderConfigurationError, ProviderRequestError
 
@@ -29,17 +30,27 @@ class GoogleGenAIProvider:
     not a redesign of anything that depends on the gateway.
     """
 
-    def __init__(self, *, api_key: str, model: str, embedding_model: str, client: _GenAIClient | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        model: str,
+        embedding_model: str,
+        max_output_tokens: int | None = None,
+        client: _GenAIClient | None = None,
+    ) -> None:
         if not api_key:
             raise ProviderConfigurationError("AI provider API key is not configured.")
 
         self._model = model
         self._embedding_model = embedding_model
+        self._max_output_tokens = max_output_tokens
         self._client = client if client is not None else genai.Client(api_key=api_key)
 
     def generate(self, prompt: str) -> str:
+        config = types.GenerateContentConfig(max_output_tokens=self._max_output_tokens) if self._max_output_tokens else None
         try:
-            response = self._client.models.generate_content(model=self._model, contents=prompt)
+            response = self._client.models.generate_content(model=self._model, contents=prompt, config=config)
         except Exception as exc:  # noqa: BLE001 - the SDK's exception hierarchy is not part of our contract
             raise ProviderRequestError("AI provider request failed.") from exc
 
@@ -86,4 +97,5 @@ def create_google_genai_provider(settings) -> GoogleGenAIProvider:
         api_key=settings.ai_api_key or "",
         model=settings.ai_model,
         embedding_model=settings.ai_embedding_model,
+        max_output_tokens=settings.ai_max_output_tokens,
     )

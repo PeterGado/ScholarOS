@@ -25,6 +25,7 @@ class OpenAICompatibleProvider:
         api_key: str,
         model: str,
         embedding_model: str,
+        max_output_tokens: int | None = None,
         timeout: float = 30.0,
         client: httpx.Client | None = None,
     ) -> None:
@@ -36,11 +37,15 @@ class OpenAICompatibleProvider:
         self._base_url = base_url.rstrip("/")
         self._model = model
         self._embedding_model = embedding_model
+        self._max_output_tokens = max_output_tokens
         self._client = client if client is not None else httpx.Client(timeout=timeout)
         self._headers = {"Authorization": f"Bearer {api_key}"}
 
     def generate(self, prompt: str) -> str:
-        body = self._post("/chat/completions", {"model": self._model, "messages": [{"role": "user", "content": prompt}]})
+        request_body = {"model": self._model, "messages": [{"role": "user", "content": prompt}]}
+        if self._max_output_tokens is not None:
+            request_body["max_tokens"] = self._max_output_tokens
+        body = self._post("/chat/completions", request_body)
         try:
             return body["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
@@ -88,4 +93,5 @@ def create_default_provider(settings: Settings) -> OpenAICompatibleProvider:
         api_key=settings.ai_api_key or "",
         model=settings.ai_model,
         embedding_model=settings.ai_embedding_model,
+        max_output_tokens=settings.ai_max_output_tokens,
     )

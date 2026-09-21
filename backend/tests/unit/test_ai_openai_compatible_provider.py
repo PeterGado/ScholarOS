@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 
@@ -62,6 +64,26 @@ def test_generate_returns_the_response_content():
     assert provider.generate("extract concepts from this text") == "the extracted concept"
 
 
+def test_generate_includes_max_tokens_in_the_request_body_when_configured():
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        assert body["max_tokens"] == 4096
+        return httpx.Response(200, json={"choices": [{"message": {"content": "text"}}]})
+
+    provider = _build_provider(handler, max_output_tokens=4096)
+    provider.generate("prompt")
+
+
+def test_generate_omits_max_tokens_entirely_when_not_configured():
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        assert "max_tokens" not in body
+        return httpx.Response(200, json={"choices": [{"message": {"content": "text"}}]})
+
+    provider = _build_provider(handler, max_output_tokens=None)
+    provider.generate("prompt")
+
+
 def test_generate_raises_provider_request_error_on_non_2xx():
     provider = _build_provider(lambda request: httpx.Response(500, json={"error": "boom"}))
     with pytest.raises(ProviderRequestError):
@@ -116,3 +138,14 @@ def test_create_default_provider_raises_when_api_key_is_unconfigured():
     settings = Settings(ai_api_key=None)
     with pytest.raises(ProviderConfigurationError):
         create_default_provider(settings)
+
+
+def test_create_default_provider_wires_max_output_tokens_from_settings():
+    settings = Settings(
+        ai_base_url="https://configured-provider.test/v1",
+        ai_api_key="configured-key",
+        ai_max_output_tokens=1234,
+    )
+    provider = create_default_provider(settings)
+
+    assert provider._max_output_tokens == 1234

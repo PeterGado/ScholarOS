@@ -98,6 +98,32 @@ def test_send_message_and_receive_a_reply(client, auth_headers, db_engine, tmp_p
     assert messages[1]["content"] == "Understood."
 
 
+def test_a_message_over_the_length_limit_is_rejected(client, auth_headers):
+    _create_workspace(client, auth_headers)
+    conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
+
+    response = client.post(
+        f"/writing/conversations/{conversation['conversation_id']}/messages",
+        json={"content": "x" * 8001},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 422
+
+
+def test_a_message_at_exactly_the_length_limit_is_accepted(client, auth_headers):
+    _create_workspace(client, auth_headers)
+    conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
+
+    response = client.post(
+        f"/writing/conversations/{conversation['conversation_id']}/messages",
+        json={"content": "x" * 8000},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 202
+
+
 def test_a_second_message_carries_prior_conversation_into_context(client, auth_headers, db_engine, tmp_path):
     """Verifies bounded conversation context actually reaches the assembled prompt for a real
     second message - a spying FakeTextGenerationProvider captures the real prompt text.

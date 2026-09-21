@@ -27,10 +27,12 @@ class FakeModels:
         self._embed_response = embed_response
         self._embed_error = embed_error
         self.generate_calls: list[tuple[str, str]] = []
+        self.generate_configs: list[object] = []
         self.embed_calls: list[tuple[str, str]] = []
 
-    def generate_content(self, *, model, contents):
+    def generate_content(self, *, model, contents, config=None):
         self.generate_calls.append((model, contents))
+        self.generate_configs.append(config)
         if self._generate_error:
             raise self._generate_error
         return self._generate_response
@@ -70,6 +72,24 @@ def test_generate_returns_the_response_text():
 
     assert provider.generate("extract concepts") == "the extracted concept"
     assert models.generate_calls == [("test-model", "extract concepts")]
+
+
+def test_generate_passes_max_output_tokens_to_the_provider_config():
+    models = FakeModels(generate_response=FakeGenerateResponse("text"))
+    provider = _build_provider(models, max_output_tokens=4096)
+
+    provider.generate("prompt")
+
+    assert models.generate_configs[0].max_output_tokens == 4096
+
+
+def test_generate_omits_config_entirely_when_no_max_output_tokens_is_configured():
+    models = FakeModels(generate_response=FakeGenerateResponse("text"))
+    provider = _build_provider(models, max_output_tokens=None)
+
+    provider.generate("prompt")
+
+    assert models.generate_configs[0] is None
 
 
 def test_generate_raises_provider_request_error_when_the_sdk_raises():
@@ -147,3 +167,10 @@ def test_create_google_genai_provider_raises_when_api_key_is_unconfigured():
     settings = Settings(ai_api_key=None)
     with pytest.raises(ProviderConfigurationError):
         create_google_genai_provider(settings)
+
+
+def test_create_google_genai_provider_wires_max_output_tokens_from_settings():
+    settings = Settings(ai_api_key="test-key", ai_max_output_tokens=1234)
+    provider = create_google_genai_provider(settings)
+
+    assert provider._max_output_tokens == 1234

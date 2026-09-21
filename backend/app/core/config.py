@@ -50,6 +50,12 @@ class Settings(BaseSettings):
     ai_api_key: str | None = None
     ai_model: str = "gemini-3.6-flash"
     ai_embedding_model: str = "gemini-embedding-001"
+    # 2026-09-21: no per-call output bound existed anywhere - a single generate() call could run
+    # to whatever the provider's own model default allows, uncapped by ScholarOS. Bounds runaway
+    # generation cost per call, complementing the AI usage cap above (which bounds cumulative
+    # cost, not any one call). 4096 tokens comfortably covers a full thesis-chapter-section reply
+    # (the longest realistic single output this app produces) without being open-ended.
+    ai_max_output_tokens: int | None = 4096
     # AI usage cap (2026-09-21 security pass, ADR-011's deferred per-user quota item): rate
     # limiting bounds the *rate* of AI-triggering requests, not the *total* - a sustained user
     # within the rate limit could still drive unlimited real Gemini cost. Defaults ON (unlike
