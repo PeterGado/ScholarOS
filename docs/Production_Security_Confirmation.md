@@ -1,6 +1,6 @@
 # ScholarOS — Production Security Confirmation
 
-**Status:** In progress — first pass complete; the two most urgent controls (rate limiting, upload size limits) fixed 2026-09-20; three more low-risk fixes (security headers, non-root Docker user, silent-exception logging), an upload MIME/format allowlist, and a per-user AI usage cap fixed 2026-09-21; most other domains still open
+**Status:** In progress — first pass complete; the two most urgent controls (rate limiting, upload size limits) fixed 2026-09-20; three more low-risk fixes (security headers, non-root Docker user, silent-exception logging), an upload MIME/format allowlist, a per-user AI usage cap, and full credential rotation (Gemini, R2, Neon, Fly, Vercel) all fixed 2026-09-21; only max request/body size limits and the two policy decisions (data retention, Neon backup/PITR) remain open
 
 **Date:** 2026-09-19, updated 2026-09-20, updated 2026-09-21
 
@@ -15,10 +15,10 @@
 | Production deployment identified | ✅ | Frontend: `https://scholaros-frontend-nine.vercel.app`; Backend: `https://scholaros-backend.fly.dev` |
 | Production commit/version recorded | 🟢 | `1047849` (rate limiting, upload limits, provisioning fix) and `2b79d29` (Google Sign-In) committed 2026-09-20. The 2026-09-21 fixes (security headers, non-root Docker user, silent-exception logging) are committed alongside this doc update. Backend Fly image as of this update: `deployment-01M30JKZ4MD65T9FXPB3T7D8FH`. |
 | Production configuration snapshot recorded | ✅ | Fly secret *names* listed below (§11); values never captured in any evidence |
-| Security review date recorded | ✅ | 2026-09-19, updated 2026-09-20 |
+| Security review date recorded | ✅ | 2026-09-19, updated 2026-09-20, updated 2026-09-21 |
 | Reviewer recorded | ✅ | AI-assisted (Claude Code) — human review still outstanding |
 | Security findings tracked | ✅ | This document |
-| No production secrets included in evidence | 🟡 **Caveat, partially resolved** | Real credential values (Neon password, R2 keys, Fly/Vercel tokens, Gemini key) were shared in this chat session to configure the deployment. None were committed to git (verified, §11) or appear in this document, but they *did* pass through the conversation transcript. **Fly token: rotated 2026-09-20.** **Vercel: two freshly-generated personal access tokens both failed with a Vercel-side "User not found" error (confirmed via raw API call, not a CLI bug) — worked around via `vercel login` (browser OAuth session), so no long-lived Vercel PAT is currently in active use at all**, which is arguably better than a rotated-but-still-standing one. **Still outstanding: Neon password, R2 API credentials, Gemini API key** — none of these have been rotated yet. |
+| No production secrets included in evidence | 🟢 **Resolved 2026-09-21** | Real credential values (Neon password, R2 keys, Fly/Vercel tokens, Gemini key) were shared in this chat session to configure the deployment. None were committed to git (verified, §11) or appear in this document, but they *did* pass through the conversation transcript. **All rotated**: Fly token (2026-09-20); Vercel — two freshly-generated PATs both failed with a Vercel-side "User not found" error (confirmed via raw API call, not a CLI bug), worked around via `vercel login` (browser OAuth session), so no long-lived Vercel PAT is in active use at all; **Gemini API key, Cloudflare R2 access key + secret, and the Neon database password all rotated 2026-09-21**, each live-verified before the old value was considered retired: Gemini via a real chat reply on production; R2 via a real document upload through the live API, confirmed readable back from the bucket with the exact original content; Neon by connecting directly with the new password before touching Fly, then confirming a real login (a real DB read) and a real upload (a real DB write) both succeed against production on the new credential. |
 
 ---
 
@@ -83,9 +83,14 @@ Redeploying to apply the two fixes above crash-looped the live app: `sync_config
 8. **`GET /knowledge/search` had no rate limit at all** (§5) — found while mapping AI call sites for #9, fixed alongside it.
 9. **AI usage cap** (§21, was 🟡, now 🟢) — the largest remaining ledger item, a per-user 500,000-token/24h cap, defaulting on, live-reconfirmed on production with a real 429 and the exact expected message, then confirmed normal use resumed after restoring the real value.
 
+**Fixed 2026-09-21, credential rotation (§0) — now fully resolved:**
+10. **Gemini API key** — rotated, live-verified via a real chat reply on production before the old key was considered retired.
+11. **Cloudflare R2 access key + secret** — rotated, live-verified via a real document upload through the live API, then confirmed readable back from the bucket with the exact original content.
+12. **Neon database password** — rotated, live-verified by connecting directly with the new password *before* touching Fly, then confirming a real login (DB read) and a real upload (DB write) both succeed against production on the new credential.
+13. **Fly token** (2026-09-20) and **Vercel** (no long-lived PAT in active use at all - two freshly-generated tokens failed on Vercel's own side; worked around via a browser-login session instead) were already resolved.
+
 **Still outstanding:**
 - No max request/body size or pagination bounds (§4).
-- Credential rotation: Fly token done. **Vercel: no long-lived PAT currently in use at all** (both freshly-generated tokens failed on Vercel's own side; worked around via a browser-login session instead) — effectively resolved, differently than planned. **Neon password, R2 API credentials, and Gemini API key still need rotating** (§0).
 
 **Needs your decision, not code:** data retention policy and Neon backup/PITR review (§10, §20) — these are policy questions, not something I should decide unilaterally. Deliberately not touched in this pass. Also not touched: opening registration fully (discussed, deliberately sequenced *after* the AI usage cap above, which was the prerequisite).
 
