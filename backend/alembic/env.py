@@ -20,6 +20,7 @@ if config.config_file_name is not None:
 # `create_all` and Alembic each believe the schema is).
 from app.ai.models import AiUsageRecord  # noqa: E402,F401
 from app.auth.models import AuthSession  # noqa: E402,F401
+from app.core.rate_limit_models import RateLimitCounter  # noqa: E402,F401
 from app.database.base import Base  # noqa: E402
 from app.database.shared_models import User  # noqa: E402,F401
 from app.modules.agent.infrastructure.models import Agent  # noqa: E402,F401

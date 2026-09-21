@@ -115,6 +115,7 @@ def init_db(target_engine: Engine | None = None) -> None:
     """
     from app.ai.models import AiUsageRecord  # noqa: F401
     from app.auth.models import AuthSession  # noqa: F401
+    from app.core.rate_limit_models import RateLimitCounter  # noqa: F401
     from app.database.base import Base
     from app.database.shared_models import User  # noqa: F401
     from app.modules.agent.infrastructure.models import Agent  # noqa: F401
