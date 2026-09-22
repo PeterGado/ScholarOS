@@ -8,6 +8,7 @@ import { deleteConversation, listConversations, startConversation } from "@/api/
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { ApiError } from "@/lib/apiClient";
 import type { AgentWorkspaceResponse } from "@/api/schemas";
 
 // "Chat" leads (Persistent Brain Decision 3: conversation is the primary way to enter the
@@ -131,6 +132,11 @@ export function AppShell() {
             <Plus className="size-4" />
             New chat
           </Button>
+          {newChatMutation.isError && (
+            <p className="mt-2 px-1 text-xs text-destructive">
+              {newChatMutation.error instanceof ApiError ? newChatMutation.error.message : "Could not start a chat."}
+            </p>
+          )}
         </div>
 
         <nav className="space-y-0.5 px-2">
@@ -155,6 +161,22 @@ export function AppShell() {
 
         <div className="mt-4 flex-1 overflow-y-auto px-2">
           <p className="px-2 pb-1 text-xs font-medium text-sidebar-foreground/60">Recent chats</p>
+          {conversationsQuery.isError && (
+            <div className="px-2 py-1">
+              <p className="text-xs text-destructive">
+                {conversationsQuery.error instanceof ApiError
+                  ? conversationsQuery.error.message
+                  : "Could not load conversations."}
+              </p>
+              <button
+                type="button"
+                className="mt-1 text-xs underline"
+                onClick={() => conversationsQuery.refetch()}
+              >
+                Try again
+              </button>
+            </div>
+          )}
           {conversationsQuery.data && conversationsQuery.data.length === 0 && (
             <p className="px-2 py-1 text-xs text-sidebar-foreground/50">No conversations yet.</p>
           )}
@@ -196,6 +218,13 @@ export function AppShell() {
               </div>
             ))}
         </div>
+        {deleteChatMutation.isError && (
+          <p className="border-t border-sidebar-border px-3 py-2 text-xs text-destructive">
+            {deleteChatMutation.error instanceof ApiError
+              ? deleteChatMutation.error.message
+              : "Could not delete the conversation."}
+          </p>
+        )}
 
         <div className="border-t border-sidebar-border p-2">
           <NavLink

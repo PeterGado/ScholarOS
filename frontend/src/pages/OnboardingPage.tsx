@@ -25,6 +25,7 @@ export function OnboardingPage() {
   const navigate = useNavigate();
   const [step, setStep] = useState<Step>("project");
   const [workspace, setWorkspace] = useState<AgentWorkspaceResponse | null>(null);
+  const [generationError, setGenerationError] = useState<string | null>(null);
 
   return (
     <div className="mx-auto max-w-lg space-y-6 py-10">
@@ -60,11 +61,20 @@ export function OnboardingPage() {
           projectId={workspace.project.project_id}
           onGenerate={async () => {
             setStep("generating");
-            const conversation = await startConversation();
-            navigate(`/chat/${conversation.conversation_id}`);
+            setGenerationError(null);
+            try {
+              const conversation = await startConversation();
+              navigate(`/chat/${conversation.conversation_id}`);
+            } catch (error) {
+              setStep("documents");
+              setGenerationError(
+                error instanceof ApiError ? error.message : "Could not start the conversation. Please try again.",
+              );
+            }
           }}
         />
       )}
+      {generationError && step === "documents" && <p className="text-sm text-destructive">{generationError}</p>}
       {step === "generating" && <p className="text-center text-sm text-muted-foreground">Setting up your chat...</p>}
     </div>
   );
@@ -158,7 +168,7 @@ function ProjectStep({ onCreated }: { onCreated: (workspace: AgentWorkspaceRespo
   );
 }
 
-function DocumentsStep({ projectId, onGenerate }: { projectId: number; onGenerate: () => void }) {
+function DocumentsStep({ projectId, onGenerate }: { projectId: number; onGenerate: () => Promise<void> }) {
   const researchFileInputRef = useRef<HTMLInputElement>(null);
   const styleFileInputRef = useRef<HTMLInputElement>(null);
   const [researchUploaded, setResearchUploaded] = useState<string[]>([]);
@@ -200,7 +210,7 @@ function DocumentsStep({ projectId, onGenerate }: { projectId: number; onGenerat
       if (styleDocumentIds.length > 0) {
         await extractStyleMutation.mutateAsync();
       }
-      onGenerate();
+      await onGenerate();
     } finally {
       setIsFinishing(false);
     }

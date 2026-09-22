@@ -88,6 +88,7 @@ function ChatConversation({ conversationId }: { conversationId: number }) {
   // message looking unanswered forever.
   useEffect(() => {
     setActiveReply(loadActiveReply(conversationId));
+    setContent("");
   }, [conversationId]);
 
   const messagesQuery = useQuery({
@@ -153,6 +154,16 @@ function ChatConversation({ conversationId }: { conversationId: number }) {
     <div className="flex flex-1 flex-col overflow-hidden">
       <div ref={scrollRef} className="flex-1 space-y-6 overflow-y-auto px-6 py-6">
         {messagesQuery.isLoading && <p className="text-sm text-muted-foreground">Loading messages...</p>}
+        {messagesQuery.isError && (
+          <div className="mx-auto max-w-2xl rounded-lg border border-destructive/50 bg-destructive/5 px-4 py-3">
+            <p className="text-sm text-destructive">
+              {messagesQuery.error instanceof ApiError ? messagesQuery.error.message : "Could not load this conversation."}
+            </p>
+            <Button size="sm" variant="outline" className="mt-2" onClick={() => messagesQuery.refetch()}>
+              Try again
+            </Button>
+          </div>
+        )}
         {messagesQuery.data?.map((message) =>
           message.direction === "user_request" ? (
             <div key={message.message_id} className="mx-auto max-w-2xl rounded-2xl bg-muted px-4 py-3">
@@ -172,7 +183,7 @@ function ChatConversation({ conversationId }: { conversationId: number }) {
             <p className="text-sm text-muted-foreground">Thinking...</p>
           </div>
         )}
-        {replyFailed && (
+        {replyFailed && replyStatusQuery.data && (
           <div className="mx-auto max-w-2xl rounded-lg border border-destructive/50 bg-destructive/5 px-4 py-3">
             <p className="mb-1 text-xs font-medium text-destructive">Reply failed</p>
             <p className="text-sm text-muted-foreground">
@@ -192,6 +203,18 @@ function ChatConversation({ conversationId }: { conversationId: number }) {
                 {retryMutation.error instanceof ApiError ? retryMutation.error.message : "Could not retry."}
               </p>
             )}
+          </div>
+        )}
+        {replyStatusQuery.isError && !replyStatusQuery.data && (
+          <div className="mx-auto max-w-2xl rounded-lg border border-destructive/50 bg-destructive/5 px-4 py-3">
+            <p className="text-sm text-destructive">
+              {replyStatusQuery.error instanceof ApiError
+                ? replyStatusQuery.error.message
+                : "Could not check the assistant reply status."}
+            </p>
+            <Button size="sm" variant="outline" className="mt-2" onClick={() => replyStatusQuery.refetch()}>
+              Check again
+            </Button>
           </div>
         )}
       </div>

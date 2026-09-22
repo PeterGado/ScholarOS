@@ -257,6 +257,7 @@ class SendChatMessageUseCase:
             conversation_messages=conversation_messages,
         )
 
+        self._conversations.lock_for_message_sequence(conversation_id)
         sequence = self._messages.count_by_conversation_id(conversation_id) + 1
         user_message = self._messages.add(
             Message(
@@ -421,6 +422,7 @@ class GenerateConversationReplyUseCase:
         if not generated_content or not generated_content.strip():
             raise EmptyGeneratedContentError()
 
+        self._conversations.lock_for_message_sequence(conversation_id)
         sequence = self._messages.count_by_conversation_id(conversation_id) + 1
         message = Message(
             conversation_id=conversation_id,
@@ -455,6 +457,7 @@ class GenerateConversationReplyUseCase:
             if not summary_text or not summary_text.strip():
                 return
 
+            self._conversations.lock_for_message_sequence(conversation_id)
             sequence = self._messages.count_by_conversation_id(conversation_id) + 1
             self._messages.add(
                 Message(

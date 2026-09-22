@@ -253,6 +253,9 @@ class SqlAlchemyConversationRepository(ConversationRepository):
         row = self._session.get(ConversationModel, conversation_id)
         return self._to_domain(row) if row is not None else None
 
+    def lock_for_message_sequence(self, conversation_id: int) -> None:
+        self._session.query(ConversationModel).filter_by(conversation_id=conversation_id).with_for_update().one()
+
     def list_by_agent_id(self, agent_id: int) -> list[Conversation]:
         rows = (
             self._session.query(ConversationModel)

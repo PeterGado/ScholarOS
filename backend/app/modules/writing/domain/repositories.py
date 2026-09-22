@@ -77,6 +77,11 @@ class ConversationRepository(ABC):
     def get_by_id(self, conversation_id: int) -> Conversation | None: ...
 
     @abstractmethod
+    def lock_for_message_sequence(self, conversation_id: int) -> None:
+        """Serializes message sequence allocation for this Conversation."""
+        ...
+
+    @abstractmethod
     def list_by_agent_id(self, agent_id: int) -> list[Conversation]:
         """Every standalone Agent Workspace chat conversation owned by an Agent
         (Persistent Brain Decision 3)."""
