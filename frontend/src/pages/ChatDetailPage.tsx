@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { useParams } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { Navigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getChatReplyStatus, listConversationMessages, retryChatReply, sendChatMessage } from "@/api/writing";
 import { ApiError } from "@/lib/apiClient";
@@ -10,6 +10,37 @@ import { MarkdownMessage } from "@/components/MarkdownMessage";
 const REPLY_POLL_INTERVAL_MS = 1500;
 const IN_FLIGHT_STATES = new Set(["queued", "running"]);
 
+interface ActiveReply {
+  conversationId: number;
+  workItemId: number;
+}
+
+function activeReplyStorageKey(conversationId: number) {
+  return `scholaros:chat-reply:${conversationId}`;
+}
+
+function loadActiveReply(conversationId: number): ActiveReply | null {
+  try {
+    const raw = window.sessionStorage.getItem(activeReplyStorageKey(conversationId));
+    if (!raw) return null;
+    const value: unknown = JSON.parse(raw);
+    if (
+      typeof value === "object" &&
+      value !== null &&
+      "conversationId" in value &&
+      "workItemId" in value &&
+      typeof value.conversationId === "number" &&
+      typeof value.workItemId === "number" &&
+      value.conversationId === conversationId
+    ) {
+      return value as ActiveReply;
+    }
+  } catch {
+    // Session storage is a convenience for restoring an in-flight reply, never a dependency.
+  }
+  return null;
+}
+
 // A single conversation thread, styled like Claude/ChatGPT: full-width alternating rows, an
 // auto-growing input pinned to the bottom, Enter to send. Reply completion is observed by
 // polling the reply's own real Work Item status (state/last_error) rather than guessing from a
@@ -18,10 +49,46 @@ const IN_FLIGHT_STATES = new Set(["queued", "running"]);
 export function ChatDetailPage() {
   const { conversationId: conversationIdParam } = useParams<{ conversationId: string }>();
   const conversationId = Number(conversationIdParam);
+
+  if (!Number.isInteger(conversationId) || conversationId < 1) {
+    return <Navigate to="/chat" replace />;
+  }
+
+  return <ChatConversation conversationId={conversationId} />;
+}
+
+function ChatConversation({ conversationId }: { conversationId: number }) {
   const queryClient = useQueryClient();
   const [content, setContent] = useState("");
-  const [activeWorkItemId, setActiveWorkItemId] = useState<number | null>(null);
+  const [activeReply, setActiveReply] = useState<ActiveReply | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const activeWorkItemId = activeReply?.conversationId === conversationId ? activeReply.workItemId : null;
+
+  const trackActiveReply = useCallback((workItemId: number | null) => {
+    if (workItemId === null) {
+      try {
+        window.sessionStorage.removeItem(activeReplyStorageKey(conversationId));
+      } catch {
+        // Storage can be disabled by the browser; the in-memory state still works.
+      }
+      setActiveReply(null);
+      return;
+    }
+    const reply = { conversationId, workItemId };
+    try {
+      window.sessionStorage.setItem(activeReplyStorageKey(conversationId), JSON.stringify(reply));
+    } catch {
+      // Storage is only used to recover after navigation or a reload.
+    }
+    setActiveReply(reply);
+  }, [conversationId]);
+
+  // A reply continues on the backend even if the user reloads or follows a sidebar link.
+  // Restore its Work Item so this page resumes polling instead of leaving the last user
+  // message looking unanswered forever.
+  useEffect(() => {
+    setActiveReply(loadActiveReply(conversationId));
+  }, [conversationId]);
 
   const messagesQuery = useQuery({
     queryKey: ["conversation-messages", conversationId],
@@ -46,9 +113,9 @@ export function ChatDetailPage() {
   useEffect(() => {
     if (replyState === "succeeded") {
       queryClient.invalidateQueries({ queryKey: ["conversation-messages", conversationId] });
-      setActiveWorkItemId(null);
+      trackActiveReply(null);
     }
-  }, [replyState, conversationId, queryClient]);
+  }, [replyState, conversationId, queryClient, trackActiveReply]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -56,9 +123,10 @@ export function ChatDetailPage() {
 
   const sendMutation = useMutation({
     mutationFn: (message: string) => sendChatMessage(conversationId, message),
-    onSuccess: (status) => {
+    onSuccess: (status, message) => {
       queryClient.invalidateQueries({ queryKey: ["conversation-messages", conversationId] });
-      setActiveWorkItemId(status.work_item_id);
+      trackActiveReply(status.work_item_id);
+      if (content === message) setContent("");
     },
   });
 
@@ -72,7 +140,6 @@ export function ChatDetailPage() {
   function handleSend() {
     if (!content.trim() || sendMutation.isPending || isWaitingForReply) return;
     sendMutation.mutate(content);
-    setContent("");
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {

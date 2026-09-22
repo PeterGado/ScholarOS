@@ -117,7 +117,14 @@ class ListConversationMessagesUseCase:
             or conversation.deleted_at is not None
         ):
             raise ConversationNotFoundError(conversation_id=conversation_id)
-        return self._messages.list_by_conversation_id(conversation_id)
+        # Rolling summaries are internal context, not assistant replies. Exposing them in the
+        # transcript made a long chat appear to receive unsolicited, duplicate assistant
+        # messages after every compaction.
+        return [
+            message
+            for message in self._messages.list_by_conversation_id(conversation_id)
+            if message.origin != CONVERSATION_SUMMARY_ORIGIN
+        ]
 
 
 class DeleteConversationUseCase:
@@ -304,7 +311,7 @@ class GetChatReplyStatusUseCase:
     def execute(self, *, user_id: int, conversation_id: int, work_item_id: int) -> WorkItem:
         conversation = self._conversations.get_by_id(conversation_id)
         agent = self._agents.get_by_id(conversation.agent_id) if conversation is not None else None
-        if conversation is None or agent is None or agent.user_id != user_id:
+        if conversation is None or agent is None or agent.user_id != user_id or conversation.deleted_at is not None:
             raise ConversationNotFoundError(conversation_id=conversation_id)
 
         work_item = self._work_items.get_by_id(work_item_id)
@@ -335,7 +342,7 @@ class RetryChatReplyUseCase:
     def execute(self, *, user_id: int, conversation_id: int, work_item_id: int) -> WorkItem:
         conversation = self._conversations.get_by_id(conversation_id)
         agent = self._agents.get_by_id(conversation.agent_id) if conversation is not None else None
-        if conversation is None or agent is None or agent.user_id != user_id:
+        if conversation is None or agent is None or agent.user_id != user_id or conversation.deleted_at is not None:
             raise ConversationNotFoundError(conversation_id=conversation_id)
 
         work_item = self._work_items.get_by_id(work_item_id)
@@ -403,6 +410,12 @@ class GenerateConversationReplyUseCase:
         self._uow = unit_of_work
 
     def execute(self, *, conversation_id: int, context: ContextAssemblyInput) -> Message:
+        # A queued reply may outlive a user deleting its conversation. Do not spend an AI call
+        # or append a visible message to a conversation that is no longer accessible.
+        conversation = self._conversations.get_by_id(conversation_id)
+        if conversation is None or conversation.deleted_at is not None:
+            raise ConversationNotFoundError(conversation_id=conversation_id)
+
         assembled = assemble_context(context)
         generated_content = self._text_provider.generate(assembled.prompt)
         if not generated_content or not generated_content.strip():

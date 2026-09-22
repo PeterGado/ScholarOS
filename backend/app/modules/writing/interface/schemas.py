@@ -170,7 +170,9 @@ class ConversationListResponse(BaseModel):
 
 
 class SendChatMessageRequest(BaseModel):
-    content: str = Field(..., min_length=1)
+    # Reject whitespace before it becomes a persisted user message and an asynchronously
+    # failing Work Item. The limit also keeps one message from consuming the whole prompt.
+    content: str = Field(..., min_length=1, max_length=4000, pattern=r"(?s).*\S.*")
 
 
 class ChatMessageResponse(BaseModel):
