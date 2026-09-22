@@ -1,7 +1,7 @@
 import httpx
 import pytest
 
-from app.ai.exceptions import ProviderConfigurationError, ProviderRequestError
+from app.ai.exceptions import ProviderConfigurationError, ProviderRateLimitError, ProviderRequestError
 from app.ai.providers.openai_compatible import OpenAICompatibleProvider, create_default_provider
 from app.core.config import Settings
 
@@ -65,6 +65,13 @@ def test_generate_returns_the_response_content():
 def test_generate_raises_provider_request_error_on_non_2xx():
     provider = _build_provider(lambda request: httpx.Response(500, json={"error": "boom"}))
     with pytest.raises(ProviderRequestError):
+        provider.generate("prompt")
+
+
+def test_generate_identifies_a_rate_limit_response():
+    provider = _build_provider(lambda request: httpx.Response(429, request=request))
+
+    with pytest.raises(ProviderRateLimitError, match="rate limit"):
         provider.generate("prompt")
 
 

@@ -1,6 +1,6 @@
 import pytest
 
-from app.ai.exceptions import ProviderConfigurationError, ProviderRequestError
+from app.ai.exceptions import ProviderConfigurationError, ProviderRateLimitError, ProviderRequestError
 from app.ai.providers.google_genai import GoogleGenAIProvider, create_google_genai_provider
 from app.core.config import Settings
 
@@ -77,6 +77,14 @@ def test_generate_raises_provider_request_error_when_the_sdk_raises():
     provider = _build_provider(models)
 
     with pytest.raises(ProviderRequestError):
+        provider.generate("prompt")
+
+
+def test_generate_exposes_a_quota_error_without_exposing_provider_details():
+    models = FakeModels(generate_error=RuntimeError("429 RESOURCE_EXHAUSTED: daily quota"))
+    provider = _build_provider(models)
+
+    with pytest.raises(ProviderRateLimitError, match="rate limit"):
         provider.generate("prompt")
 
 

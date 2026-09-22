@@ -107,6 +107,21 @@ def test_human_sounding_writing_guidance_is_always_present():
     assert "not X but Y" in assembled.prompt
 
 
+def test_latest_user_message_is_a_final_explicit_response_task():
+    assembled = assemble_context(
+        ContextAssemblyInput(
+            topic="Topic",
+            instructions="Answer with the methodology I selected.",
+            conversation_messages=(
+                ContextConversationMessage(direction=MessageDirection.USER_REQUEST, content="Use a LIDAR survey."),
+            ),
+        )
+    )
+
+    assert "## RESPONSE TASK — LATEST USER MESSAGE" in assembled.prompt
+    assert assembled.prompt.rstrip().endswith("User: Answer with the methodology I selected.")
+
+
 def test_human_sounding_writing_guidance_survives_truncation_alongside_grounding_rules():
     """Both always-present tail sections must survive a tight budget together, not just
     whichever one happens to be reserved first - regression coverage for generalizing
@@ -129,22 +144,19 @@ def test_human_sounding_writing_guidance_survives_truncation_alongside_grounding
     assert "## HUMAN-SOUNDING WRITING" in assembled.prompt
 
 
-def test_truncation_prefers_sentence_boundaries():
-    # max_characters is calibrated so PROJECT TOPIC, PROJECT DESCRIPTION, and the reserved
-    # GROUNDING RULES + HUMAN-SOUNDING WRITING tail sections all fit in full, leaving just
-    # enough room for WRITING INSTRUCTIONS to be truncated - at a sentence boundary - after its
-    # first sentence.
+def test_response_task_survives_a_constrained_prompt_budget():
+    # The response task is reserved with the other non-negotiable tail sections, so even a
+    # constrained context budget cannot make the assistant lose sight of the current request.
     context = ContextAssemblyInput(
         topic="Topic",
         instructions="First instruction sentence. Second instruction sentence.",
-        max_characters=1412,
+        max_characters=1700,
     )
 
     assembled = assemble_context(context)
 
-    assert len(assembled.prompt) <= 1412
-    assert "First instruction sentence." in assembled.prompt
-    assert "Second instruction sentence" not in assembled.prompt
+    assert len(assembled.prompt) <= 1700
+    assert assembled.prompt.rstrip().endswith("User: First instruction sentence. Second instruction sentence.")
 
 
 @pytest.mark.parametrize(

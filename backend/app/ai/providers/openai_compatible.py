@@ -1,6 +1,6 @@
 import httpx
 
-from app.ai.exceptions import ProviderConfigurationError, ProviderRequestError
+from app.ai.exceptions import ProviderConfigurationError, ProviderRateLimitError, ProviderRequestError
 from app.core.config import Settings
 
 __all__ = ["OpenAICompatibleProvider", "create_default_provider"]
@@ -73,6 +73,10 @@ class OpenAICompatibleProvider:
             response = self._client.post(f"{self._base_url}{path}", json=json_body, headers=self._headers)
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 429:
+                raise ProviderRateLimitError(
+                    "AI provider rate limit reached. Please retry after the provider quota resets."
+                ) from exc
             raise ProviderRequestError(f"AI provider request failed with status {exc.response.status_code}.") from exc
         except httpx.HTTPError as exc:
             raise ProviderRequestError("AI provider request failed.") from exc
