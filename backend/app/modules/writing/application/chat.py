@@ -109,7 +109,8 @@ class ListConversationMessagesUseCase:
 
     def execute(self, *, user_id: int, conversation_id: int) -> list[Message]:
         conversation = self._conversations.get_by_id(conversation_id)
-        agent = self._agents.get_by_id(conversation.agent_id) if conversation is not None else None
+        agent = self._agents.get_by_id(
+            conversation.agent_id) if conversation is not None else None
         if (
             conversation is None
             or agent is None
@@ -145,7 +146,8 @@ class DeleteConversationUseCase:
 
     def execute(self, *, user_id: int, conversation_id: int) -> None:
         conversation = self._conversations.get_by_id(conversation_id)
-        agent = self._agents.get_by_id(conversation.agent_id) if conversation is not None else None
+        agent = self._agents.get_by_id(
+            conversation.agent_id) if conversation is not None else None
         if (
             conversation is None
             or agent is None
@@ -155,7 +157,8 @@ class DeleteConversationUseCase:
             raise ConversationNotFoundError(conversation_id=conversation_id)
 
         try:
-            self._conversations.mark_deleted(conversation_id, deleted_at=datetime.now(timezone.utc))
+            self._conversations.mark_deleted(
+                conversation_id, deleted_at=datetime.now(timezone.utc))
             self._uow.commit()
         except Exception:
             self._uow.rollback()
@@ -196,7 +199,8 @@ class SendChatMessageUseCase:
 
     def execute(self, *, user_id: int, conversation_id: int, content: str) -> WorkItem:
         conversation = self._conversations.get_by_id(conversation_id)
-        agent = self._agents.get_by_id(conversation.agent_id) if conversation is not None else None
+        agent = self._agents.get_by_id(
+            conversation.agent_id) if conversation is not None else None
         if (
             conversation is None
             or agent is None
@@ -208,12 +212,14 @@ class SendChatMessageUseCase:
         project = self._projects.get_by_agent_id(agent.agent_id)
         assert project is not None, f"Agent {agent.agent_id} has no Project (invariant 15 violated)"
 
-        prior_messages = self._messages.list_by_conversation_id(conversation_id)
+        prior_messages = self._messages.list_by_conversation_id(
+            conversation_id)
         conversation_messages = resolve_bounded_conversation_messages(
             prior_messages, max_recent=DEFAULT_MAX_CONVERSATION_MESSAGES
         )
 
-        search_results = self._search_knowledge.execute(user_id=user_id, query=content)
+        search_results = self._search_knowledge.execute(
+            user_id=user_id, query=content)
         evidence = tuple(
             ContextEvidence(
                 chunk_id=result.chunk_id,
@@ -221,7 +227,8 @@ class SendChatMessageUseCase:
                 summary=result.summary,
                 score=result.score,
                 sources=tuple(
-                    ContextEvidenceSource(document_id=source.document_id, document_title=source.document_title)
+                    ContextEvidenceSource(
+                        document_id=source.document_id, document_title=source.document_title)
                     for source in result.evidence
                 ),
             )
@@ -243,7 +250,8 @@ class SendChatMessageUseCase:
         )
 
         memories = tuple(
-            ContextMemory(record_type=record.record_type, content=record.content, rationale=record.rationale)
+            ContextMemory(record_type=record.record_type,
+                          content=record.content, rationale=record.rationale)
             for record in self._memory_records.list_current_by_agent_id(agent.agent_id)
         )
 
@@ -311,7 +319,8 @@ class GetChatReplyStatusUseCase:
 
     def execute(self, *, user_id: int, conversation_id: int, work_item_id: int) -> WorkItem:
         conversation = self._conversations.get_by_id(conversation_id)
-        agent = self._agents.get_by_id(conversation.agent_id) if conversation is not None else None
+        agent = self._agents.get_by_id(
+            conversation.agent_id) if conversation is not None else None
         if conversation is None or agent is None or agent.user_id != user_id or conversation.deleted_at is not None:
             raise ConversationNotFoundError(conversation_id=conversation_id)
 
@@ -342,7 +351,8 @@ class RetryChatReplyUseCase:
 
     def execute(self, *, user_id: int, conversation_id: int, work_item_id: int) -> WorkItem:
         conversation = self._conversations.get_by_id(conversation_id)
-        agent = self._agents.get_by_id(conversation.agent_id) if conversation is not None else None
+        agent = self._agents.get_by_id(
+            conversation.agent_id) if conversation is not None else None
         if conversation is None or agent is None or agent.user_id != user_id or conversation.deleted_at is not None:
             raise ConversationNotFoundError(conversation_id=conversation_id)
 
@@ -350,10 +360,12 @@ class RetryChatReplyUseCase:
         if work_item is None or not _belongs_to_conversation(work_item, conversation_id):
             raise ChatReplyWorkItemNotFoundError(work_item_id=work_item_id)
         if work_item.state != WorkItemState.FAILED:
-            raise ChatReplyCannotBeRetriedError(work_item_id=work_item_id, state=work_item.state.value)
+            raise ChatReplyCannotBeRetriedError(
+                work_item_id=work_item_id, state=work_item.state.value)
 
         try:
-            retried = self._work_items.requeue_failed_by_payload_reference(work_item.payload_reference)
+            retried = self._work_items.requeue_failed_by_payload_reference(
+                work_item.payload_reference)
             assert retried is not None, "work_item was just confirmed failed above"
             self._uow.commit()
         except Exception:
@@ -444,21 +456,25 @@ class GenerateConversationReplyUseCase:
 
     def _summarize_if_needed(self, conversation_id: int) -> None:
         try:
-            all_messages = self._messages.list_by_conversation_id(conversation_id)
+            all_messages = self._messages.list_by_conversation_id(
+                conversation_id)
             to_summarize = select_messages_to_summarize(all_messages)
             if not to_summarize:
                 return
 
             prior_summary = next(
-                (m.content for m in reversed(all_messages) if m.origin == CONVERSATION_SUMMARY_ORIGIN), None
+                (m.content for m in reversed(all_messages)
+                 if m.origin == CONVERSATION_SUMMARY_ORIGIN), None
             )
-            prompt = build_conversation_summary_prompt(to_summarize, prior_summary=prior_summary)
+            prompt = build_conversation_summary_prompt(
+                to_summarize, prior_summary=prior_summary)
             summary_text = self._text_provider.generate(prompt)
             if not summary_text or not summary_text.strip():
                 return
 
             self._conversations.lock_for_message_sequence(conversation_id)
-            sequence = self._messages.count_by_conversation_id(conversation_id) + 1
+            sequence = self._messages.count_by_conversation_id(
+                conversation_id) + 1
             self._messages.add(
                 Message(
                     conversation_id=conversation_id,
@@ -468,19 +484,22 @@ class GenerateConversationReplyUseCase:
                     origin=CONVERSATION_SUMMARY_ORIGIN,
                 )
             )
-            self._conversations.mark_summarized(conversation_id, summarized_at=datetime.now(timezone.utc))
+            self._conversations.mark_summarized(
+                conversation_id, summarized_at=datetime.now(timezone.utc))
             self._uow.commit()
         except Exception:
             self._uow.rollback()
 
     def _extract_memory_if_needed(self, conversation_id: int, context: ContextAssemblyInput) -> None:
         try:
-            all_messages = self._messages.list_by_conversation_id(conversation_id)
+            all_messages = self._messages.list_by_conversation_id(
+                conversation_id)
             # Counts only real messages, excluding any rolling summary _summarize_if_needed may
             # have just injected above - summarization and memory extraction share the same
             # trigger count, and a summary message landing first would otherwise throw off this
             # modulo check on the very turn memory was supposed to fire.
-            real_messages = [m for m in all_messages if m.origin != CONVERSATION_SUMMARY_ORIGIN]
+            real_messages = [
+                m for m in all_messages if m.origin != CONVERSATION_SUMMARY_ORIGIN]
             if not real_messages or len(real_messages) % MEMORY_EXTRACTION_TRIGGER_COUNT != 0:
                 return
 
