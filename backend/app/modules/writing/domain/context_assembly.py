@@ -201,6 +201,7 @@ def assemble_context(context: ContextAssemblyInput) -> AssembledContext:
         _grounding_rules(has_evidence=bool(evidence)),
         ("HUMAN-SOUNDING WRITING", HUMANIZER_GUIDANCE),
     ]
+    tail_sections = [_grounding_rules(has_evidence=bool(evidence)), ("HUMAN-SOUNDING WRITING", HUMANIZER_GUIDANCE)]
 
     prompt = _fit_sections_reserving_tail(sections, tail_sections, context.max_characters)
     return AssembledContext(prompt=prompt, evidence=evidence)

@@ -66,12 +66,15 @@ class ProcessDocumentUseCase:
         return chunk_text(normalized, document_id=document_id)
 
 
-_MAX_TEXTS_PER_PROVIDER_CALL = 15
-"""Bounds how many chunks go into a single classification or embedding provider call. Real
-providers' free tiers cap requests *per day* (not just per minute), so cutting a 46-chunk
-document from ~92 one-chunk-at-a-time calls down to a handful of batched calls is what makes
-processing a real research paper possible at all - see the finding recorded alongside this
-change in docs/Project_Writing_Implementation_Plan.md."""
+_MAX_TEXTS_PER_PROVIDER_CALL = 50
+"""Bounds chunks in one classification or embedding call.
+
+At the 1,000-character chunk target this is roughly 12,500 input tokens, comfortably below
+the configured Gemini models' context windows while turning a typical 46-chunk paper into one
+classification request and one embedding request.  The former 15-chunk cap made that same
+upload consume eight provider requests, which could exhaust a free daily quota surprisingly
+quickly.
+"""
 
 
 def _batched(items: list[str], size: int) -> list[list[str]]:

@@ -95,7 +95,8 @@ class SqlAlchemyProfileCharacteristicRepository(ProfileCharacteristicRepository)
         return characteristic
 
     def list_by_profile_id(self, profile_id: int) -> list[ProfileCharacteristic]:
-        rows = self._session.query(ProfileCharacteristicModel).filter_by(profile_id=profile_id).all()
+        rows = self._session.query(ProfileCharacteristicModel).filter_by(
+            profile_id=profile_id).all()
         return [self._to_domain(row) for row in rows]
 
     @staticmethod
@@ -115,7 +116,8 @@ class SqlAlchemyProfileCharacteristicSourceRepository(ProfileCharacteristicSourc
         self._session = session
 
     def add(self, source: ProfileCharacteristicSource) -> ProfileCharacteristicSource:
-        row = ProfileCharacteristicSourceModel(characteristic_id=source.characteristic_id, document_id=source.document_id)
+        row = ProfileCharacteristicSourceModel(
+            characteristic_id=source.characteristic_id, document_id=source.document_id)
         self._session.add(row)
         self._session.flush()
         source.link_id = row.link_id
@@ -124,7 +126,8 @@ class SqlAlchemyProfileCharacteristicSourceRepository(ProfileCharacteristicSourc
 
     def list_by_characteristic_id(self, characteristic_id: int) -> list[ProfileCharacteristicSource]:
         rows = (
-            self._session.query(ProfileCharacteristicSourceModel).filter_by(characteristic_id=characteristic_id).all()
+            self._session.query(ProfileCharacteristicSourceModel).filter_by(
+                characteristic_id=characteristic_id).all()
         )
         return [self._to_domain(row) for row in rows]
 
@@ -219,7 +222,8 @@ class SqlAlchemyMemoryProvenanceLinkRepository(MemoryProvenanceLinkRepository):
         return link
 
     def list_by_record_id(self, record_id: int) -> list[MemoryProvenanceLink]:
-        rows = self._session.query(MemoryProvenanceLinkModel).filter_by(record_id=record_id).all()
+        rows = self._session.query(MemoryProvenanceLinkModel).filter_by(
+            record_id=record_id).all()
         return [self._to_domain(row) for row in rows]
 
     @staticmethod
@@ -252,6 +256,10 @@ class SqlAlchemyConversationRepository(ConversationRepository):
     def get_by_id(self, conversation_id: int) -> Conversation | None:
         row = self._session.get(ConversationModel, conversation_id)
         return self._to_domain(row) if row is not None else None
+
+    def lock_for_message_sequence(self, conversation_id: int) -> None:
+        self._session.query(ConversationModel).filter_by(
+            conversation_id=conversation_id).with_for_update().one()
 
     def list_by_agent_id(self, agent_id: int) -> list[Conversation]:
         rows = (
@@ -353,7 +361,8 @@ class SqlAlchemyMessageContextLinkRepository(MessageContextLinkRepository):
         return link
 
     def list_by_message_id(self, message_id: int) -> list[MessageContextLink]:
-        rows = self._session.query(MessageContextLinkModel).filter_by(message_id=message_id).all()
+        rows = self._session.query(MessageContextLinkModel).filter_by(
+            message_id=message_id).all()
         return [self._to_domain(row) for row in rows]
 
     @staticmethod

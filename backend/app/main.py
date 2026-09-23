@@ -9,6 +9,7 @@ from sentry_sdk.integrations.starlette import StarletteIntegration
 from slowapi.middleware import SlowAPIMiddleware
 
 from app.ai.providers.factory import create_provider
+from app.ai.providers.unavailable import UnavailableAIProvider
 from app.api.exception_handlers import register_exception_handlers
 from app.api.router import api_router
 from app.auth.provisioning import sync_configured_user
@@ -40,29 +41,30 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     finally:
         db.close()
 
-    # Work Item executor (ADR-006; Stage 6). A no-op if AI_API_KEY isn't configured yet -
-    # mirrors sync_configured_user's own "optional, no-op until configured" pattern, so every
-    # test and deployment that doesn't need the Knowledge Processing Pipeline is unaffected.
+    # Work Item executor (ADR-006; Stage 6). Keep it running without a configured provider so
+    # queued documents reach a visible terminal failure instead of remaining pending forever.
     # session_factory is a closure over the module, not a bound SessionLocal reference, for
     # the same stale-binding reason init_db()/sync_configured_user's db access already avoid it.
     executor_loop: WorkItemExecutorLoop | None = None
     if settings.ai_api_key:
         text_provider = create_provider(settings)
-        # get_content_store() (not a hardcoded FilesystemStorage) - a real bug found live
-        # during the S3-compatible storage rollout (2026-09-18): the executor previously always
-        # wrote/read against local disk regardless of STORAGE_BACKEND, while the upload route
-        # (already wired through this same factory) correctly used S3 - a document uploaded
-        # under STORAGE_BACKEND=s3 would upload fine, then fail processing with "stored content
-        # not found" the moment the executor tried to read it back from the wrong backend.
-        storage = get_content_store()
-        executor_loop = WorkItemExecutorLoop(
-            lambda: db_session_module.SessionLocal(),
-            text_provider,
-            text_provider,  # every concrete provider satisfies both provider Protocols
-            settings.ai_embedding_model,
-            storage,
-        )
-        executor_loop.start()
+    else:
+        text_provider = UnavailableAIProvider()
+    # get_content_store() (not a hardcoded FilesystemStorage) - a real bug found live
+    # during the S3-compatible storage rollout (2026-09-18): the executor previously always
+    # wrote/read against local disk regardless of STORAGE_BACKEND, while the upload route
+    # (already wired through this same factory) correctly used S3 - a document uploaded
+    # under STORAGE_BACKEND=s3 would upload fine, then fail processing with "stored content
+    # not found" the moment the executor tried to read it back from the wrong backend.
+    storage = get_content_store()
+    executor_loop = WorkItemExecutorLoop(
+        lambda: db_session_module.SessionLocal(),
+        text_provider,
+        text_provider,  # every concrete provider satisfies both provider Protocols
+        settings.ai_embedding_model,
+        storage,
+    )
+    executor_loop.start()
 
     yield
 

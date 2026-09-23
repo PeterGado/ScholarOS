@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { deleteResearchDocument, listProjectDocuments, retryResearchDocument, uploadResearchDocument } from "@/api/documents";
+import {
+  deleteResearchDocument,
+  listProjectDocuments,
+  retryResearchDocument,
+  uploadResearchDocument,
+  uploadResearchDocuments,
+} from "@/api/documents";
 import { searchKnowledge } from "@/api/knowledge";
 import { ApiError } from "@/lib/apiClient";
 import { useToast } from "@/lib/ToastContext";
@@ -22,6 +28,7 @@ export function DocumentsPage() {
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState("");
+  const [selectedFileCount, setSelectedFileCount] = useState(0);
   const [query, setQuery] = useState("");
   const [searchSubmitted, setSearchSubmitted] = useState("");
   const previousStatusesRef = useRef<Record<number, string>>({});
@@ -64,20 +71,31 @@ export function DocumentsPage() {
 
   const uploadMutation = useMutation({
     mutationFn: async () => {
-      const file = fileInputRef.current?.files?.[0];
-      if (!file) throw new Error("Choose a file first.");
-      const extension = file.name.split(".").pop() ?? "txt";
-      return uploadResearchDocument({
-        projectId: workspace.project.project_id,
-        file,
-        title: title || file.name,
-        format: extension,
-      });
+      const files = Array.from(fileInputRef.current?.files ?? []);
+      if (files.length === 0) throw new Error("Choose at least one file first.");
+      if (files.length > RESEARCH_DOCUMENT_LIMIT - documentCount) {
+        throw new Error(`You can upload ${RESEARCH_DOCUMENT_LIMIT - documentCount} more document(s) in this project.`);
+      }
+      // A custom title only makes sense for a single file. Multi-file uploads preserve each
+      // filename so their source remains identifiable in the knowledge base.
+      if (files.length === 1 && title.trim()) {
+        const file = files[0];
+        const extension = file.name.split(".").pop() ?? "txt";
+        return [await uploadResearchDocument({
+          projectId: workspace.project.project_id,
+          file,
+          title: title.trim(),
+          format: extension,
+        })];
+      }
+      return uploadResearchDocuments(workspace.project.project_id, files);
     },
-    onSuccess: () => {
+    onSuccess: (documents) => {
       setTitle("");
+      setSelectedFileCount(0);
       if (fileInputRef.current) fileInputRef.current.value = "";
       queryClient.invalidateQueries({ queryKey: ["documents", workspace.project.project_id] });
+      showToast(`${documents.length} document${documents.length === 1 ? "" : "s"} uploaded. Processing is queued.`);
     },
   });
 
@@ -125,13 +143,31 @@ export function DocumentsPage() {
         <form onSubmit={handleUpload} className="flex flex-wrap items-end gap-3">
           <div className="space-y-1">
             <label className="text-sm font-medium">Title (optional)</label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Document title" disabled={atLimit} />
+            <Input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder={selectedFileCount > 1 ? "Each file keeps its filename" : "Document title"}
+              disabled={atLimit || selectedFileCount > 1}
+            />
           </div>
-          <Input ref={fileInputRef} type="file" className="max-w-xs" required disabled={atLimit} />
+          <Input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="max-w-xs"
+            required
+            disabled={atLimit}
+            onChange={(event) => setSelectedFileCount(event.target.files?.length ?? 0)}
+          />
           <Button type="submit" disabled={uploadMutation.isPending || atLimit}>
-            {uploadMutation.isPending ? "Uploading..." : "Upload"}
+            {uploadMutation.isPending ? "Uploading..." : selectedFileCount > 1 ? `Upload ${selectedFileCount} documents` : "Upload"}
           </Button>
         </form>
+        {selectedFileCount > 1 && (
+          <p className="text-sm text-muted-foreground">
+            The files will upload one at a time from this single action. Each file keeps its own name in your knowledge base.
+          </p>
+        )}
         {atLimit && (
           <p className="text-sm text-muted-foreground">
             You've reached the {RESEARCH_DOCUMENT_LIMIT}-document limit for this project. A pending

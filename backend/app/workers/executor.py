@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
+from app.ai.exceptions import ProviderRateLimitError
 from app.ai.providers.base import EmbeddingProvider, TextGenerationProvider
 from app.database.unit_of_work import SqlAlchemyUnitOfWork
 from app.modules.agent.infrastructure.repositories import SqlAlchemyAgentRepository
@@ -94,7 +95,12 @@ def process_one_work_item(
             ).execute(conversation_id=conversation_id, context=chat_context)
         except Exception as exc:  # noqa: BLE001 - worker routes all failures through bounded retry
             updated_item = work_items.mark_failed(
-                item.work_item_id, error=str(exc))
+                item.work_item_id,
+                error=str(exc),
+                # A quota reset needs time; immediate automatic attempts only burn through the
+                # retry budget and create duplicate provider requests.
+                max_attempts=1 if isinstance(exc, ProviderRateLimitError) else 3,
+            )
             uow.commit()
             logger.warning("Work item %s failed (attempt %d): %s",
                            item.work_item_id, updated_item.attempts, exc)
@@ -130,7 +136,12 @@ def process_one_work_item(
         extract_knowledge.execute(document_id=document_id)
     except Exception as exc:  # noqa: BLE001 - any pipeline failure is a retryable work-item failure
         updated_item = work_items.mark_failed(
-            item.work_item_id, error=str(exc))
+            item.work_item_id,
+            error=str(exc),
+            # A provider daily quota cannot recover during the next polling cycle. Preserve
+            # the failed item for the existing explicit Retry action instead.
+            max_attempts=1 if isinstance(exc, ProviderRateLimitError) else 3,
+        )
         next_status = (
             DocumentProcessingStatus.PENDING
             if updated_item.state == WorkItemState.QUEUED

@@ -2,7 +2,7 @@ import { useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createAgentWorkspace } from "@/api/agents";
-import { uploadResearchDocument } from "@/api/documents";
+import { uploadResearchDocuments } from "@/api/documents";
 import { extractWritingStyleProfile, startConversation, uploadWritingStyleDocument } from "@/api/writing";
 import { ApiError } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,7 @@ export function OnboardingPage() {
   const navigate = useNavigate();
   const [step, setStep] = useState<Step>("project");
   const [workspace, setWorkspace] = useState<AgentWorkspaceResponse | null>(null);
+  const [generationError, setGenerationError] = useState<string | null>(null);
 
   return (
     <div className="mx-auto max-w-lg space-y-6 py-10">
@@ -60,11 +61,20 @@ export function OnboardingPage() {
           projectId={workspace.project.project_id}
           onGenerate={async () => {
             setStep("generating");
-            const conversation = await startConversation();
-            navigate(`/chat/${conversation.conversation_id}`);
+            setGenerationError(null);
+            try {
+              const conversation = await startConversation();
+              navigate(`/chat/${conversation.conversation_id}`);
+            } catch (error) {
+              setStep("documents");
+              setGenerationError(
+                error instanceof ApiError ? error.message : "Could not start the conversation. Please try again.",
+              );
+            }
           }}
         />
       )}
+      {generationError && step === "documents" && <p className="text-sm text-destructive">{generationError}</p>}
       {step === "generating" && <p className="text-center text-sm text-muted-foreground">Setting up your chat...</p>}
     </div>
   );
@@ -158,7 +168,7 @@ function ProjectStep({ onCreated }: { onCreated: (workspace: AgentWorkspaceRespo
   );
 }
 
-function DocumentsStep({ projectId, onGenerate }: { projectId: number; onGenerate: () => void }) {
+function DocumentsStep({ projectId, onGenerate }: { projectId: number; onGenerate: () => Promise<void> }) {
   const researchFileInputRef = useRef<HTMLInputElement>(null);
   const styleFileInputRef = useRef<HTMLInputElement>(null);
   const [researchUploaded, setResearchUploaded] = useState<string[]>([]);
@@ -167,13 +177,12 @@ function DocumentsStep({ projectId, onGenerate }: { projectId: number; onGenerat
 
   const researchUploadMutation = useMutation({
     mutationFn: async () => {
-      const file = researchFileInputRef.current?.files?.[0];
-      if (!file) throw new Error("Choose a file first.");
-      const extension = file.name.split(".").pop() ?? "txt";
-      return uploadResearchDocument({ projectId, file, title: file.name, format: extension });
+      const files = Array.from(researchFileInputRef.current?.files ?? []);
+      if (files.length === 0) throw new Error("Choose at least one file first.");
+      return uploadResearchDocuments(projectId, files);
     },
-    onSuccess: (doc) => {
-      setResearchUploaded((titles) => [...titles, doc.title]);
+    onSuccess: (documents) => {
+      setResearchUploaded((titles) => [...titles, ...documents.map((document) => document.title)]);
       if (researchFileInputRef.current) researchFileInputRef.current.value = "";
     },
   });
@@ -201,7 +210,7 @@ function DocumentsStep({ projectId, onGenerate }: { projectId: number; onGenerat
       if (styleDocumentIds.length > 0) {
         await extractStyleMutation.mutateAsync();
       }
-      onGenerate();
+      await onGenerate();
     } finally {
       setIsFinishing(false);
     }
@@ -226,7 +235,7 @@ function DocumentsStep({ projectId, onGenerate }: { projectId: number; onGenerat
           Source material for your AI to cite and draw on. Supports plain text and Word (.docx).
         </p>
         <div className="flex items-end gap-3">
-          <Input ref={researchFileInputRef} type="file" className="max-w-xs" />
+          <Input ref={researchFileInputRef} type="file" multiple className="max-w-xs" />
           <Button
             type="button"
             variant="secondary"

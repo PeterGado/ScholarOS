@@ -3,7 +3,7 @@ from typing import Protocol
 from google import genai
 from google.genai import types
 
-from app.ai.exceptions import ProviderConfigurationError, ProviderRequestError
+from app.ai.exceptions import ProviderConfigurationError, ProviderRateLimitError, ProviderRequestError
 
 __all__ = ["GoogleGenAIProvider", "create_google_genai_provider"]
 
@@ -52,6 +52,10 @@ class GoogleGenAIProvider:
         try:
             response = self._client.models.generate_content(model=self._model, contents=prompt, config=config)
         except Exception as exc:  # noqa: BLE001 - the SDK's exception hierarchy is not part of our contract
+            if _is_rate_limit_error(exc):
+                raise ProviderRateLimitError(
+                    "AI provider rate limit reached. Please retry after the provider quota resets."
+                ) from exc
             raise ProviderRequestError("AI provider request failed.") from exc
 
         text = getattr(response, "text", None)
@@ -63,6 +67,10 @@ class GoogleGenAIProvider:
         try:
             response = self._client.models.embed_content(model=self._embedding_model, contents=text)
         except Exception as exc:  # noqa: BLE001 - the SDK's exception hierarchy is not part of our contract
+            if _is_rate_limit_error(exc):
+                raise ProviderRateLimitError(
+                    "AI provider rate limit reached. Please retry after the provider quota resets."
+                ) from exc
             raise ProviderRequestError("AI provider request failed.") from exc
 
         try:
@@ -77,6 +85,10 @@ class GoogleGenAIProvider:
         try:
             response = self._client.models.embed_content(model=self._embedding_model, contents=texts)
         except Exception as exc:  # noqa: BLE001 - the SDK's exception hierarchy is not part of our contract
+            if _is_rate_limit_error(exc):
+                raise ProviderRateLimitError(
+                    "AI provider rate limit reached. Please retry after the provider quota resets."
+                ) from exc
             raise ProviderRequestError("AI provider request failed.") from exc
 
         try:
@@ -99,3 +111,11 @@ def create_google_genai_provider(settings) -> GoogleGenAIProvider:
         embedding_model=settings.ai_embedding_model,
         max_output_tokens=settings.ai_max_output_tokens,
     )
+
+
+def _is_rate_limit_error(exc: Exception) -> bool:
+    """Recognize the native SDK's quota error without coupling to its unstable exception API."""
+    status_code = getattr(exc, "status_code", None) or getattr(exc, "code", None)
+    if status_code == 429:
+        return True
+    return "resource_exhausted" in str(exc).lower() or "rate limit" in str(exc).lower()

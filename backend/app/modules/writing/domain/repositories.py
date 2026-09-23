@@ -21,7 +21,8 @@ class WritingProfileRepository(ABC):
     def get_by_id(self, profile_id: int) -> WritingProfile | None: ...
 
     @abstractmethod
-    def get_active_by_agent_id(self, agent_id: int) -> WritingProfile | None: ...
+    def get_active_by_agent_id(
+        self, agent_id: int) -> WritingProfile | None: ...
 
 
 class ProfileCharacteristicRepository(ABC):
@@ -29,15 +30,18 @@ class ProfileCharacteristicRepository(ABC):
     def add(self, characteristic: ProfileCharacteristic) -> ProfileCharacteristic: ...
 
     @abstractmethod
-    def list_by_profile_id(self, profile_id: int) -> list[ProfileCharacteristic]: ...
+    def list_by_profile_id(
+        self, profile_id: int) -> list[ProfileCharacteristic]: ...
 
 
 class ProfileCharacteristicSourceRepository(ABC):
     @abstractmethod
-    def add(self, source: ProfileCharacteristicSource) -> ProfileCharacteristicSource: ...
+    def add(
+        self, source: ProfileCharacteristicSource) -> ProfileCharacteristicSource: ...
 
     @abstractmethod
-    def list_by_characteristic_id(self, characteristic_id: int) -> list[ProfileCharacteristicSource]: ...
+    def list_by_characteristic_id(
+        self, characteristic_id: int) -> list[ProfileCharacteristicSource]: ...
 
 
 class MemoryRecordRepository(ABC):
@@ -48,7 +52,8 @@ class MemoryRecordRepository(ABC):
     def get_by_id(self, record_id: int) -> MemoryRecord | None: ...
 
     @abstractmethod
-    def list_current_by_agent_id(self, agent_id: int) -> list[MemoryRecord]: ...
+    def list_current_by_agent_id(
+        self, agent_id: int) -> list[MemoryRecord]: ...
 
     @abstractmethod
     def mark_superseded(self, record_id: int, *, superseded_record_id: int, superseded_at: datetime) -> None:
@@ -66,7 +71,8 @@ class MemoryProvenanceLinkRepository(ABC):
     def add(self, link: MemoryProvenanceLink) -> MemoryProvenanceLink: ...
 
     @abstractmethod
-    def list_by_record_id(self, record_id: int) -> list[MemoryProvenanceLink]: ...
+    def list_by_record_id(
+        self, record_id: int) -> list[MemoryProvenanceLink]: ...
 
 
 class ConversationRepository(ABC):
@@ -75,6 +81,11 @@ class ConversationRepository(ABC):
 
     @abstractmethod
     def get_by_id(self, conversation_id: int) -> Conversation | None: ...
+
+    @abstractmethod
+    def lock_for_message_sequence(self, conversation_id: int) -> None:
+        """Serializes message sequence allocation for this Conversation."""
+        ...
 
     @abstractmethod
     def list_by_agent_id(self, agent_id: int) -> list[Conversation]:
@@ -130,4 +141,5 @@ class MessageContextLinkRepository(ABC):
     def add(self, link: MessageContextLink) -> MessageContextLink: ...
 
     @abstractmethod
-    def list_by_message_id(self, message_id: int) -> list[MessageContextLink]: ...
+    def list_by_message_id(
+        self, message_id: int) -> list[MessageContextLink]: ...

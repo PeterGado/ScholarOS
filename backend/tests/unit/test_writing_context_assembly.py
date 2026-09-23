@@ -107,6 +107,21 @@ def test_human_sounding_writing_guidance_is_always_present():
     assert "not X but Y" in assembled.prompt
 
 
+def test_latest_user_message_is_a_final_explicit_response_task():
+    assembled = assemble_context(
+        ContextAssemblyInput(
+            topic="Topic",
+            instructions="Answer with the methodology I selected.",
+            conversation_messages=(
+                ContextConversationMessage(direction=MessageDirection.USER_REQUEST, content="Use a LIDAR survey."),
+            ),
+        )
+    )
+
+    assert "## RESPONSE TASK — LATEST USER MESSAGE" in assembled.prompt
+    assert assembled.prompt.rstrip().endswith("User: Answer with the methodology I selected.")
+
+
 def test_human_sounding_writing_guidance_survives_truncation_alongside_grounding_rules():
     """Both always-present tail sections must survive a tight budget together, not just
     whichever one happens to be reserved first - regression coverage for generalizing
