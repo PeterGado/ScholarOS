@@ -15,6 +15,9 @@ class FakeDocumentRepository(DocumentRepository):
     def get_by_id(self, document_id):
         return self._documents.get(document_id)
 
+    def get_by_ids(self, document_ids):
+        return [self._documents[did] for did in document_ids if did in self._documents]
+
     def list_by_project_id(self, project_id):
         raise NotImplementedError
 

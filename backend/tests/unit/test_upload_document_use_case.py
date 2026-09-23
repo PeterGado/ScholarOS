@@ -49,6 +49,9 @@ class FakeDocumentRepository(DocumentRepository):
     def get_by_id(self, document_id):
         return self._by_id.get(document_id)
 
+    def get_by_ids(self, document_ids):
+        return [self._by_id[did] for did in document_ids if did in self._by_id]
+
     def list_by_project_id(self, project_id, *, purpose=None):
         return [
             d

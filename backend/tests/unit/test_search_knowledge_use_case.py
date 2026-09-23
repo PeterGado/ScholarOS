@@ -66,6 +66,9 @@ class FakeChunkRepository(KnowledgeChunkRepository):
     def get_by_id(self, chunk_id):
         return self._chunks.get(chunk_id)
 
+    def get_by_ids(self, chunk_ids):
+        return [self._chunks[cid] for cid in chunk_ids if cid in self._chunks]
+
 
 class FakeEvidenceLinkRepository(ChunkEvidenceLinkRepository):
     def __init__(self, links_by_chunk: dict[int, list[ChunkEvidenceLink]] | None = None):
@@ -83,6 +86,9 @@ class FakeEvidenceLinkRepository(ChunkEvidenceLinkRepository):
     def list_by_chunk_id(self, chunk_id):
         return self._links_by_chunk.get(chunk_id, [])
 
+    def list_by_chunk_ids(self, chunk_ids):
+        return [link for cid in chunk_ids for link in self._links_by_chunk.get(cid, [])]
+
 
 class FakeDocumentRepository(DocumentRepository):
     def __init__(self, documents: dict[int, ResearchDocument] | None = None):
@@ -90,6 +96,9 @@ class FakeDocumentRepository(DocumentRepository):
 
     def get_by_id(self, document_id):
         return self._documents.get(document_id)
+
+    def get_by_ids(self, document_ids):
+        return [self._documents[did] for did in document_ids if did in self._documents]
 
     def list_by_project_id(self, project_id):
         raise NotImplementedError

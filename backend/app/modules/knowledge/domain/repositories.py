@@ -15,6 +15,15 @@ class KnowledgeChunkRepository(ABC):
     @abstractmethod
     def get_by_id(self, chunk_id: int) -> KnowledgeChunk | None: ...
 
+    @abstractmethod
+    def get_by_ids(self, chunk_ids: list[int]) -> list[KnowledgeChunk]:
+        """Batch form of `get_by_id` (2026-09-23, real-traffic N+1 fix): a single query for a
+        whole result set of chunk_ids - see `SearchKnowledgeUseCase._to_results`, which
+        previously called `get_by_id` once per search result. Order is not guaranteed to match
+        `chunk_ids`; callers that need a specific order index the returned list themselves.
+        """
+        ...
+
 
 class ChunkEvidenceLinkRepository(ABC):
     @abstractmethod
@@ -30,6 +39,13 @@ class ChunkEvidenceLinkRepository(ABC):
     def list_by_chunk_id(self, chunk_id: int) -> list[ChunkEvidenceLink]:
         """Added Stage 8: retrieval needs to answer "which document(s) produced this chunk"
         for provenance, the reverse direction of `list_by_document_id`.
+        """
+        ...
+
+    @abstractmethod
+    def list_by_chunk_ids(self, chunk_ids: list[int]) -> list[ChunkEvidenceLink]:
+        """Batch form of `list_by_chunk_id` (2026-09-23, real-traffic N+1 fix): one query for
+        every evidence link across a whole search result set, instead of one query per chunk.
         """
         ...
 

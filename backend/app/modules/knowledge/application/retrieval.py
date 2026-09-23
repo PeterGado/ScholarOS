@@ -1,3 +1,4 @@
+from collections import defaultdict
 from dataclasses import dataclass, field
 
 from app.ai.providers.base import EmbeddingProvider
@@ -105,13 +106,46 @@ class SearchKnowledgeUseCase:
             return []
 
         fused = reciprocal_rank_fusion(lexical_ranking, semantic_ranking)[:bounded_top_k]
-        return [self._to_result(chunk_id, score) for chunk_id, score in fused]
+        return self._to_results(fused)
 
-    def _to_result(self, chunk_id: int, score: float) -> SearchResult:
-        chunk = self._chunks.get_by_id(chunk_id)
-        evidence = []
-        for link in self._evidence_links.list_by_chunk_id(chunk_id):
-            document = self._documents.get_by_id(link.document_id)
-            if document is not None:
-                evidence.append(SearchResultEvidence(document_id=document.document_id, document_title=document.title))
-        return SearchResult(chunk_id=chunk_id, content=chunk.content, summary=chunk.summary, score=score, evidence=evidence)
+    def _to_results(self, fused: list[tuple[int, float]]) -> list[SearchResult]:
+        """Batched (2026-09-23, real-traffic audit): the original version called `get_by_id`/
+        `list_by_chunk_id`/`get_by_id` once PER result - up to ~3 queries per chunk, 30-50+
+        total for a full top_k=10 result set, paid on every search call and therefore on every
+        chat reply (SendChatMessageUseCase calls this use case directly). Fixed to a flat 3
+        queries total regardless of top_k: one for every chunk, one for every evidence link
+        across the whole set, one for every document those links reference - assembled into
+        results in Python instead of round-tripping the database per result.
+        """
+        chunk_ids = [chunk_id for chunk_id, _ in fused]
+        if not chunk_ids:
+            return []
+
+        chunks_by_id = {chunk.chunk_id: chunk for chunk in self._chunks.get_by_ids(chunk_ids)}
+
+        links = self._evidence_links.list_by_chunk_ids(chunk_ids)
+        links_by_chunk_id: dict[int, list] = defaultdict(list)
+        for link in links:
+            links_by_chunk_id[link.chunk_id].append(link)
+
+        document_ids = list({link.document_id for link in links})
+        documents_by_id = {document.document_id: document for document in self._documents.get_by_ids(document_ids)}
+
+        results = []
+        for chunk_id, score in fused:
+            chunk = chunks_by_id.get(chunk_id)
+            if chunk is None:
+                # Defensive: should never happen given Stage 5's own atomicity, but must not
+                # crash - the same guarantee the pre-batching version gave implicitly via
+                # get_by_id returning None only ever being dereferenced by evidence lookups,
+                # never chunk.content itself. Kept explicit here since it's now a real branch.
+                continue
+            evidence = [
+                SearchResultEvidence(document_id=document.document_id, document_title=document.title)
+                for link in links_by_chunk_id.get(chunk_id, [])
+                if (document := documents_by_id.get(link.document_id)) is not None
+            ]
+            results.append(
+                SearchResult(chunk_id=chunk_id, content=chunk.content, summary=chunk.summary, score=score, evidence=evidence)
+            )
+        return results

@@ -17,6 +17,12 @@ class SqlAlchemyDocumentRepository(DocumentRepository):
         row = self._session.get(ResearchDocumentModel, document_id)
         return self._to_domain(row) if row is not None else None
 
+    def get_by_ids(self, document_ids: list[int]) -> list[ResearchDocument]:
+        if not document_ids:
+            return []
+        rows = self._session.query(ResearchDocumentModel).filter(ResearchDocumentModel.document_id.in_(document_ids)).all()
+        return [self._to_domain(row) for row in rows]
+
     def list_by_project_id(self, project_id: int, *, purpose: DocumentPurpose | None = None) -> list[ResearchDocument]:
         query = self._session.query(ResearchDocumentModel).filter_by(project_id=project_id, deleted_at=None)
         if purpose is not None:

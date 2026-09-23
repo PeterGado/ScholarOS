@@ -72,6 +72,12 @@ class SqlAlchemyKnowledgeChunkRepository(KnowledgeChunkRepository):
         row = self._session.get(KnowledgeChunkModel, chunk_id)
         return self._to_domain(row) if row is not None else None
 
+    def get_by_ids(self, chunk_ids: list[int]) -> list[KnowledgeChunk]:
+        if not chunk_ids:
+            return []
+        rows = self._session.query(KnowledgeChunkModel).filter(KnowledgeChunkModel.chunk_id.in_(chunk_ids)).all()
+        return [self._to_domain(row) for row in rows]
+
     @staticmethod
     def _to_domain(row: KnowledgeChunkModel) -> KnowledgeChunk:
         return KnowledgeChunk(
@@ -109,6 +115,12 @@ class SqlAlchemyChunkEvidenceLinkRepository(ChunkEvidenceLinkRepository):
 
     def list_by_chunk_id(self, chunk_id: int) -> list[ChunkEvidenceLink]:
         rows = self._session.query(ChunkEvidenceLinkModel).filter_by(chunk_id=chunk_id).all()
+        return [self._to_domain(row) for row in rows]
+
+    def list_by_chunk_ids(self, chunk_ids: list[int]) -> list[ChunkEvidenceLink]:
+        if not chunk_ids:
+            return []
+        rows = self._session.query(ChunkEvidenceLinkModel).filter(ChunkEvidenceLinkModel.chunk_id.in_(chunk_ids)).all()
         return [self._to_domain(row) for row in rows]
 
     @staticmethod

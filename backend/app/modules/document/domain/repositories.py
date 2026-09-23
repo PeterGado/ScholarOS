@@ -10,6 +10,15 @@ class DocumentRepository(ABC):
     def get_by_id(self, document_id: int) -> ResearchDocument | None: ...
 
     @abstractmethod
+    def get_by_ids(self, document_ids: list[int]) -> list[ResearchDocument]:
+        """Batch form of `get_by_id` (2026-09-23, real-traffic N+1 fix) - see
+        `SearchKnowledgeUseCase`, which previously fetched one Research Document per evidence
+        link instead of one query for every document a search result set references. Order is
+        not guaranteed to match `document_ids`.
+        """
+        ...
+
+    @abstractmethod
     def list_by_project_id(
         self, project_id: int, *, purpose: DocumentPurpose | None = None
     ) -> list[ResearchDocument]:
