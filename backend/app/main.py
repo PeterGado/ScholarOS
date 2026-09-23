@@ -56,7 +56,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # (already wired through this same factory) correctly used S3 - a document uploaded
     # under STORAGE_BACKEND=s3 would upload fine, then fail processing with "stored content
     # not found" the moment the executor tried to read it back from the wrong backend.
-    storage = get_content_store()
+    #
+    # Consult app.dependency_overrides first (2026-09-23): a raw `get_content_store()` call
+    # bypasses FastAPI's override mechanism entirely - overrides only apply when a route
+    # resolves `Depends(get_content_store)`, never a direct function call like this one. Before
+    # this fix, e2e tests overrode get_content_store to an isolated per-test tmp_path store (so
+    # requests read/write the right place), but the executor - now always started below,
+    # regardless of whether an AI key is configured - still resolved the real, non-test-scoped
+    # store. The two disagreeing meant the executor could pick up a real Work Item and fail to
+    # find its content, logged as "Malformed chat reply payload reference", and the resulting
+    # extra background DB activity during tests produced real "database is locked" errors on
+    # SQLite. Falls back to the real factory when nothing overrides it, so production behavior
+    # is unchanged.
+    storage = app.dependency_overrides.get(get_content_store, get_content_store)()
     executor_loop = WorkItemExecutorLoop(
         lambda: db_session_module.SessionLocal(),
         text_provider,

@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import app.database.session as session_module
+import app.main as main_module
 from app.auth.hashing import hash_password
 from app.core.dependencies import get_content_store
 from app.core.rate_limit import limiter
@@ -12,6 +13,34 @@ from app.storage.filesystem import FilesystemStorage
 
 AUTH_USERNAME = "researcher"
 AUTH_PASSWORD = "s3cret"
+
+
+class _NoOpExecutorLoop:
+    """Stands in for the real WorkItemExecutorLoop for the duration of an e2e test (2026-09-23).
+
+    Before the "AI Unavailable provider" change, the real executor only ever started when
+    `AI_API_KEY` was configured - never true in tests, so it was silently a no-op here. It now
+    always starts (by design: a queued item should reach a visible terminal failure instead of
+    hanging forever with no provider configured), which means it also always starts during e2e
+    tests - genuinely polling and writing to the test's own SQLite database in the background,
+    racing the test's own foreground requests. SQLite allows only one writer at a time; even
+    with WAL mode and a busy_timeout (see build_engine), a background writer with real work to
+    do (repeatedly retrying a Work Item it can never complete without a real AI provider)
+    collides often enough to produce genuine "database is locked" errors in tests that never
+    needed the executor to be running at all - they either don't create Work Items, or process
+    the one they do via `process_one_work_item` directly, deterministically, in the test's own
+    thread. Restores the old, effectively-always-off behavior for tests specifically, without
+    touching the real (and correct) production default.
+    """
+
+    def __init__(self, *args, **kwargs) -> None:
+        pass
+
+    def start(self) -> None:
+        pass
+
+    async def stop(self) -> None:
+        pass
 
 
 @pytest.fixture()
@@ -32,7 +61,7 @@ def db_engine(tmp_path, monkeypatch):
 
 
 @pytest.fixture()
-def client(db_engine, tmp_path):
+def client(db_engine, tmp_path, monkeypatch):
     """A TestClient wired to an isolated per-test database (via the db_engine monkeypatch)
     and object store (via a dependency override) - never the real configured `scholaros.db`
     / `data/documents`.
@@ -43,6 +72,12 @@ def client(db_engine, tmp_path):
     MAX_RESEARCH_DOCUMENTS_PER_PROJECT documents) would otherwise be throttled by an unrelated
     concern. Rate limiting itself is exercised separately in test_rate_limiting_api.py, which
     re-enables it for the duration of its own tests.
+
+    The background Work Item executor (2026-09-23) is replaced with a no-op for the same
+    reason - see `_NoOpExecutorLoop`'s own docstring. Tests that need a Work Item actually
+    processed call `process_one_work_item` directly (e.g. via each test file's own
+    `_process_next_work_item` helper), deterministically, rather than relying on the real
+    background poll loop's timing.
     """
 
     def override_get_content_store() -> FilesystemStorage:
@@ -50,6 +85,7 @@ def client(db_engine, tmp_path):
 
     app.dependency_overrides[get_content_store] = override_get_content_store
     limiter.enabled = False
+    monkeypatch.setattr(main_module, "WorkItemExecutorLoop", _NoOpExecutorLoop)
     try:
         with TestClient(app) as test_client:
             yield test_client
