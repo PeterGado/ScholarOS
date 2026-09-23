@@ -196,12 +196,23 @@ def assemble_context(context: ContextAssemblyInput) -> AssembledContext:
         ("WRITING STYLE AND TONE", _format_style_signals(context.style_signals)),
         ("CURRENT PROJECT MEMORY", _format_memories(bounded_memories)),
     ]
+    # The current user message is intentionally repeated at the end, after every optional
+    # context source.  This gives it the strongest recency signal and prevents long evidence,
+    # memory, or style sections from making the model produce generic prose instead of an
+    # answer to what the user just asked.
     tail_sections = [
         ("BUILT-IN KNOWLEDGE / SYSTEM GUIDANCE", BUILTIN_SYSTEM_GUIDANCE),
         _grounding_rules(has_evidence=bool(evidence)),
         ("HUMAN-SOUNDING WRITING", HUMANIZER_GUIDANCE),
+        (
+            "RESPONSE TASK — LATEST USER MESSAGE",
+            "Respond directly to the latest user message below. Treat it as the task to complete; "
+            "do not merely produce a generic draft or repeat background context. If it asks a "
+            "question, answer it. If it asks for writing, provide that writing. Ask one concise "
+            "clarifying question only when essential information is missing.\n\n"
+            f"User: {context.instructions.strip()}",
+        ),
     ]
-    tail_sections = [_grounding_rules(has_evidence=bool(evidence)), ("HUMAN-SOUNDING WRITING", HUMANIZER_GUIDANCE)]
 
     prompt = _fit_sections_reserving_tail(sections, tail_sections, context.max_characters)
     return AssembledContext(prompt=prompt, evidence=evidence)
