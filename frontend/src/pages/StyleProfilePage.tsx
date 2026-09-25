@@ -1,5 +1,5 @@
 import { useRef, type FormEvent } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   extractWritingStyleProfile,
   getWritingProfile,
@@ -24,10 +24,14 @@ export function StyleProfilePage() {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const documentsQuery = useQuery({
+  const documentsQuery = useInfiniteQuery({
     queryKey: ["writing-style-documents"],
-    queryFn: listWritingStyleDocuments,
+    queryFn: ({ pageParam }) => listWritingStyleDocuments({ offset: pageParam }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.hasMore ? allPages.reduce((total, page) => total + page.items.length, 0) : undefined,
   });
+  const documents = documentsQuery.data?.pages.flatMap((page) => page.items) ?? [];
 
   const profileQuery = useQuery({
     queryKey: ["writing-profile"],
@@ -49,7 +53,7 @@ export function StyleProfilePage() {
   });
 
   const extractMutation = useMutation({
-    mutationFn: () => extractWritingStyleProfile((documentsQuery.data ?? []).map((d) => d.document_id)),
+    mutationFn: () => extractWritingStyleProfile(documents.map((d) => d.document_id)),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["writing-profile"] }),
   });
 
@@ -64,7 +68,7 @@ export function StyleProfilePage() {
   }
 
   const hasExtractedProfile = (profileQuery.data?.characteristics.length ?? 0) > 0;
-  const uploadedCount = documentsQuery.data?.length ?? 0;
+  const uploadedCount = documents.length;
   const atLimit = uploadedCount >= WRITING_STYLE_SAMPLE_LIMIT;
 
   return (
@@ -96,12 +100,12 @@ export function StyleProfilePage() {
         )}
 
         {documentsQuery.isLoading && <p className="text-sm text-muted-foreground">Loading samples...</p>}
-        {documentsQuery.data && documentsQuery.data.length === 0 && (
+        {documentsQuery.data && documents.length === 0 && (
           <p className="text-sm text-muted-foreground">No samples uploaded yet.</p>
         )}
-        {documentsQuery.data && documentsQuery.data.length > 0 && (
+        {documentsQuery.data && documents.length > 0 && (
           <ul className="space-y-2">
-            {documentsQuery.data.map((doc) => (
+            {documents.map((doc) => (
               <li key={doc.document_id}>
                 <Card>
                   <CardContent className="flex items-center justify-between py-3">
@@ -119,6 +123,16 @@ export function StyleProfilePage() {
               </li>
             ))}
           </ul>
+        )}
+        {documentsQuery.hasNextPage && (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={documentsQuery.isFetchingNextPage}
+            onClick={() => documentsQuery.fetchNextPage()}
+          >
+            {documentsQuery.isFetchingNextPage ? "Loading..." : "Load more"}
+          </Button>
         )}
         {deleteMutation.isError && (
           <p className="text-sm text-destructive">

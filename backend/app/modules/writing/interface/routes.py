@@ -1,9 +1,10 @@
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
 
 from app.api.exception_handlers import ErrorResponse
 from app.core.config import get_settings
+from app.core.pagination import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT
 from app.core.dependencies import (
     get_current_user_id,
     get_extract_writing_style_profile_use_case,
@@ -129,6 +130,8 @@ async def upload_writing_style_document(
     },
 )
 def list_writing_style_documents(
+    limit: int = Query(DEFAULT_LIST_LIMIT, ge=1, le=MAX_LIST_LIMIT),
+    offset: int = Query(0, ge=0),
     user_id: int = Depends(get_current_user_id),
     use_case: ListWritingStyleDocumentsUseCase = Depends(get_list_writing_style_documents_use_case),
 ) -> WritingStyleDocumentListResponse:
@@ -136,7 +139,8 @@ def list_writing_style_documents(
     `ListWritingStyleDocumentsUseCase`'s own docstring for the bug this closes). An Agent with
     none uploaded yet returns an empty list (200), not a 404.
     """
-    return WritingStyleDocumentListResponse.from_domain(use_case.execute(user_id=user_id))
+    documents, has_more = use_case.execute(user_id=user_id, limit=limit, offset=offset)
+    return WritingStyleDocumentListResponse.from_domain(documents, has_more=has_more)
 
 
 @router.post(
@@ -212,6 +216,8 @@ def get_writing_profile(
     },
 )
 def list_memory(
+    limit: int = Query(DEFAULT_LIST_LIMIT, ge=1, le=MAX_LIST_LIMIT),
+    offset: int = Query(0, ge=0),
     user_id: int = Depends(get_current_user_id),
     use_case: ListMemoryUseCase = Depends(get_list_memory_use_case),
 ) -> MemoryRecordListResponse:
@@ -219,7 +225,8 @@ def list_memory(
     (Persistent Brain v2: "let the user see what the brain remembers, show provenance"). An
     Agent with no memory yet returns an empty list (200), not a 404.
     """
-    return MemoryRecordListResponse.from_domain(use_case.execute(user_id=user_id))
+    records, has_more = use_case.execute(user_id=user_id, limit=limit, offset=offset)
+    return MemoryRecordListResponse.from_domain(records, has_more=has_more)
 
 
 @router.post(
@@ -290,11 +297,14 @@ def start_conversation(
     },
 )
 def list_conversations(
+    limit: int = Query(DEFAULT_LIST_LIMIT, ge=1, le=MAX_LIST_LIMIT),
+    offset: int = Query(0, ge=0),
     user_id: int = Depends(get_current_user_id),
     use_case: ListConversationsUseCase = Depends(get_list_conversations_use_case),
 ) -> ConversationListResponse:
     """Lists every Conversation owned by the authenticated user's own Agent."""
-    return ConversationListResponse.from_domain(use_case.execute(user_id=user_id))
+    conversations, has_more = use_case.execute(user_id=user_id, limit=limit, offset=offset)
+    return ConversationListResponse.from_domain(conversations, has_more=has_more)
 
 
 @router.delete(
@@ -333,11 +343,16 @@ def delete_conversation(
 )
 def list_conversation_messages(
     conversation_id: int,
+    limit: int = Query(DEFAULT_LIST_LIMIT, ge=1, le=MAX_LIST_LIMIT),
+    offset: int = Query(0, ge=0),
     user_id: int = Depends(get_current_user_id),
     use_case: ListConversationMessagesUseCase = Depends(get_list_conversation_messages_use_case),
 ) -> ChatMessageListResponse:
     """Lists a Conversation's Messages, oldest first - the client's own chat history view."""
-    return ChatMessageListResponse.from_domain(use_case.execute(user_id=user_id, conversation_id=conversation_id))
+    messages, has_more = use_case.execute(
+        user_id=user_id, conversation_id=conversation_id, limit=limit, offset=offset
+    )
+    return ChatMessageListResponse.from_domain(messages, has_more=has_more)
 
 
 @router.post(

@@ -43,12 +43,16 @@ class ResearchDocumentResponse(BaseModel):
 
 class ResearchDocumentListResponse(BaseModel):
     documents: list[ResearchDocumentResponse]
+    has_more: bool = False
 
     @classmethod
-    def from_domain(cls, documents: list[ResearchDocumentWithError]) -> "ResearchDocumentListResponse":
+    def from_domain(
+        cls, documents: list[ResearchDocumentWithError], *, has_more: bool = False
+    ) -> "ResearchDocumentListResponse":
         return cls(
             documents=[
                 ResearchDocumentResponse.from_domain(item.document, error_message=item.error_message)
                 for item in documents
-            ]
+            ],
+            has_more=has_more,
         )

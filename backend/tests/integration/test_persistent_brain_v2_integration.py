@@ -228,8 +228,8 @@ def test_memory_listing_and_supersede_do_not_leak_across_agents(session, storage
         SqlAlchemyMemoryProvenanceLinkRepository(session),
         SqlAlchemyAgentRepository(session),
     )
-    a_memory = list_use_case.execute(user_id=workspace_a.agent.user_id)
-    b_memory = list_use_case.execute(user_id=workspace_b.agent.user_id)
+    a_memory, _ = list_use_case.execute(user_id=workspace_a.agent.user_id)
+    b_memory, _ = list_use_case.execute(user_id=workspace_b.agent.user_id)
 
     assert [m.record.content for m in a_memory] == ["Memory belonging to Agent A."]
     assert [m.record.content for m in b_memory] == ["Memory belonging to Agent B."]

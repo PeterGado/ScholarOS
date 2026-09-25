@@ -74,10 +74,15 @@ class WritingStyleDocumentSummaryResponse(BaseModel):
 
 class WritingStyleDocumentListResponse(BaseModel):
     documents: list[WritingStyleDocumentSummaryResponse]
+    has_more: bool = False
 
     @classmethod
-    def from_domain(cls, documents: list[ResearchDocument]) -> "WritingStyleDocumentListResponse":
-        return cls(documents=[WritingStyleDocumentSummaryResponse.from_domain(d) for d in documents])
+    def from_domain(
+        cls, documents: list[ResearchDocument], *, has_more: bool = False
+    ) -> "WritingStyleDocumentListResponse":
+        return cls(
+            documents=[WritingStyleDocumentSummaryResponse.from_domain(d) for d in documents], has_more=has_more
+        )
 
 
 class ExtractWritingStyleProfileRequest(BaseModel):
@@ -163,10 +168,11 @@ class ConversationResponse(BaseModel):
 
 class ConversationListResponse(BaseModel):
     conversations: list[ConversationResponse]
+    has_more: bool = False
 
     @classmethod
-    def from_domain(cls, conversations: list[Conversation]) -> "ConversationListResponse":
-        return cls(conversations=[ConversationResponse.from_domain(c) for c in conversations])
+    def from_domain(cls, conversations: list[Conversation], *, has_more: bool = False) -> "ConversationListResponse":
+        return cls(conversations=[ConversationResponse.from_domain(c) for c in conversations], has_more=has_more)
 
 
 class SendChatMessageRequest(BaseModel):
@@ -203,10 +209,11 @@ class ChatMessageResponse(BaseModel):
 
 class ChatMessageListResponse(BaseModel):
     messages: list[ChatMessageResponse]
+    has_more: bool = False
 
     @classmethod
-    def from_domain(cls, messages: list[Message]) -> "ChatMessageListResponse":
-        return cls(messages=[ChatMessageResponse.from_domain(m) for m in messages])
+    def from_domain(cls, messages: list[Message], *, has_more: bool = False) -> "ChatMessageListResponse":
+        return cls(messages=[ChatMessageResponse.from_domain(m) for m in messages], has_more=has_more)
 
 
 class ChatReplyStatusResponse(BaseModel):
@@ -271,10 +278,13 @@ class MemoryRecordResponse(BaseModel):
 
 class MemoryRecordListResponse(BaseModel):
     records: list[MemoryRecordResponse]
+    has_more: bool = False
 
     @classmethod
-    def from_domain(cls, items: list[MemoryRecordWithProvenance]) -> "MemoryRecordListResponse":
-        return cls(records=[MemoryRecordResponse.from_domain(item) for item in items])
+    def from_domain(
+        cls, items: list[MemoryRecordWithProvenance], *, has_more: bool = False
+    ) -> "MemoryRecordListResponse":
+        return cls(records=[MemoryRecordResponse.from_domain(item) for item in items], has_more=has_more)
 
 
 class SupersedeMemoryRecordRequest(BaseModel):

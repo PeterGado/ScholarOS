@@ -64,6 +64,87 @@ def _process_next_work_item(db_engine, tmp_path, *, text_provider=None) -> bool:
         session.close()
 
 
+# --- Pagination (2026-09-23, real-traffic audit) -------------------------------------------
+
+
+def test_list_conversations_respects_limit_and_reports_has_more(client, auth_headers):
+    _create_workspace(client, auth_headers)
+    for i in range(5):
+        client.post("/writing/conversations", json={"title": f"Conversation {i}"}, headers=auth_headers)
+
+    response = client.get("/writing/conversations", params={"limit": 3}, headers=auth_headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["conversations"]) == 3
+    assert body["has_more"] is True
+
+
+def test_list_conversations_offset_skips_already_seen_conversations(client, auth_headers):
+    _create_workspace(client, auth_headers)
+    for i in range(5):
+        client.post("/writing/conversations", json={"title": f"Conversation {i}"}, headers=auth_headers)
+
+    first_page = client.get("/writing/conversations", params={"limit": 3}, headers=auth_headers).json()
+    second_page = client.get(
+        "/writing/conversations", params={"limit": 3, "offset": 3}, headers=auth_headers
+    ).json()
+
+    assert len(second_page["conversations"]) == 2
+    assert second_page["has_more"] is False
+    first_ids = {c["conversation_id"] for c in first_page["conversations"]}
+    second_ids = {c["conversation_id"] for c in second_page["conversations"]}
+    assert first_ids.isdisjoint(second_ids)
+
+
+def test_list_conversation_messages_respects_limit_and_reports_has_more(client, auth_headers):
+    _create_workspace(client, auth_headers)
+    conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
+    for i in range(5):
+        client.post(
+            f"/writing/conversations/{conversation['conversation_id']}/messages",
+            json={"content": f"message {i}"},
+            headers=auth_headers,
+        )
+
+    response = client.get(
+        f"/writing/conversations/{conversation['conversation_id']}/messages",
+        params={"limit": 3},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["messages"]) == 3
+    assert body["has_more"] is True
+    # offset=0 is the tail of the conversation (most recent messages), not the start - a chat
+    # UI's initial load should show recent messages, not message #1 of a long conversation.
+    # Each page is still returned oldest-first internally for display.
+    assert [m["content"] for m in body["messages"]] == ["message 2", "message 3", "message 4"]
+
+
+def test_list_conversation_messages_offset_returns_the_older_page_in_order(client, auth_headers):
+    _create_workspace(client, auth_headers)
+    conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
+    for i in range(5):
+        client.post(
+            f"/writing/conversations/{conversation['conversation_id']}/messages",
+            json={"content": f"message {i}"},
+            headers=auth_headers,
+        )
+
+    # offset advances backward through history from the tail, so offset=3 skips the 3 most
+    # recent messages (2, 3, 4) and returns what's left, oldest-first.
+    second_page = client.get(
+        f"/writing/conversations/{conversation['conversation_id']}/messages",
+        params={"limit": 3, "offset": 3},
+        headers=auth_headers,
+    ).json()
+
+    assert [m["content"] for m in second_page["messages"]] == ["message 0", "message 1"]
+    assert second_page["has_more"] is False
+
+
 def test_start_conversation_returns_the_created_conversation(client, auth_headers):
     _create_workspace(client, auth_headers)
 

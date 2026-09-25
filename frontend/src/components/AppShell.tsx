@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate, useOutletContext, useParams } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { FileText, LogOut, Menu, MessageSquare, PenLine, Plus, Settings, X } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { logout as logoutRequest } from "@/api/auth";
@@ -49,7 +49,17 @@ export function AppShell() {
     setIsSidebarOpen(false);
   }, [location.pathname]);
 
-  const conversationsQuery = useQuery({ queryKey: ["conversations"], queryFn: listConversations });
+  const conversationsQuery = useInfiniteQuery({
+    queryKey: ["conversations"],
+    queryFn: ({ pageParam }) => listConversations({ offset: pageParam }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.hasMore ? allPages.reduce((total, page) => total + page.items.length, 0) : undefined,
+  });
+  // Backend order is oldest-first (a stable sort continued correctly across pages by offset) -
+  // reversing the full flattened list still puts the most recent conversation first, the same
+  // as reversing a single unpaginated page did before.
+  const conversations = conversationsQuery.data?.pages.flatMap((page) => page.items) ?? [];
 
   const newChatMutation = useMutation({
     mutationFn: () => startConversation(),
@@ -177,11 +187,11 @@ export function AppShell() {
               </button>
             </div>
           )}
-          {conversationsQuery.data && conversationsQuery.data.length === 0 && (
+          {conversationsQuery.data && conversations.length === 0 && (
             <p className="px-2 py-1 text-xs text-sidebar-foreground/50">No conversations yet.</p>
           )}
-          {conversationsQuery.data
-            ?.slice()
+          {conversations
+            .slice()
             .reverse()
             .map((conversation) => (
               <div key={conversation.conversation_id} className="group relative">
@@ -217,6 +227,16 @@ export function AppShell() {
                 </button>
               </div>
             ))}
+          {conversationsQuery.hasNextPage && (
+            <button
+              type="button"
+              disabled={conversationsQuery.isFetchingNextPage}
+              onClick={() => conversationsQuery.fetchNextPage()}
+              className="w-full px-2 py-1.5 text-left text-xs text-sidebar-foreground/60 underline hover:text-sidebar-foreground"
+            >
+              {conversationsQuery.isFetchingNextPage ? "Loading..." : "Load older conversations"}
+            </button>
+          )}
         </div>
         {deleteChatMutation.isError && (
           <p className="border-t border-sidebar-border px-3 py-2 text-xs text-destructive">

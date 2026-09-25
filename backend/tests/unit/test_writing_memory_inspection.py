@@ -54,8 +54,11 @@ class FakeMemoryRecordRepository:
     def get_by_id(self, record_id):
         return next((r for r in self.saved if r.record_id == record_id), None)
 
-    def list_current_by_agent_id(self, agent_id):
-        return [r for r in self.saved if r.agent_id == agent_id and r.status == MemoryRecordStatus.CURRENT]
+    def list_current_by_agent_id(self, agent_id, *, limit=None, offset=0):
+        records = [r for r in self.saved if r.agent_id == agent_id and r.status == MemoryRecordStatus.CURRENT]
+        if limit is not None:
+            records = records[offset : offset + limit + 1]
+        return records
 
     def mark_superseded(self, record_id, *, superseded_record_id, superseded_at):
         record = self.get_by_id(record_id)
@@ -101,19 +104,22 @@ def test_list_memory_returns_only_current_records_with_provenance():
     provenance.add(MemoryProvenanceLink(record_id=1, source_type=MemoryProvenanceSourceType.CONVERSATION, conversation_id=99))
 
     use_case = ListMemoryUseCase(records, provenance, FakeAgentRepository({1: agent}))
-    result = use_case.execute(user_id=1)
+    result, has_more = use_case.execute(user_id=1)
 
     assert len(result) == 1  # superseded record excluded
     assert result[0].record.record_id == 1
     assert len(result[0].provenance) == 1
     assert result[0].provenance[0].conversation_id == 99
+    assert has_more is False
 
 
 def test_list_memory_for_an_agent_with_none_returns_empty_list():
     agent = _agent()
     use_case = ListMemoryUseCase(FakeMemoryRecordRepository(), FakeMemoryProvenanceLinkRepository(), FakeAgentRepository({1: agent}))
 
-    assert use_case.execute(user_id=1) == []
+    result, has_more = use_case.execute(user_id=1)
+    assert result == []
+    assert has_more is False
 
 
 def test_list_memory_for_a_user_with_no_agent_raises():

@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from app.core.pagination import DEFAULT_LIST_LIMIT
 from app.core.unit_of_work import UnitOfWork
 from app.modules.agent.domain.exceptions import AgentNotFoundForUserError
 from app.modules.agent.domain.repositories import AgentRepository
@@ -39,18 +40,27 @@ class ListMemoryUseCase:
         self._provenance_links = memory_provenance_link_repository
         self._agents = agent_repository
 
-    def execute(self, *, user_id: int) -> list[MemoryRecordWithProvenance]:
+    def execute(
+        self, *, user_id: int, limit: int = DEFAULT_LIST_LIMIT, offset: int = 0
+    ) -> tuple[list[MemoryRecordWithProvenance], bool]:
         agent = self._agents.get_by_user_id(user_id)
         if agent is None:
             raise AgentNotFoundForUserError(user_id=user_id)
 
-        records = self._memory_records.list_current_by_agent_id(agent.agent_id)
-        return [
-            MemoryRecordWithProvenance(
-                record=record, provenance=self._provenance_links.list_by_record_id(record.record_id)
-            )
-            for record in records
-        ]
+        records = self._memory_records.list_current_by_agent_id(agent.agent_id, limit=limit, offset=offset)
+        # The repository returns up to limit + 1 rows (2026-09-23, pagination) - the extra row,
+        # if present, means more exist beyond this page; trimmed before building the response.
+        has_more = len(records) > limit
+        records = records[:limit]
+        return (
+            [
+                MemoryRecordWithProvenance(
+                    record=record, provenance=self._provenance_links.list_by_record_id(record.record_id)
+                )
+                for record in records
+            ],
+            has_more,
+        )
 
 
 class SupersedeMemoryRecordUseCase:

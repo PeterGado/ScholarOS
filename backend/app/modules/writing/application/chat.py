@@ -3,6 +3,7 @@ import logging
 from app.ai.providers.base import TextGenerationProvider
 from app.ai.token_estimate import estimate_tokens
 from app.ai.usage_guard import AiUsageGuard
+from app.core.pagination import DEFAULT_LIST_LIMIT
 from app.core.unit_of_work import UnitOfWork
 from app.modules.agent.domain.exceptions import AgentNotFoundForUserError
 from app.modules.agent.domain.repositories import AgentRepository
@@ -90,11 +91,17 @@ class ListConversationsUseCase:
         self._conversations = conversation_repository
         self._agents = agent_repository
 
-    def execute(self, *, user_id: int) -> list[Conversation]:
+    def execute(
+        self, *, user_id: int, limit: int = DEFAULT_LIST_LIMIT, offset: int = 0
+    ) -> tuple[list[Conversation], bool]:
         agent = self._agents.get_by_user_id(user_id)
         if agent is None:
             raise AgentNotFoundForUserError(user_id=user_id)
-        return self._conversations.list_by_agent_id(agent.agent_id)
+        conversations = self._conversations.list_by_agent_id(agent.agent_id, limit=limit, offset=offset)
+        # The repository returns up to limit + 1 rows (2026-09-23, pagination) - the extra row,
+        # if present, means more exist beyond this page; trimmed before returning.
+        has_more = len(conversations) > limit
+        return conversations[:limit], has_more
 
 
 class ListConversationMessagesUseCase:
@@ -113,7 +120,9 @@ class ListConversationMessagesUseCase:
         self._messages = message_repository
         self._agents = agent_repository
 
-    def execute(self, *, user_id: int, conversation_id: int) -> list[Message]:
+    def execute(
+        self, *, user_id: int, conversation_id: int, limit: int = DEFAULT_LIST_LIMIT, offset: int = 0
+    ) -> tuple[list[Message], bool]:
         conversation = self._conversations.get_by_id(conversation_id)
         agent = self._agents.get_by_id(
             conversation.agent_id) if conversation is not None else None
@@ -124,14 +133,23 @@ class ListConversationMessagesUseCase:
             or conversation.deleted_at is not None
         ):
             raise ConversationNotFoundError(conversation_id=conversation_id)
+        rows = self._messages.list_by_conversation_id(conversation_id, limit=limit, offset=offset)
+        # The repository returns up to limit + 1 rows, most-recent-first (2026-09-23,
+        # pagination) - the extra row, if present, means more (older) messages exist beyond this
+        # page. `has_more` reflects that raw row count, not the count after the summary filter
+        # below: a page can legitimately come back with fewer than `limit` visible messages if
+        # some of its rows were rolling summaries, but no real message is ever skipped, since the
+        # caller always advances offset by `limit` (the rows actually consumed at the database),
+        # not by how many messages were shown.
+        has_more = len(rows) > limit
         # Rolling summaries are internal context, not assistant replies. Exposing them in the
         # transcript made a long chat appear to receive unsolicited, duplicate assistant
-        # messages after every compaction.
-        return [
-            message
-            for message in self._messages.list_by_conversation_id(conversation_id)
-            if message.origin != CONVERSATION_SUMMARY_ORIGIN
+        # messages after every compaction. Trim the peek row (still most-recent-first), then
+        # restore chronological order for display.
+        messages = [
+            message for message in reversed(rows[:limit]) if message.origin != CONVERSATION_SUMMARY_ORIGIN
         ]
+        return messages, has_more
 
 
 class DeleteConversationUseCase:

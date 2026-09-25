@@ -53,7 +53,14 @@ class MemoryRecordRepository(ABC):
 
     @abstractmethod
     def list_current_by_agent_id(
-        self, agent_id: int) -> list[MemoryRecord]: ...
+        self, agent_id: int, *, limit: int | None = None, offset: int = 0) -> list[MemoryRecord]:
+        """`limit=None` (the default) returns every current Memory Record, unbounded - what
+        every existing caller (context assembly's own `max_memories` capping happens
+        afterward, in Python) still gets. `limit`/`offset` (2026-09-23, pagination for
+        `GET /writing/memory`) are additive - passing `limit` returns up to `limit + 1` rows so
+        the caller can detect "more exist" without a second COUNT query.
+        """
+        ...
 
     @abstractmethod
     def mark_superseded(self, record_id: int, *, superseded_record_id: int, superseded_at: datetime) -> None:
@@ -88,9 +95,12 @@ class ConversationRepository(ABC):
         ...
 
     @abstractmethod
-    def list_by_agent_id(self, agent_id: int) -> list[Conversation]:
+    def list_by_agent_id(self, agent_id: int, *, limit: int | None = None, offset: int = 0) -> list[Conversation]:
         """Every standalone Agent Workspace chat conversation owned by an Agent
-        (Persistent Brain Decision 3)."""
+        (Persistent Brain Decision 3). `limit=None` (the default) is unbounded; `limit`/
+        `offset` (2026-09-23, pagination for `GET /writing/conversations`) return up to
+        `limit + 1` rows so the caller can detect "more exist" without a second COUNT query.
+        """
         ...
 
     @abstractmethod
@@ -127,11 +137,19 @@ class MessageRepository(ABC):
         ...
 
     @abstractmethod
-    def list_by_conversation_id(self, conversation_id: int) -> list[Message]:
-        """Ordered by `sequence` ascending. Used to resolve bounded RELEVANT CONVERSATION
-        CONTEXT for generation (Persistent Brain Decision 3) - callers are responsible for
-        bounding to the most recent N themselves or via `ContextAssemblyInput.
-        max_conversation_messages`, this method returns the full history for its Conversation.
+    def list_by_conversation_id(
+        self, conversation_id: int, *, limit: int | None = None, offset: int = 0) -> list[Message]:
+        """`limit=None` (the default) returns the full history for its Conversation ordered by
+        `sequence` ascending, unchanged - used to resolve bounded RELEVANT CONVERSATION CONTEXT
+        for generation (Persistent Brain Decision 3), where callers bound to the most recent N
+        themselves via `ContextAssemblyInput.max_conversation_messages`.
+
+        `limit`/`offset` (2026-09-23, pagination for `GET /writing/conversations/{id}/messages`)
+        fetch from the *most recent* end instead (`offset=0` is the tail of the conversation,
+        not the beginning) so a chat UI's initial page shows recent messages rather than the
+        start of a long conversation - and return up to `limit + 1` rows, most-recent-first, so
+        the caller can detect "more exist" without a second COUNT query. Callers restore
+        chronological order themselves after trimming the peek row.
         """
         ...
 

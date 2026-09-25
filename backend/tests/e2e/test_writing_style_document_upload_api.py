@@ -304,6 +304,48 @@ def test_list_style_documents_for_a_user_with_none_uploaded_returns_empty_list(c
     assert response.json()["documents"] == []
 
 
+# --- Pagination (2026-09-23, real-traffic audit) -------------------------------------------
+
+
+def _upload_style_document(client, headers, title):
+    return client.post(
+        "/writing/style-profile/documents",
+        files={"file": (f"{title}.pdf", io.BytesIO(b"sample content"), "application/pdf")},
+        data={"title": title, "format": "pdf"},
+        headers=headers,
+    )
+
+
+def test_list_style_documents_respects_limit_and_reports_has_more(client, auth_headers):
+    _create_workspace(client, auth_headers)
+    for i in range(5):  # MAX_WRITING_STYLE_SAMPLES == 5, the most this endpoint can ever hold
+        _upload_style_document(client, auth_headers, f"Essay {i}")
+
+    response = client.get("/writing/style-profile/documents", params={"limit": 3}, headers=auth_headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["documents"]) == 3
+    assert body["has_more"] is True
+
+
+def test_list_style_documents_offset_skips_already_seen_documents(client, auth_headers):
+    _create_workspace(client, auth_headers)
+    for i in range(5):
+        _upload_style_document(client, auth_headers, f"Essay {i}")
+
+    first_page = client.get("/writing/style-profile/documents", params={"limit": 3}, headers=auth_headers).json()
+    second_page = client.get(
+        "/writing/style-profile/documents", params={"limit": 3, "offset": 3}, headers=auth_headers
+    ).json()
+
+    assert len(second_page["documents"]) == 2
+    assert second_page["has_more"] is False
+    first_ids = {d["document_id"] for d in first_page["documents"]}
+    second_ids = {d["document_id"] for d in second_page["documents"]}
+    assert first_ids.isdisjoint(second_ids)
+
+
 def test_style_documents_never_appear_on_the_research_documents_listing(client, auth_headers):
     """The other real gap this closes: a style sample must never sit forever at `pending` on
     the Research Documents page (DocumentPurpose's own docstring).

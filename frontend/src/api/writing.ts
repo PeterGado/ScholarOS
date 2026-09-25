@@ -1,4 +1,5 @@
 import { apiClient } from "../lib/apiClient";
+import type { Page, PageParams } from "./pagination";
 import {
   chatMessageListResponseSchema,
   chatReplyStatusResponseSchema,
@@ -44,9 +45,12 @@ export async function uploadWritingStyleDocument(
   return writingStyleDocumentResponseSchema.parse(response.data);
 }
 
-export async function listWritingStyleDocuments(): Promise<WritingStyleDocumentSummaryResponse[]> {
-  const response = await apiClient.get("/writing/style-profile/documents");
-  return writingStyleDocumentListResponseSchema.parse(response.data).documents;
+export async function listWritingStyleDocuments(
+  { limit, offset }: PageParams = {},
+): Promise<Page<WritingStyleDocumentSummaryResponse>> {
+  const response = await apiClient.get("/writing/style-profile/documents", { params: { limit, offset } });
+  const parsed = writingStyleDocumentListResponseSchema.parse(response.data);
+  return { items: parsed.documents, hasMore: parsed.has_more };
 }
 
 export async function extractWritingStyleProfile(
@@ -68,18 +72,25 @@ export async function startConversation(title?: string): Promise<ConversationRes
   return conversationResponseSchema.parse(response.data);
 }
 
-export async function listConversations(): Promise<ConversationResponse[]> {
-  const response = await apiClient.get("/writing/conversations");
-  return conversationListResponseSchema.parse(response.data).conversations;
+export async function listConversations({ limit, offset }: PageParams = {}): Promise<Page<ConversationResponse>> {
+  const response = await apiClient.get("/writing/conversations", { params: { limit, offset } });
+  const parsed = conversationListResponseSchema.parse(response.data);
+  return { items: parsed.conversations, hasMore: parsed.has_more };
 }
 
 export async function deleteConversation(conversationId: number): Promise<void> {
   await apiClient.delete(`/writing/conversations/${conversationId}`);
 }
 
-export async function listConversationMessages(conversationId: number): Promise<ChatMessageResponse[]> {
-  const response = await apiClient.get(`/writing/conversations/${conversationId}/messages`);
-  return chatMessageListResponseSchema.parse(response.data).messages;
+export async function listConversationMessages(
+  conversationId: number,
+  { limit, offset }: PageParams = {},
+): Promise<Page<ChatMessageResponse>> {
+  const response = await apiClient.get(`/writing/conversations/${conversationId}/messages`, {
+    params: { limit, offset },
+  });
+  const parsed = chatMessageListResponseSchema.parse(response.data);
+  return { items: parsed.messages, hasMore: parsed.has_more };
 }
 
 export async function sendChatMessage(conversationId: number, content: string): Promise<ChatReplyStatusResponse> {
@@ -105,9 +116,10 @@ export async function retryChatReply(
 
 // --- Persistent Brain v2: Memory inspection -------------------------------------------------
 
-export async function listMemory(): Promise<MemoryRecordResponse[]> {
-  const response = await apiClient.get("/writing/memory");
-  return memoryRecordListResponseSchema.parse(response.data).records;
+export async function listMemory({ limit, offset }: PageParams = {}): Promise<Page<MemoryRecordResponse>> {
+  const response = await apiClient.get("/writing/memory", { params: { limit, offset } });
+  const parsed = memoryRecordListResponseSchema.parse(response.data);
+  return { items: parsed.records, hasMore: parsed.has_more };
 }
 
 export async function supersedeMemoryRecord(

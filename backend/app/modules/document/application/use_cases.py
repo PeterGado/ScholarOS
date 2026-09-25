@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from app.ai.usage_guard import AiUsageGuard
+from app.core.pagination import DEFAULT_LIST_LIMIT
 from app.core.unit_of_work import UnitOfWork
 from app.modules.agent.domain.repositories import AgentRepository
 from app.modules.document.domain.entities import ResearchDocument
@@ -168,7 +169,9 @@ class ListProjectDocumentsUseCase:
         self._agents = agent_repository
         self._work_items = work_items
 
-    def execute(self, *, project_id: int, user_id: int) -> list[ResearchDocumentWithError]:
+    def execute(
+        self, *, project_id: int, user_id: int, limit: int = DEFAULT_LIST_LIMIT, offset: int = 0
+    ) -> tuple[list[ResearchDocumentWithError], bool]:
         project = self._projects.get_by_id(project_id)
         if project is None:
             raise ProjectNotFoundError(project_id=project_id)
@@ -177,11 +180,20 @@ class ListProjectDocumentsUseCase:
         if owning_agent is None or owning_agent.user_id != user_id:
             raise ProjectNotFoundError(project_id=project_id)
 
-        documents = self._documents.list_by_project_id(project_id, purpose=DocumentPurpose.RESEARCH)
+        documents = self._documents.list_by_project_id(
+            project_id, purpose=DocumentPurpose.RESEARCH, limit=limit, offset=offset
+        )
+        # The repository returns up to limit + 1 rows (2026-09-23, pagination) - the extra row,
+        # if present, means more exist beyond this page; trimmed before building the response.
+        # (In practice MAX_RESEARCH_DOCUMENTS_PER_PROJECT already caps this well under any
+        # reasonable limit - added for API consistency with the other 4 paginated endpoints and
+        # as a defensive bound if that cap ever changes.)
+        has_more = len(documents) > limit
+        documents = documents[:limit]
         return [
             ResearchDocumentWithError(document=document, error_message=self._error_message_for(document))
             for document in documents
-        ]
+        ], has_more
 
     def _error_message_for(self, document: ResearchDocument) -> str | None:
         if document.processing_status != DocumentProcessingStatus.FAILED:

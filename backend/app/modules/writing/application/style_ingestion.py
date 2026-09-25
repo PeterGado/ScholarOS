@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from app.core.pagination import DEFAULT_LIST_LIMIT
 from app.core.unit_of_work import UnitOfWork
 from app.modules.agent.domain.exceptions import AgentNotFoundForUserError
 from app.modules.agent.domain.repositories import AgentRepository
@@ -174,7 +175,9 @@ class ListWritingStyleDocumentsUseCase:
         self._projects = project_repository
         self._agents = agent_repository
 
-    def execute(self, *, user_id: int) -> list[ResearchDocument]:
+    def execute(
+        self, *, user_id: int, limit: int = DEFAULT_LIST_LIMIT, offset: int = 0
+    ) -> tuple[list[ResearchDocument], bool]:
         agent = self._agents.get_by_user_id(user_id)
         if agent is None:
             raise AgentNotFoundForUserError(user_id=user_id)
@@ -182,4 +185,12 @@ class ListWritingStyleDocumentsUseCase:
         project = self._projects.get_by_agent_id(agent.agent_id)
         assert project is not None, f"Agent {agent.agent_id} has no Project (invariant 15 violated)"
 
-        return self._documents.list_by_project_id(project.project_id, purpose=DocumentPurpose.WRITING_STYLE_SAMPLE)
+        documents = self._documents.list_by_project_id(
+            project.project_id, purpose=DocumentPurpose.WRITING_STYLE_SAMPLE, limit=limit, offset=offset
+        )
+        # The repository returns up to limit + 1 rows (2026-09-23, pagination) - the extra row,
+        # if present, means more exist beyond this page; trimmed before returning. (In practice
+        # MAX_WRITING_STYLE_SAMPLES already caps this well under any reasonable limit - added
+        # for API consistency with the other 4 paginated endpoints.)
+        has_more = len(documents) > limit
+        return documents[:limit], has_more

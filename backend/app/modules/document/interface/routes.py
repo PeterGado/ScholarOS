@@ -1,9 +1,10 @@
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
 
 from app.api.exception_handlers import ErrorResponse
 from app.core.config import get_settings
+from app.core.pagination import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT
 from app.core.dependencies import (
     get_current_user_id,
     get_delete_research_document_use_case,
@@ -104,6 +105,8 @@ async def upload_research_document(
 )
 def list_project_documents(
     project_id: int,
+    limit: int = Query(DEFAULT_LIST_LIMIT, ge=1, le=MAX_LIST_LIMIT),
+    offset: int = Query(0, ge=0),
     user_id: int = Depends(get_current_user_id),
     use_case: ListProjectDocumentsUseCase = Depends(get_list_project_documents_use_case),
 ) -> ResearchDocumentListResponse:
@@ -112,8 +115,8 @@ def list_project_documents(
     with no documents yet returns an empty list (200), not a 404 - the Project itself still
     exists and is owned by the caller, mirroring GET /writing/drafts's own precedent.
     """
-    documents = use_case.execute(project_id=project_id, user_id=user_id)
-    return ResearchDocumentListResponse.from_domain(documents)
+    documents, has_more = use_case.execute(project_id=project_id, user_id=user_id, limit=limit, offset=offset)
+    return ResearchDocumentListResponse.from_domain(documents, has_more=has_more)
 
 
 @router.delete(

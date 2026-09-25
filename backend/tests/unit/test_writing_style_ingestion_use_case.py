@@ -63,12 +63,15 @@ class FakeDocumentRepository(DocumentRepository):
     def get_by_ids(self, document_ids):
         return [self._by_id[did] for did in document_ids if did in self._by_id]
 
-    def list_by_project_id(self, project_id, *, purpose=None):
-        return [
+    def list_by_project_id(self, project_id, *, purpose=None, limit=None, offset=0):
+        documents = [
             d
             for d in self._by_id.values()
             if d.project_id == project_id and (purpose is None or d.purpose == purpose)
         ]
+        if limit is not None:
+            documents = documents[offset : offset + limit + 1]
+        return documents
 
     def add(self, document: ResearchDocument) -> ResearchDocument:
         document.document_id = self._next_id
@@ -251,16 +254,19 @@ def test_list_writing_style_documents_returns_only_uploaded_samples():
     list_use_case = ListWritingStyleDocumentsUseCase(
         documents, FakeProjectRepository(), FakeAgentRepository()
     )
-    result = list_use_case.execute(user_id=OWNER_USER_ID)
+    result, has_more = list_use_case.execute(user_id=OWNER_USER_ID)
 
     assert {d.title for d in result} == {"Sample A", "Sample B"}
+    assert has_more is False
 
 
 def test_list_writing_style_documents_for_a_user_with_none_uploaded_returns_empty_list():
     documents = FakeDocumentRepository()
     list_use_case = ListWritingStyleDocumentsUseCase(documents, FakeProjectRepository(), FakeAgentRepository())
 
-    assert list_use_case.execute(user_id=OWNER_USER_ID) == []
+    result, has_more = list_use_case.execute(user_id=OWNER_USER_ID)
+    assert result == []
+    assert has_more is False
 
 
 def test_list_writing_style_documents_for_a_user_with_no_agent_is_rejected():

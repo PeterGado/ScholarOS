@@ -1,4 +1,5 @@
 import { apiClient } from "../lib/apiClient";
+import type { Page, PageParams } from "./pagination";
 import {
   researchDocumentListResponseSchema,
   researchDocumentResponseSchema,
@@ -49,9 +50,13 @@ export async function uploadResearchDocuments(
   return uploaded;
 }
 
-export async function listProjectDocuments(projectId: number): Promise<ResearchDocumentResponse[]> {
-  const response = await apiClient.get(`/projects/${projectId}/documents`);
-  return researchDocumentListResponseSchema.parse(response.data).documents;
+export async function listProjectDocuments(
+  projectId: number,
+  { limit, offset }: PageParams = {},
+): Promise<Page<ResearchDocumentResponse>> {
+  const response = await apiClient.get(`/projects/${projectId}/documents`, { params: { limit, offset } });
+  const parsed = researchDocumentListResponseSchema.parse(response.data);
+  return { items: parsed.documents, hasMore: parsed.has_more };
 }
 
 export async function deleteResearchDocument(projectId: number, documentId: number): Promise<void> {

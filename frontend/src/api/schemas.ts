@@ -48,6 +48,7 @@ export type ResearchDocumentResponse = z.infer<typeof researchDocumentResponseSc
 
 export const researchDocumentListResponseSchema = z.object({
   documents: z.array(researchDocumentResponseSchema),
+  has_more: z.boolean(),
 });
 
 export const searchResultEvidenceResponseSchema = z.object({
@@ -93,6 +94,7 @@ export type WritingStyleDocumentSummaryResponse = z.infer<typeof writingStyleDoc
 
 export const writingStyleDocumentListResponseSchema = z.object({
   documents: z.array(writingStyleDocumentSummaryResponseSchema),
+  has_more: z.boolean(),
 });
 
 export const profileCharacteristicResponseSchema = z.object({
@@ -138,6 +140,7 @@ export type ConversationResponse = z.infer<typeof conversationResponseSchema>;
 
 export const conversationListResponseSchema = z.object({
   conversations: z.array(conversationResponseSchema),
+  has_more: z.boolean(),
 });
 
 export const chatMessageResponseSchema = z.object({
@@ -151,6 +154,7 @@ export type ChatMessageResponse = z.infer<typeof chatMessageResponseSchema>;
 
 export const chatMessageListResponseSchema = z.object({
   messages: z.array(chatMessageResponseSchema),
+  has_more: z.boolean(),
 });
 
 export const chatReplyStatusResponseSchema = z.object({
@@ -184,4 +188,5 @@ export type MemoryRecordResponse = z.infer<typeof memoryRecordResponseSchema>;
 
 export const memoryRecordListResponseSchema = z.object({
   records: z.array(memoryRecordResponseSchema),
+  has_more: z.boolean(),
 });

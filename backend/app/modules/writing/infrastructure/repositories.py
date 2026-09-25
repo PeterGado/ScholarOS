@@ -166,19 +166,22 @@ class SqlAlchemyMemoryRecordRepository(MemoryRecordRepository):
         row = self._session.get(MemoryRecordModel, record_id)
         return self._to_domain(row) if row is not None else None
 
-    def list_current_by_agent_id(self, agent_id: int) -> list[MemoryRecord]:
+    def list_current_by_agent_id(
+        self, agent_id: int, *, limit: int | None = None, offset: int = 0
+    ) -> list[MemoryRecord]:
         """Most-recently-established first (Persistent Brain v3 audit fix) - callers that cap
         this list (`ContextAssemblyInput.max_memories`) get the most recent memories, not
         whatever order SQLite happens to return; `ListMemoryUseCase`'s inspection listing
         benefits from the same, more useful ordering for free.
         """
-        rows = (
+        query = (
             self._session.query(MemoryRecordModel)
             .filter_by(agent_id=agent_id, status=MemoryRecordStatus.CURRENT)
             .order_by(MemoryRecordModel.created_at.desc(), MemoryRecordModel.record_id.desc())
-            .all()
         )
-        return [self._to_domain(row) for row in rows]
+        if limit is not None:
+            query = query.offset(offset).limit(limit + 1)
+        return [self._to_domain(row) for row in query.all()]
 
     def mark_superseded(self, record_id: int, *, superseded_record_id: int, superseded_at) -> None:
         row = self._session.get(MemoryRecordModel, record_id)
@@ -261,14 +264,20 @@ class SqlAlchemyConversationRepository(ConversationRepository):
         self._session.query(ConversationModel).filter_by(
             conversation_id=conversation_id).with_for_update().one()
 
-    def list_by_agent_id(self, agent_id: int) -> list[Conversation]:
-        rows = (
+    def list_by_agent_id(
+        self, agent_id: int, *, limit: int | None = None, offset: int = 0
+    ) -> list[Conversation]:
+        # 2026-09-23: added a tie-break (conversation_id) alongside started_at - two
+        # Conversations created within the same timestamp resolution would otherwise paginate
+        # unstably (a row could appear on two pages or neither, depending on incidental order).
+        query = (
             self._session.query(ConversationModel)
             .filter_by(agent_id=agent_id, deleted_at=None)
-            .order_by(ConversationModel.started_at.asc())
-            .all()
+            .order_by(ConversationModel.started_at.asc(), ConversationModel.conversation_id.asc())
         )
-        return [self._to_domain(row) for row in rows]
+        if limit is not None:
+            query = query.offset(offset).limit(limit + 1)
+        return [self._to_domain(row) for row in query.all()]
 
     def mark_summarized(self, conversation_id: int, *, summarized_at) -> None:
         row = self._session.get(ConversationModel, conversation_id)
@@ -319,14 +328,19 @@ class SqlAlchemyMessageRepository(MessageRepository):
     def count_by_conversation_id(self, conversation_id: int) -> int:
         return self._session.query(MessageModel).filter_by(conversation_id=conversation_id).count()
 
-    def list_by_conversation_id(self, conversation_id: int) -> list[Message]:
-        rows = (
-            self._session.query(MessageModel)
-            .filter_by(conversation_id=conversation_id)
-            .order_by(MessageModel.sequence.asc())
-            .all()
-        )
-        return [self._to_domain(row) for row in rows]
+    def list_by_conversation_id(
+        self, conversation_id: int, *, limit: int | None = None, offset: int = 0
+    ) -> list[Message]:
+        query = self._session.query(MessageModel).filter_by(conversation_id=conversation_id)
+        if limit is None:
+            query = query.order_by(MessageModel.sequence.asc())
+            return [self._to_domain(row) for row in query.all()]
+        # Paginated: fetch from the most-recent end (offset 0 = the tail of the conversation),
+        # not the beginning, so a chat UI's initial load shows recent messages instead of
+        # message #1 of a long conversation. Rows come back most-recent-first; the use case
+        # trims the peek row and reverses to chronological order before display.
+        query = query.order_by(MessageModel.sequence.desc()).offset(offset).limit(limit + 1)
+        return [self._to_domain(row) for row in query.all()]
 
     @staticmethod
     def _to_domain(row: MessageModel) -> Message:

@@ -299,6 +299,53 @@ def test_list_documents_for_a_project_with_none_yet_returns_an_empty_list(client
     assert response.json()["documents"] == []
 
 
+def _upload_document(client, headers, project_id, title):
+    return client.post(
+        f"/projects/{project_id}/documents",
+        files={"file": (f"{title}.pdf", io.BytesIO(b"content"), "application/pdf")},
+        data={"title": title, "format": "pdf"},
+        headers=headers,
+    )
+
+
+# --- Pagination (2026-09-23, real-traffic audit) -------------------------------------------
+
+
+def test_list_documents_respects_limit_and_reports_has_more(client, auth_headers):
+    workspace = _create_workspace(client, auth_headers)
+    project_id = workspace["project"]["project_id"]
+    for i in range(5):
+        _upload_document(client, auth_headers, project_id, f"Doc {i}")
+
+    response = client.get(f"/projects/{project_id}/documents", params={"limit": 3}, headers=auth_headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["documents"]) == 3
+    assert body["has_more"] is True
+
+
+def test_list_documents_offset_skips_already_seen_documents_in_a_stable_order(client, auth_headers):
+    """Also proves the real ordering fix (2026-09-23): list_by_project_id previously had no
+    order_by at all, which would make two pages of the same listing unreliable to combine.
+    """
+    workspace = _create_workspace(client, auth_headers)
+    project_id = workspace["project"]["project_id"]
+    for i in range(5):
+        _upload_document(client, auth_headers, project_id, f"Doc {i}")
+
+    first_page = client.get(f"/projects/{project_id}/documents", params={"limit": 3}, headers=auth_headers).json()
+    second_page = client.get(
+        f"/projects/{project_id}/documents", params={"limit": 3, "offset": 3}, headers=auth_headers
+    ).json()
+
+    assert len(second_page["documents"]) == 2
+    assert second_page["has_more"] is False
+    first_ids = {d["document_id"] for d in first_page["documents"]}
+    second_ids = {d["document_id"] for d in second_page["documents"]}
+    assert first_ids.isdisjoint(second_ids)
+
+
 def test_list_documents_against_a_nonexistent_project_returns_404(client, auth_headers):
     response = client.get("/projects/999/documents", headers=auth_headers)
     assert response.status_code == 404

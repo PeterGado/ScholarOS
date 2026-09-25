@@ -89,6 +89,55 @@ def test_supersede_a_nonexistent_record_returns_404(client, auth_headers):
     assert response.status_code == 404
 
 
+# --- Pagination (2026-09-23, real-traffic audit) -------------------------------------------
+
+
+def test_list_memory_respects_limit_and_reports_has_more(client, auth_headers, db_engine):
+    workspace = _create_workspace(client, auth_headers)
+    for i in range(5):
+        _seed_memory_record(db_engine, workspace["agent"]["agent_id"], content=f"Memory {i}.")
+
+    response = client.get("/writing/memory", params={"limit": 3}, headers=auth_headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["records"]) == 3
+    assert body["has_more"] is True
+
+
+def test_list_memory_offset_skips_already_seen_records(client, auth_headers, db_engine):
+    workspace = _create_workspace(client, auth_headers)
+    for i in range(5):
+        _seed_memory_record(db_engine, workspace["agent"]["agent_id"], content=f"Memory {i}.")
+
+    first_page = client.get("/writing/memory", params={"limit": 3}, headers=auth_headers).json()
+    second_page = client.get("/writing/memory", params={"limit": 3, "offset": 3}, headers=auth_headers).json()
+
+    assert len(second_page["records"]) == 2
+    assert second_page["has_more"] is False
+    first_ids = {r["record_id"] for r in first_page["records"]}
+    second_ids = {r["record_id"] for r in second_page["records"]}
+    assert first_ids.isdisjoint(second_ids)  # no overlap, no gap across the two pages
+
+
+def test_list_memory_has_more_is_false_when_every_record_fits_on_one_page(client, auth_headers, db_engine):
+    workspace = _create_workspace(client, auth_headers)
+    for i in range(3):
+        _seed_memory_record(db_engine, workspace["agent"]["agent_id"], content=f"Memory {i}.")
+
+    response = client.get("/writing/memory", params={"limit": 3}, headers=auth_headers)
+
+    assert response.json()["has_more"] is False
+
+
+def test_list_memory_limit_out_of_range_is_rejected(client, auth_headers):
+    _create_workspace(client, auth_headers)
+
+    response = client.get("/writing/memory", params={"limit": 0}, headers=auth_headers)
+
+    assert response.status_code == 422
+
+
 def test_another_users_memory_is_invisible_and_cannot_be_superseded(client, auth_headers, db_engine):
     workspace = _create_workspace(client, auth_headers)
     record_id = _seed_memory_record(db_engine, workspace["agent"]["agent_id"], content="Victim's memory.")

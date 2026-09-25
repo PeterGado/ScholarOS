@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   deleteResearchDocument,
   listProjectDocuments,
@@ -33,20 +33,25 @@ export function DocumentsPage() {
   const [searchSubmitted, setSearchSubmitted] = useState("");
   const previousStatusesRef = useRef<Record<number, string>>({});
 
-  const documentsQuery = useQuery({
+  const documentsQuery = useInfiniteQuery({
     queryKey: ["documents", workspace.project.project_id],
-    queryFn: () => listProjectDocuments(workspace.project.project_id),
+    queryFn: ({ pageParam }) => listProjectDocuments(workspace.project.project_id, { offset: pageParam }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.hasMore ? allPages.reduce((total, page) => total + page.items.length, 0) : undefined,
     // Documents transition pending -> processing -> processed/failed in the background
     // (the app's own Work Item executor) - poll while any document hasn't reached a terminal
     // state yet, since there is no push channel or dedicated status endpoint.
     refetchInterval: (query) => {
-      const documents = query.state.data ?? [];
+      const documents = query.state.data?.pages.flatMap((page) => page.items) ?? [];
       const stillProcessing = documents.some(
         (doc) => doc.processing_status === "pending" || doc.processing_status === "processing",
       );
       return stillProcessing ? 2000 : false;
     },
   });
+
+  const allDocuments = documentsQuery.data?.pages.flatMap((page) => page.items) ?? [];
 
   // A processed document intentionally disappears from the list below (see the comment on
   // inProgressDocuments) with nothing else marking success - confusing enough that a user
@@ -55,7 +60,7 @@ export function DocumentsPage() {
   // already processed before the user opened the page isn't a new event worth announcing).
   useEffect(() => {
     if (!documentsQuery.data) return;
-    for (const doc of documentsQuery.data) {
+    for (const doc of allDocuments) {
       const previousStatus = previousStatusesRef.current[doc.document_id];
       if (previousStatus && previousStatus !== "processed" && doc.processing_status === "processed") {
         showToast(`"${doc.title}" finished processing.`);
@@ -67,7 +72,7 @@ export function DocumentsPage() {
   // Once a document is fully processed, its knowledge has already been absorbed into the
   // Agent's knowledge base - it's no longer a "file" to manage here, only searchable below.
   // This list is an upload/status queue, not a permanent archive.
-  const inProgressDocuments = documentsQuery.data?.filter((doc) => doc.processing_status !== "processed") ?? [];
+  const inProgressDocuments = allDocuments.filter((doc) => doc.processing_status !== "processed");
 
   const uploadMutation = useMutation({
     mutationFn: async () => {
@@ -125,7 +130,7 @@ export function DocumentsPage() {
     setSearchSubmitted(query);
   }
 
-  const documentCount = documentsQuery.data?.length ?? 0;
+  const documentCount = allDocuments.length;
   const atLimit = documentCount >= RESEARCH_DOCUMENT_LIMIT;
 
   return (
@@ -226,6 +231,16 @@ export function DocumentsPage() {
             </li>
           ))}
         </ul>
+        {documentsQuery.hasNextPage && (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={documentsQuery.isFetchingNextPage}
+            onClick={() => documentsQuery.fetchNextPage()}
+          >
+            {documentsQuery.isFetchingNextPage ? "Loading..." : "Load more"}
+          </Button>
+        )}
         {retryMutation.isError && (
           <p className="text-sm text-destructive">
             {retryMutation.error instanceof ApiError ? retryMutation.error.message : "Could not retry document."}

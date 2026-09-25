@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { listMemory, supersedeMemoryRecord } from "@/api/writing";
 import { ApiError } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,14 @@ const PROVENANCE_LABELS: Record<string, string> = {
 // a record rather than editing it in place - the old content is preserved, not rewritten.
 export function MemoryPage() {
   const queryClient = useQueryClient();
-  const memoryQuery = useQuery({ queryKey: ["memory"], queryFn: listMemory });
+  const memoryQuery = useInfiniteQuery({
+    queryKey: ["memory"],
+    queryFn: ({ pageParam }) => listMemory({ offset: pageParam }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.hasMore ? allPages.reduce((total, page) => total + page.items.length, 0) : undefined,
+  });
+  const records = memoryQuery.data?.pages.flatMap((page) => page.items) ?? [];
   const [editingId, setEditingId] = useState<number | null>(null);
   const [draftContent, setDraftContent] = useState("");
 
@@ -44,13 +51,13 @@ export function MemoryPage() {
       </div>
 
       {memoryQuery.isLoading && <p className="text-sm text-muted-foreground">Loading memory...</p>}
-      {memoryQuery.data && memoryQuery.data.length === 0 && (
+      {memoryQuery.data && records.length === 0 && (
         <p className="text-sm text-muted-foreground">
           No memory yet - it accumulates automatically as you chat.
         </p>
       )}
       <div className="space-y-3">
-        {memoryQuery.data?.map((record) => (
+        {records.map((record) => (
           <Card key={record.record_id}>
             <CardHeader>
               <CardTitle className="flex items-center justify-between text-sm">
@@ -108,6 +115,16 @@ export function MemoryPage() {
           </Card>
         ))}
       </div>
+      {memoryQuery.hasNextPage && (
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={memoryQuery.isFetchingNextPage}
+          onClick={() => memoryQuery.fetchNextPage()}
+        >
+          {memoryQuery.isFetchingNextPage ? "Loading..." : "Load more"}
+        </Button>
+      )}
     </div>
   );
 }

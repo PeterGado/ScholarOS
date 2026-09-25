@@ -52,12 +52,15 @@ class FakeDocumentRepository(DocumentRepository):
     def get_by_ids(self, document_ids):
         return [self._by_id[did] for did in document_ids if did in self._by_id]
 
-    def list_by_project_id(self, project_id, *, purpose=None):
-        return [
+    def list_by_project_id(self, project_id, *, purpose=None, limit=None, offset=0):
+        documents = [
             d
             for d in self._by_id.values()
             if d.project_id == project_id and d.deleted_at is None and (purpose is None or d.purpose == purpose)
         ]
+        if limit is not None:
+            documents = documents[offset : offset + limit + 1]
+        return documents
 
     def add(self, document: ResearchDocument) -> ResearchDocument:
         document.document_id = self._next_id
@@ -262,9 +265,10 @@ def test_list_documents_returns_the_projects_uploaded_documents():
         documents, FakeProjectRepository(existing_project_id=1), FakeAgentRepository(), FakeWorkItemOutcomeLookup()
     )
 
-    result = list_use_case.execute(project_id=1, user_id=OWNER_USER_ID)
+    result, has_more = list_use_case.execute(project_id=1, user_id=OWNER_USER_ID)
 
     assert {item.document.title for item in result} == {"Source A", "Source B"}
+    assert has_more is False
 
 
 def test_list_documents_against_a_project_not_owned_by_the_caller_is_rejected_as_not_found():
@@ -290,7 +294,9 @@ def test_list_documents_for_a_project_with_none_yet_returns_an_empty_list():
         FakeDocumentRepository(), FakeProjectRepository(existing_project_id=1), FakeAgentRepository(), FakeWorkItemOutcomeLookup()
     )
 
-    assert list_use_case.execute(project_id=1, user_id=OWNER_USER_ID) == []
+    result, has_more = list_use_case.execute(project_id=1, user_id=OWNER_USER_ID)
+    assert result == []
+    assert has_more is False
 
 
 # --- DeleteResearchDocumentUseCase -----------------------------------------------------------

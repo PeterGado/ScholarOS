@@ -23,10 +23,27 @@ class SqlAlchemyDocumentRepository(DocumentRepository):
         rows = self._session.query(ResearchDocumentModel).filter(ResearchDocumentModel.document_id.in_(document_ids)).all()
         return [self._to_domain(row) for row in rows]
 
-    def list_by_project_id(self, project_id: int, *, purpose: DocumentPurpose | None = None) -> list[ResearchDocument]:
-        query = self._session.query(ResearchDocumentModel).filter_by(project_id=project_id, deleted_at=None)
+    def list_by_project_id(
+        self,
+        project_id: int,
+        *,
+        purpose: DocumentPurpose | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[ResearchDocument]:
+        # 2026-09-23: added order_by - this query previously had none at all, relying on
+        # undefined/incidental row order. document_id.asc() preserves the existing de-facto
+        # behavior (approximately insertion order) rather than introducing a surprise reorder,
+        # and gives pagination the stable order it requires to work correctly.
+        query = (
+            self._session.query(ResearchDocumentModel)
+            .filter_by(project_id=project_id, deleted_at=None)
+            .order_by(ResearchDocumentModel.document_id.asc())
+        )
         if purpose is not None:
             query = query.filter_by(purpose=purpose)
+        if limit is not None:
+            query = query.offset(offset).limit(limit + 1)
         return [self._to_domain(row) for row in query.all()]
 
     def add(self, document: ResearchDocument) -> ResearchDocument:

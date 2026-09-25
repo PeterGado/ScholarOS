@@ -20,11 +20,22 @@ class DocumentRepository(ABC):
 
     @abstractmethod
     def list_by_project_id(
-        self, project_id: int, *, purpose: DocumentPurpose | None = None
+        self,
+        project_id: int,
+        *,
+        purpose: DocumentPurpose | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[ResearchDocument]:
         """`purpose=None` lists every non-deleted document regardless of purpose; passing
         `DocumentPurpose.RESEARCH` or `.WRITING_STYLE_SAMPLE` scopes to just that kind - see
         `DocumentPurpose`'s own docstring for why documents need a purpose at all.
+
+        `limit=None` (the default) is unbounded - what the existing upload-count-check callers
+        (`MAX_RESEARCH_DOCUMENTS_PER_PROJECT`/`MAX_WRITING_STYLE_SAMPLES`) still get, since they
+        need the true full count, not a page. `limit`/`offset` (2026-09-23, pagination for
+        `GET /projects/{id}/documents` and `GET /writing/style-profile/documents`) return up to
+        `limit + 1` rows so the caller can detect "more exist" without a second COUNT query.
         """
         ...
 

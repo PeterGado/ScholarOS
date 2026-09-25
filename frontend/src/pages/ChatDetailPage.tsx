@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Navigate, useParams } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getChatReplyStatus, listConversationMessages, retryChatReply, sendChatMessage } from "@/api/writing";
+import { DEFAULT_LIST_LIMIT } from "@/api/pagination";
 import { ApiError } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -62,6 +63,7 @@ function ChatConversation({ conversationId }: { conversationId: number }) {
   const [content, setContent] = useState("");
   const [activeReply, setActiveReply] = useState<ActiveReply | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const isLoadingOlderRef = useRef(false);
   const activeWorkItemId = activeReply?.conversationId === conversationId ? activeReply.workItemId : null;
 
   const trackActiveReply = useCallback((workItemId: number | null) => {
@@ -91,10 +93,27 @@ function ChatConversation({ conversationId }: { conversationId: number }) {
     setContent("");
   }, [conversationId]);
 
-  const messagesQuery = useQuery({
+  // offset=0 is the tail of the conversation (most recent messages), not the start - each
+  // fetched page is oldest-first internally, but pages themselves arrive newest-first (the
+  // first page fetched is the most recent one). "Load older" appends the next-older page to
+  // `data.pages`, so the pages array is reversed before flattening to get true chronological
+  // order for display.
+  const messagesQuery = useInfiniteQuery({
     queryKey: ["conversation-messages", conversationId],
-    queryFn: () => listConversationMessages(conversationId),
+    queryFn: ({ pageParam }) => listConversationMessages(conversationId, { limit: DEFAULT_LIST_LIMIT, offset: pageParam }),
+    initialPageParam: 0,
+    // Advanced by the requested page size, not by how many messages were actually returned -
+    // a page can come back with fewer visible messages than `limit` when some of its rows were
+    // rolling summaries (filtered out server-side), and offset must still track raw DB rows
+    // consumed so no real message is ever skipped.
+    getNextPageParam: (lastPage, allPages) => (lastPage.hasMore ? allPages.length * DEFAULT_LIST_LIMIT : undefined),
   });
+  const messages = messagesQuery.data?.pages.slice().reverse().flatMap((page) => page.items) ?? [];
+
+  function loadOlderMessages() {
+    isLoadingOlderRef.current = true;
+    messagesQuery.fetchNextPage();
+  }
 
   const replyStatusQuery = useQuery({
     queryKey: ["chat-reply-status", conversationId, activeWorkItemId],
@@ -119,6 +138,13 @@ function ChatConversation({ conversationId }: { conversationId: number }) {
   }, [replyState, conversationId, queryClient, trackActiveReply]);
 
   useEffect(() => {
+    // A "Load older messages" click also changes messagesQuery.data (a new page is appended),
+    // but it should never yank the view back to the bottom while the user is reading history -
+    // only the initial load and a genuinely new message at the tail should autoscroll.
+    if (isLoadingOlderRef.current) {
+      isLoadingOlderRef.current = false;
+      return;
+    }
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messagesQuery.data]);
 
@@ -164,7 +190,19 @@ function ChatConversation({ conversationId }: { conversationId: number }) {
             </Button>
           </div>
         )}
-        {messagesQuery.data?.map((message) =>
+        {messagesQuery.hasNextPage && (
+          <div className="mx-auto max-w-2xl text-center">
+            <button
+              type="button"
+              disabled={messagesQuery.isFetchingNextPage}
+              onClick={loadOlderMessages}
+              className="text-xs text-muted-foreground underline hover:text-foreground"
+            >
+              {messagesQuery.isFetchingNextPage ? "Loading..." : "Load older messages"}
+            </button>
+          </div>
+        )}
+        {messages.map((message) =>
           message.direction === "user_request" ? (
             <div key={message.message_id} className="mx-auto max-w-2xl rounded-2xl bg-muted px-4 py-3">
               <p className="mb-1 text-xs font-medium text-muted-foreground">You</p>
