@@ -225,11 +225,13 @@ class DeleteResearchDocumentUseCase:
         document_repository: DocumentRepository,
         project_repository: ProjectRepository,
         agent_repository: AgentRepository,
+        work_items: WorkItemOutcomeLookup,
         unit_of_work: UnitOfWork,
     ) -> None:
         self._documents = document_repository
         self._projects = project_repository
         self._agents = agent_repository
+        self._work_items = work_items
         self._uow = unit_of_work
 
     def execute(self, *, project_id: int, user_id: int, document_id: int) -> None:
@@ -251,6 +253,13 @@ class DeleteResearchDocumentUseCase:
             )
 
         try:
+            # A `pending` document can still have a queued (not yet claimed) processing Work
+            # Item - cancel it first so the executor never claims one whose document has been
+            # deleted out from under it (see `cancel_queued_by_payload_reference`'s docstring
+            # for the outage this caused before this call existed).
+            self._work_items.cancel_queued_by_payload_reference(
+                build_process_document_payload_reference(document_id)
+            )
             self._documents.mark_deleted(document_id, deleted_at=datetime.now(timezone.utc))
             self._uow.commit()
         except Exception:

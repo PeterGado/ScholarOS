@@ -179,9 +179,12 @@ def get_delete_research_document_use_case(
     document_repository: SqlAlchemyDocumentRepository = Depends(get_document_repository),
     project_repository: SqlAlchemyProjectRepository = Depends(get_project_repository),
     agent_repository: SqlAlchemyAgentRepository = Depends(get_agent_repository),
+    work_item_repository: WorkItemRepository = Depends(get_work_item_repository),
     unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
 ) -> DeleteResearchDocumentUseCase:
-    return DeleteResearchDocumentUseCase(document_repository, project_repository, agent_repository, unit_of_work)
+    return DeleteResearchDocumentUseCase(
+        document_repository, project_repository, agent_repository, work_item_repository, unit_of_work
+    )
 
 
 def get_retry_document_processing_use_case(

@@ -10,6 +10,7 @@ from app.ai.providers.base import EmbeddingProvider, TextGenerationProvider
 from app.database.unit_of_work import SqlAlchemyUnitOfWork
 from app.modules.agent.infrastructure.repositories import SqlAlchemyAgentRepository
 from app.modules.document.domain.enums import DocumentProcessingStatus
+from app.modules.document.domain.exceptions import ResearchDocumentNotFoundError
 from app.modules.document.domain.ports import ContentStore
 from app.modules.document.infrastructure.repositories import SqlAlchemyDocumentRepository
 from app.modules.knowledge.application.use_cases import ExtractDocumentKnowledgeUseCase, ProcessDocumentUseCase
@@ -110,11 +111,11 @@ def process_one_work_item(
         uow.commit()
         return True
 
-    documents.update_processing_status(
-        document_id, DocumentProcessingStatus.PROCESSING)
-    uow.commit()
-
     try:
+        documents.update_processing_status(
+            document_id, DocumentProcessingStatus.PROCESSING)
+        uow.commit()
+
         projects = SqlAlchemyProjectRepository(session)
         agents = SqlAlchemyAgentRepository(session)
         process_document = ProcessDocumentUseCase(
@@ -135,19 +136,31 @@ def process_one_work_item(
         )
         extract_knowledge.execute(document_id=document_id)
     except Exception as exc:  # noqa: BLE001 - any pipeline failure is a retryable work-item failure
+        # A document deleted while its Work Item was still queued (DeleteResearchDocumentUseCase
+        # only permits deleting pending/failed documents, exactly the states a queued item can
+        # still reference) can never succeed no matter how many times it's retried. Until
+        # 2026-09-30, the `update_processing_status` call above sat outside any try/except, so
+        # this exact error propagated straight out of this function uncaught - the session was
+        # then closed without a commit, silently rolling back the `claim_next_queued` state
+        # change, so the *same* oldest queued item was reclaimed and crashed again on every poll,
+        # forever, starving every other queued item behind it (including chat replies - this is
+        # the root cause of the 2026-09-30 "stuck on Thinking..." outage). Fail it permanently on
+        # the first attempt instead of retrying a document lookup that can never succeed.
+        document_is_missing = isinstance(exc, ResearchDocumentNotFoundError)
         updated_item = work_items.mark_failed(
             item.work_item_id,
             error=str(exc),
             # A provider daily quota cannot recover during the next polling cycle. Preserve
             # the failed item for the existing explicit Retry action instead.
-            max_attempts=1 if isinstance(exc, ProviderRateLimitError) else 3,
+            max_attempts=1 if (document_is_missing or isinstance(exc, ProviderRateLimitError)) else 3,
         )
-        next_status = (
-            DocumentProcessingStatus.PENDING
-            if updated_item.state == WorkItemState.QUEUED
-            else DocumentProcessingStatus.FAILED
-        )
-        documents.update_processing_status(document_id, next_status)
+        if not document_is_missing:
+            next_status = (
+                DocumentProcessingStatus.PENDING
+                if updated_item.state == WorkItemState.QUEUED
+                else DocumentProcessingStatus.FAILED
+            )
+            documents.update_processing_status(document_id, next_status)
         uow.commit()
         logger.warning("Work item %s failed (attempt %d): %s",
                        item.work_item_id, updated_item.attempts, exc)

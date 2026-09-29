@@ -21,6 +21,7 @@ from app.modules.document.domain.repositories import DocumentRepository
 from app.modules.project.domain.entities import Project
 from app.modules.project.domain.exceptions import ProjectNotFoundError
 from app.modules.project.domain.repositories import ProjectRepository
+from app.workers.payloads import build_process_document_payload_reference
 
 OWNER_USER_ID = 1
 OTHER_USER_ID = 2
@@ -125,10 +126,20 @@ class FakeWorkItemEnqueuer:
 
 
 class FakeWorkItemOutcomeLookup:
+    def __init__(self):
+        self.cancelled_payload_references: list[str] = []
+
     def get_by_payload_reference(self, payload_reference):
         return None
 
+    def get_by_id(self, work_item_id):
+        return None
+
     def requeue_failed_by_payload_reference(self, payload_reference):
+        return None
+
+    def cancel_queued_by_payload_reference(self, payload_reference):
+        self.cancelled_payload_references.append(payload_reference)
         return None
 
 
@@ -240,7 +251,7 @@ def test_upload_at_exactly_the_limit_still_succeeds():
 def test_a_deleted_document_does_not_count_against_the_limit():
     use_case, documents, content_store, uow, work_items = _build_use_case(project_id=1)
     delete_use_case = DeleteResearchDocumentUseCase(
-        documents, FakeProjectRepository(existing_project_id=1), FakeAgentRepository(), uow
+        documents, FakeProjectRepository(existing_project_id=1), FakeAgentRepository(), FakeWorkItemOutcomeLookup(), uow
     )
     for i in range(MAX_RESEARCH_DOCUMENTS_PER_PROJECT):
         use_case.execute(project_id=1, user_id=OWNER_USER_ID, title=f"Source {i}", format="txt", content=b"x")
@@ -302,9 +313,13 @@ def test_list_documents_for_a_project_with_none_yet_returns_an_empty_list():
 # --- DeleteResearchDocumentUseCase -----------------------------------------------------------
 
 
-def _delete_use_case(documents, project_id=1):
+def _delete_use_case(documents, project_id=1, work_items=None):
     return DeleteResearchDocumentUseCase(
-        documents, FakeProjectRepository(existing_project_id=project_id), FakeAgentRepository(), FakeUnitOfWork()
+        documents,
+        FakeProjectRepository(existing_project_id=project_id),
+        FakeAgentRepository(),
+        work_items if work_items is not None else FakeWorkItemOutcomeLookup(),
+        FakeUnitOfWork(),
     )
 
 
@@ -321,6 +336,24 @@ def test_deletes_a_pending_or_failed_document(status):
 
     assert documents.get_by_id(document.document_id).deleted_at is not None
     assert documents.list_by_project_id(1) == []  # invisible to listing once deleted
+
+
+def test_deleting_a_pending_document_cancels_its_queued_work_item():
+    """A `pending` document can still have a queued (not yet claimed) processing Work Item -
+    without this, the executor could later claim it, crash looking up a document that no longer
+    exists, and (before the 2026-09-30 fix) get stuck retrying the same poisoned item forever,
+    starving every other queued item behind it.
+    """
+    documents = FakeDocumentRepository()
+    document = documents.add(
+        ResearchDocument.create(project_id=1, title="Stuck upload", format="docx", content_reference="ref-1")
+    )
+    work_items = FakeWorkItemOutcomeLookup()
+    use_case = _delete_use_case(documents, work_items=work_items)
+
+    use_case.execute(project_id=1, user_id=OWNER_USER_ID, document_id=document.document_id)
+
+    assert work_items.cancelled_payload_references == [build_process_document_payload_reference(document.document_id)]
 
 
 @pytest.mark.parametrize("status", [DocumentProcessingStatus.PROCESSING, DocumentProcessingStatus.PROCESSED])

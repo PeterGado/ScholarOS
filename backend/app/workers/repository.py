@@ -46,6 +46,34 @@ class WorkItemRepository:
         row = self._session.get(WorkItemModel, work_item_id)
         return self._to_domain(row) if row is not None else None
 
+    def cancel_queued_by_payload_reference(self, payload_reference: str) -> WorkItem | None:
+        """Terminally fails a still-`queued` Work Item for a payload_reference whose underlying
+        record is about to disappear (e.g. a Research Document being deleted while its
+        processing item hasn't been claimed yet) - a queued item that outlives the thing it
+        refers to can never succeed no matter how many times it's retried, and until 2026-09-30
+        an orphan like this reached the executor, crashed on a lookup of the now-gone record,
+        and (since that crash happened before any outcome was recorded) had its claim silently
+        rolled back - so the *same* oldest queued item was reclaimed and crashed again on every
+        poll, forever, starving every other queued item behind it. Only `queued` items are
+        touched: a `running` one is being actively processed by the executor right now and must
+        run to completion untouched; this codebase's own delete/cancel call sites never race
+        that state (a Research Document can only be deleted while `pending`/`failed`, never
+        while its item is `running`, e.g. `DeleteResearchDocumentUseCase`).
+        """
+        row = (
+            self._session.query(WorkItemModel)
+            .filter_by(payload_reference=payload_reference, state=WorkItemState.QUEUED)
+            .order_by(WorkItemModel.work_item_id.desc())
+            .first()
+        )
+        if row is None:
+            return None
+        row.state = WorkItemState.FAILED
+        row.last_error = "Cancelled: the record this work item refers to no longer exists."
+        row.completed_at = datetime.now(timezone.utc)
+        self._session.flush()
+        return self._to_domain(row)
+
     def requeue_failed_by_payload_reference(self, payload_reference: str) -> WorkItem | None:
         """Resets an already-terminal `failed` Work Item back to `queued` for a fresh bounded
         retry - used by "Retry" on a failed document. Resets the existing row rather than

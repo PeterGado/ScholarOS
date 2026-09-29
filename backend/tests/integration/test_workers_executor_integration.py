@@ -383,3 +383,33 @@ def test_a_second_process_one_work_item_call_after_success_finds_nothing_to_clai
     assert _process_one(session, storage, text_provider=provider) is False
 
 
+def test_a_work_item_whose_document_no_longer_exists_fails_permanently_instead_of_looping(session, storage):
+    """Regression test for the 2026-09-30 production outage: a queued Work Item whose
+    Research Document row is gone (found in production for a document that had been deleted)
+    used to crash `update_processing_status` *before* any outcome was recorded, so the crash
+    unwound past the claim itself - the session was closed without a commit, silently rolling
+    the claim back to `queued`. The *same* oldest item was then reclaimed and crashed again on
+    every poll, forever, starving every other queued item behind it (including chat replies).
+    It must instead fail permanently on the very first attempt, so the queue can move on.
+    """
+    document_id = _upload_document(session, storage)
+    session.query(ResearchDocument).filter_by(
+        document_id=document_id).delete()
+    session.commit()
+    provider = FakeTextGenerationProvider()
+
+    claimed = _process_one(session, storage, text_provider=provider)
+
+    assert claimed is True
+    work_items = WorkItemRepository(session)
+    # Terminal on the first attempt - not requeued for a lookup that can never succeed.
+    assert work_items.claim_next_queued() is None
+    row = session.query(WorkItemModel).one()
+    assert row.state == WorkItemState.FAILED
+    assert row.attempts == 1
+
+    # The queue is genuinely unblocked, not just this one item resolved - a second poll finds
+    # nothing left to claim rather than reclaiming and crashing on the same item again.
+    assert _process_one(session, storage, text_provider=provider) is False
+
+
