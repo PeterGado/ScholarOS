@@ -3,6 +3,7 @@ import pytest
 from app.ai.exceptions import ProviderConfigurationError, ProviderRateLimitError, ProviderRequestError
 from app.ai.providers.failover import FailoverProvider
 from app.ai.providers.google_genai import GoogleGenAIProvider, create_google_genai_provider
+from app.ai.providers.rate_limited import RateLimitedProvider
 from app.core.config import Settings
 
 
@@ -198,15 +199,17 @@ def test_create_google_genai_provider_wires_max_output_tokens_from_settings():
 
 def test_create_google_genai_provider_returns_a_failover_provider_when_multiple_keys_are_set():
     """2026-09-30, multi-account failover: ai_api_keys takes priority over ai_api_key when set -
-    one GoogleGenAIProvider per key, wrapped in FailoverProvider.
+    one GoogleGenAIProvider per key, each paced by its own RateLimitedProvider, wrapped in
+    FailoverProvider.
     """
     settings = Settings(ai_api_keys=["key-a", "key-b", "key-c"])
     provider = create_google_genai_provider(settings)
 
     assert isinstance(provider, FailoverProvider)
     assert len(provider._providers) == 3
-    assert [p._client for p in provider._providers]  # each is a real, distinct GoogleGenAIProvider
-    assert all(isinstance(p, GoogleGenAIProvider) for p in provider._providers)
+    assert all(isinstance(p, RateLimitedProvider) for p in provider._providers)
+    assert all(isinstance(p._provider, GoogleGenAIProvider) for p in provider._providers)
+    assert [p._provider._client for p in provider._providers]  # each wraps a real, distinct provider
 
 
 def test_create_google_genai_provider_ignores_ai_api_key_when_ai_api_keys_is_set():

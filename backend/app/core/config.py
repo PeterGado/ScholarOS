@@ -62,6 +62,16 @@ class Settings(BaseSettings):
     # ai_api_key is simply unused when this is set. Left empty by default so every existing
     # single-key deployment is completely unaffected.
     ai_api_keys: list[str] = []
+    # Per-key request pacing (2026-09-30, added alongside multi-key failover): each key in
+    # ai_api_keys gets its own RateLimitedProvider capping it to this many calls per rolling
+    # 60s window, proactively sleeping instead of relying on a real 429 + FailoverProvider's
+    # retry-next-key to absorb bursts - cheaper (no wasted round trip) and keeps latency lower
+    # under the burst pattern that caused the original rate-limit incident (several provider
+    # calls fired in quick succession while processing a document). 10/min is a conservative
+    # placeholder below Gemini free tier's documented per-minute caps, not tuned against a
+    # confirmed number for the specific model configured below - adjust if it proves too tight
+    # or still too loose. Only applied to the multi-key path; the single-key path is unchanged.
+    ai_max_calls_per_minute_per_key: int = 10
     ai_model: str = "gemini-3.6-flash"
     ai_embedding_model: str = "gemini-embedding-001"
     # 2026-09-21: no per-call output bound existed anywhere - a single generate() call could run

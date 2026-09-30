@@ -2,6 +2,7 @@ import httpx
 
 from app.ai.exceptions import ProviderConfigurationError, ProviderRateLimitError, ProviderRequestError
 from app.ai.providers.failover import FailoverProvider
+from app.ai.providers.rate_limited import RateLimitedProvider
 from app.core.config import Settings
 
 __all__ = ["OpenAICompatibleProvider", "create_default_provider"]
@@ -118,18 +119,21 @@ def create_default_provider(settings: Settings) -> OpenAICompatibleProvider | Fa
     business logic"). The only place `Settings.ai_*` fields are read for provider wiring.
 
     `settings.ai_api_keys` (2026-09-30, multi-account failover), when set, takes priority over
-    the single `ai_api_key` - see `FailoverProvider`'s own docstring and `google_genai.py`'s
-    identical wiring for why.
+    the single `ai_api_key` - see `FailoverProvider`'s and `RateLimitedProvider`'s own docstrings
+    and `google_genai.py`'s identical wiring for why.
     """
     if settings.ai_api_keys:
         return FailoverProvider(
             [
-                OpenAICompatibleProvider(
-                    base_url=settings.ai_base_url,
-                    api_key=api_key,
-                    model=settings.ai_model,
-                    embedding_model=settings.ai_embedding_model,
-                    max_output_tokens=settings.ai_max_output_tokens,
+                RateLimitedProvider(
+                    OpenAICompatibleProvider(
+                        base_url=settings.ai_base_url,
+                        api_key=api_key,
+                        model=settings.ai_model,
+                        embedding_model=settings.ai_embedding_model,
+                        max_output_tokens=settings.ai_max_output_tokens,
+                    ),
+                    max_calls_per_minute=settings.ai_max_calls_per_minute_per_key,
                 )
                 for api_key in settings.ai_api_keys
             ]
