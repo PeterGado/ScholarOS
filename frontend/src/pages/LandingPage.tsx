@@ -1,4 +1,4 @@
-import { Link, Navigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { BookOpen, Brain, PenLine, Search } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -33,11 +33,11 @@ const features = [
 ];
 
 export function LandingPage() {
+  // 2026-09-30: this used to redirect an already-authenticated visitor straight past the
+  // landing page to /chat - explicitly changed after real feedback that the landing page
+  // should always be reachable as the first page, logged in or not, with a way in from here
+  // rather than an automatic skip.
   const { isAuthenticated } = useAuth();
-
-  if (isAuthenticated) {
-    return <Navigate to="/chat" replace />;
-  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -45,12 +45,20 @@ export function LandingPage() {
         <span className="text-lg font-semibold">ScholarOS</span>
         <div className="flex items-center gap-2">
           <ThemeToggle />
-          <Button variant="ghost" asChild>
-            <Link to="/login">Sign in</Link>
-          </Button>
-          <Button asChild>
-            <Link to="/register">Get started</Link>
-          </Button>
+          {isAuthenticated ? (
+            <Button asChild>
+              <Link to="/chat">Go to your workspace</Link>
+            </Button>
+          ) : (
+            <>
+              <Button variant="ghost" asChild>
+                <Link to="/login">Sign in</Link>
+              </Button>
+              <Button asChild>
+                <Link to="/register">Get started</Link>
+              </Button>
+            </>
+          )}
         </div>
       </header>
 
@@ -68,12 +76,20 @@ export function LandingPage() {
             your own voice. Understand first. Write second.
           </p>
           <div className="mt-8 flex items-center justify-center gap-3">
-            <Button size="lg" asChild>
-              <Link to="/register">Get started</Link>
-            </Button>
-            <Button size="lg" variant="outline" asChild>
-              <Link to="/login">Sign in</Link>
-            </Button>
+            {isAuthenticated ? (
+              <Button size="lg" asChild>
+                <Link to="/chat">Go to your workspace</Link>
+              </Button>
+            ) : (
+              <>
+                <Button size="lg" asChild>
+                  <Link to="/register">Get started</Link>
+                </Button>
+                <Button size="lg" variant="outline" asChild>
+                  <Link to="/login">Sign in</Link>
+                </Button>
+              </>
+            )}
           </div>
         </section>
 
