@@ -85,10 +85,15 @@ class Settings(BaseSettings):
     # within the rate limit could still drive unlimited real Gemini cost. Defaults ON (unlike
     # registration_invite_code/google_oauth_client_id, which default off because they need
     # external setup first) - this needs none, so it closes the gap the moment this deploys.
-    # 500,000 tokens/user/24h is a rough starting point (roughly a few hundred typical chat
-    # exchanges - app.ai.token_estimate's chars/4 heuristic, not exact billing), tunable via
-    # this var once real usage is observed. Set to null to disable entirely.
-    ai_daily_token_cap_per_user: int | None = 500_000
+    # Raised from the original 500,000 to 2,000,000 (2026-09-30) once multi-key failover made
+    # the original "bound real Gemini billing cost" reasoning mostly moot (free-tier keys, no
+    # billing enabled) - kept as a generous but finite safety net against a bug/runaway loop
+    # rather than disabled outright, since self-service registration (registration_invite_code)
+    # is already live even though only the project owner is using it today. Revisit downward -
+    # back toward a real per-user fair-share limit across the 9-key pool, not a pure safety net -
+    # once friends actually start registering and using it concurrently. Set to null to disable
+    # entirely.
+    ai_daily_token_cap_per_user: int | None = 2_000_000
     # Frontend milestone (2026-09-16): a browser-based frontend on its own origin (the Vite
     # dev server) cannot reach this API at all without CORS headers - not a design choice,
     # every cross-origin browser request is blocked by default. Defaults cover the Vite dev
