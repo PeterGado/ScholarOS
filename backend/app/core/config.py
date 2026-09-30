@@ -93,14 +93,14 @@ class Settings(BaseSettings):
     queue_stale_threshold_seconds: int = 600
     # Work Item executor concurrency (2026-09-30, concurrent-load planning): the executor now
     # runs this many OS threads concurrently claiming/processing Work Items, instead of exactly
-    # one (see WorkItemExecutorLoop's own docstring for why threads, not asyncio tasks). Left at
-    # 1 for this rollout stage deliberately - this change on its own only fixes the event-loop-
-    # freeze bug (see WorkItemExecutorLoop), and stays behaviorally identical to before it
-    # otherwise. Raise only once claim_next_queued is concurrency-safe (Postgres SKIP LOCKED,
-    # confirmed true and covered by a real Postgres test as of this commit) and the connection
-    # pool below is sized to cover it - a separate, deliberate next step, not bundled with this
-    # commit.
-    work_item_worker_count: int = 1
+    # one (see WorkItemExecutorLoop's own docstring for why threads, not asyncio tasks). Raised
+    # from 1 to 3 only after claim_next_queued became concurrency-safe (Postgres SKIP LOCKED),
+    # a real Postgres test proved concurrent claiming never double-processes an item and that
+    # more workers measurably drain the queue faster, and the connection pool below was sized
+    # to cover it. 3 is a deliberately conservative starting point, not a measured ceiling - the
+    # existing /health/queue check and Sentry are what this deploy is watched against before
+    # ever raising it further.
+    work_item_worker_count: int = 3
     # Connection pool sizing (2026-09-30, concurrent-load planning): both engines previously
     # relied on SQLAlchemy's own defaults (pool_size=5, max_overflow=10 - up to 15 connections
     # each, ~30 total from one process) - never deliberately chosen. The app connects through
