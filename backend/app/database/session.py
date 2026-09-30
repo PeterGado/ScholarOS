@@ -20,15 +20,31 @@ def normalize_database_url(database_url: str) -> str:
     return database_url
 
 
-def build_engine(database_url: str) -> Engine:
+def build_engine(
+    database_url: str, *, pool_size: int | None = None, max_overflow: int | None = None
+) -> Engine:
     """Create an engine for the given URL. SQLite gets thread-sharing and foreign-key
     enforcement (off by default in SQLite); other dialects (PostgreSQL, per ADR-004's
     migration path) get their normal driver defaults.
+
+    `pool_size`/`max_overflow` default to `None` (SQLAlchemy's own defaults - 5 and 10 - apply,
+    unchanged from before this parameter existed) everywhere except the two production engines
+    below, which pass explicit values (2026-09-30, concurrent-load planning) - every test
+    fixture and Alembic's own `build_engine` call are intentionally left alone.
     """
     database_url = normalize_database_url(database_url)
     is_sqlite = database_url.startswith("sqlite")
     connect_args = {"check_same_thread": False} if is_sqlite else {}
-    engine = create_engine(database_url, connect_args=connect_args)
+    # SQLite's own pool classes don't accept pool_size/max_overflow (local dev's DATABASE_URL
+    # defaults to SQLite, so these production-only settings must never reach create_engine()
+    # here regardless of what a caller passes) - only meaningful for Postgres anyway.
+    engine_kwargs = {}
+    if not is_sqlite:
+        if pool_size is not None:
+            engine_kwargs["pool_size"] = pool_size
+        if max_overflow is not None:
+            engine_kwargs["max_overflow"] = max_overflow
+    engine = create_engine(database_url, connect_args=connect_args, **engine_kwargs)
 
     if is_sqlite:
 
@@ -127,7 +143,11 @@ def build_sessionmaker(engine: Engine) -> sessionmaker[Session]:
 # not-yet-cut-over Postgres deploy) - Alembic (alembic/env.py) is unaffected and keeps reading
 # `database_url` directly, so migrations always run with the owner role's DDL rights regardless
 # of this setting.
-engine = build_engine(get_settings().app_database_url or get_settings().database_url)
+engine = build_engine(
+    get_settings().app_database_url or get_settings().database_url,
+    pool_size=get_settings().web_engine_pool_size,
+    max_overflow=get_settings().web_engine_max_overflow,
+)
 SessionLocal = build_sessionmaker(engine)
 
 # Background executor connection (2026-09-30, found via a production outage this session): the
@@ -143,7 +163,11 @@ SessionLocal = build_sessionmaker(engine)
 # Connects with the unrestricted owner role instead (the same one Alembic always uses via
 # `database_url`, `rolbypassrls`) - a second, explicit engine, never `engine`/`SessionLocal`
 # above, so the web-facing restricted role is completely unaffected by this.
-worker_engine = build_engine(get_settings().database_url)
+worker_engine = build_engine(
+    get_settings().database_url,
+    pool_size=get_settings().worker_engine_pool_size,
+    max_overflow=get_settings().worker_engine_max_overflow,
+)
 WorkerSessionLocal = build_sessionmaker(worker_engine)
 
 

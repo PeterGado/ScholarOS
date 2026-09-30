@@ -97,11 +97,26 @@ class Settings(BaseSettings):
     # 1 for this rollout stage deliberately - this change on its own only fixes the event-loop-
     # freeze bug (see WorkItemExecutorLoop), and stays behaviorally identical to before it
     # otherwise. Raise only once claim_next_queued is concurrency-safe (Postgres SKIP LOCKED,
-    # not yet true when this default was set), a real Postgres test has proven concurrent
-    # claiming never double-processes an item, and the real Neon connection ceiling has been
-    # checked and the pool sized against it (see `worker_engine` in app/database/session.py) -
-    # do not raise this blind.
+    # confirmed true and covered by a real Postgres test as of this commit) and the connection
+    # pool below is sized to cover it - a separate, deliberate next step, not bundled with this
+    # commit.
     work_item_worker_count: int = 1
+    # Connection pool sizing (2026-09-30, concurrent-load planning): both engines previously
+    # relied on SQLAlchemy's own defaults (pool_size=5, max_overflow=10 - up to 15 connections
+    # each, ~30 total from one process) - never deliberately chosen. The app connects through
+    # Neon's pooled (PgBouncer transaction-mode) endpoint, whose own client-connection ceiling is
+    # documented as being far above what this app needs at its target scale (~100-300 concurrent
+    # users, a handful of worker threads) regardless of compute size - these values are picked to
+    # be comfortably conservative for that scale, not measured against an exact confirmed number
+    # (checking the dashboard for compute size alone didn't surface a hard connection-count
+    # figure, and hunting further wasn't worth it at this scale - see the RLS incident memory/
+    # this session's own discussion for that judgment call). Revisit if the pool is ever
+    # genuinely observed to be a bottleneck (connections timing out waiting for the pool, not a
+    # symptom this app has seen).
+    web_engine_pool_size: int = 10
+    web_engine_max_overflow: int = 15
+    worker_engine_pool_size: int = 10
+    worker_engine_max_overflow: int = 10
 
 
 @lru_cache
