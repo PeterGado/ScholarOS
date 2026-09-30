@@ -247,3 +247,61 @@ def test_extract_style_characteristics_calls_provider_with_built_prompt_and_pars
     result = extract_style_characteristics(["Sample text"], provider)
     assert len(result) == 2
     assert "Sample text" in provider.prompts[0]
+
+
+# --- verbatim-leak guard (2026-09-30) -------------------------------------------------------
+
+
+def test_extract_style_characteristics_rejects_a_signal_that_reproduces_sample_content():
+    """Regression test for a real production incident: a 'vocabulary' characteristic named the
+    sample's actual variable abbreviations (BSIZE, BIND, BGEND, BEXP) instead of describing the
+    pattern abstractly, and that leaked content then derailed unrelated future replies toward
+    the sample's own subject matter. The prompt already says not to do this; this is the
+    second, programmatic line of defense for when the model does it anyway.
+    """
+    sample = (
+        "Board Size (BSIZE), Board Independence (BIND), Board Gender Diversity (BGEND), and "
+        "Board Expertise (BEXP) were used as the independent variables in this study."
+    )
+    leaking_response = (
+        '{"characteristics": [{"characteristic_type": "vocabulary", '
+        '"signal": "Uses Board Size (BSIZE), Board Independence (BIND), Board Gender Diversity "'
+        '"(BGEND), and Board Expertise (BEXP) as standard variable abbreviations."}]}'
+    )
+    provider = FakeProvider(leaking_response)
+
+    with pytest.raises(StyleExtractionError):
+        extract_style_characteristics([sample], provider)
+
+
+def test_extract_style_characteristics_allows_a_signal_with_only_short_incidental_overlap():
+    """A false-positive guard: ordinary short phrases (well under the 6-word window) naturally
+    recur between a sample and a legitimate, abstract style description - only a long, genuine
+    reproduction should ever be rejected.
+    """
+    sample = "The findings of this study indicate that board diversity improves reporting quality significantly."
+    clean_response = (
+        '{"characteristics": [{"characteristic_type": "structure", '
+        '"signal": "States the finding first, then explains its implication in a second clause."}]}'
+    )
+    provider = FakeProvider(clean_response)
+
+    result = extract_style_characteristics([sample], provider)
+
+    assert len(result) == 1
+
+
+def test_extract_style_characteristics_rejects_leakage_even_when_only_one_of_several_samples_is_the_source():
+    samples = ["An unrelated, clean writing sample about a different topic entirely.", (
+        "Board Size (BSIZE), Board Independence (BIND), Board Gender Diversity (BGEND), and "
+        "Board Expertise (BEXP) were used as the independent variables in this study."
+    )]
+    leaking_response = (
+        '{"characteristics": [{"characteristic_type": "vocabulary", '
+        '"signal": "Uses Board Size (BSIZE), Board Independence (BIND), Board Gender Diversity "'
+        '"(BGEND), and Board Expertise (BEXP) as standard variable abbreviations."}]}'
+    )
+    provider = FakeProvider(leaking_response)
+
+    with pytest.raises(StyleExtractionError):
+        extract_style_characteristics(samples, provider)

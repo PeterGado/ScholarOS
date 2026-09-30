@@ -25,8 +25,14 @@ Analyze the writing sample(s) below and identify recurring characteristics of th
 {{"characteristics": [{{"characteristic_type": "...", "signal": "...", "confidence": 0.0}}, ...]}}
 
 - characteristic_type: exactly one of structure, vocabulary, transitions, explanation, citation
-- signal: a concise, specific description of an observed, recurring characteristic - describe the pattern, do not quote or reproduce the sample text verbatim
+- signal: a concise, specific description of an observed, recurring PATTERN - never the sample's actual subject matter, terminology, variable names, abbreviations, section titles, numbers, or any other content specific to what the sample is about
 - confidence: your confidence in this observation, a number between 0 and 1 (optional)
+
+Example of what "signal" should look like:
+- GOOD: "Introduces statistical results by first restating the hypothesis, then presenting the figure."
+- BAD: "Introduces board governance variables (BSIZE, BIND, BGEND, BEXP) before presenting the correlation matrix." - this names the sample's actual subject matter and variable names instead of describing the pattern abstractly; it would apply this specific project's content to completely unrelated writing tasks.
+
+A signal must remain true of the author's writing style no matter what topic they write about next. If a signal would stop making sense applied to a different subject, it is describing content, not style, and must not be included.
 
 Do not:
 - write new prose or continue the samples
@@ -34,7 +40,7 @@ Do not:
 - judge whether the writing is good or bad
 - infer the author's identity, demographics, or any personal characteristic
 - invent biographical facts
-- reproduce sample text verbatim in "signal"
+- reproduce sample text verbatim in "signal", including specific terms, names, abbreviations, or numbers from the sample
 - describe anything other than observable writing-style characteristics
 
 Writing sample(s):
@@ -168,7 +174,45 @@ def parse_style_extraction_response(raw_response: str) -> list[ExtractedCharacte
     return characteristics
 
 
+_VERBATIM_LEAK_WORD_WINDOW = 6
+"""2026-09-30, found via a real production incident: despite the prompt explicitly saying "do
+not reproduce sample text verbatim in signal", the model did anyway - a 'vocabulary'
+characteristic named a sample's actual domain-specific variable abbreviations (BSIZE, BIND,
+BGEND, BEXP) instead of describing the pattern abstractly. That specific content then rendered
+into every future generation's WRITING STYLE AND TONE section regardless of topic, derailing
+unrelated replies toward the leaked sample's own subject matter - the user asked for the next
+section after a thesis's background-of-the-study introduction and got a results-chapter
+correlation-matrix section instead, because the "style" guidance was actually leaked content.
+A prompt instruction alone isn't a reliable enough guarantee for something this consequential,
+so this is a second, programmatic check below. 6 consecutive shared words is long enough that
+only genuine reproduction triggers it, not coincidental short-phrase overlap.
+"""
+
+
 def extract_style_characteristics(samples: list[str], provider: TextGenerationProvider) -> list[ExtractedCharacteristic]:
     prompt = build_style_extraction_prompt(samples)
     raw_response = provider.generate(prompt)
-    return parse_style_extraction_response(raw_response)
+    characteristics = parse_style_extraction_response(raw_response)
+    _reject_verbatim_leaks(characteristics, samples)
+    return characteristics
+
+
+def _reject_verbatim_leaks(characteristics: list[ExtractedCharacteristic], samples: list[str]) -> None:
+    sample_text = " ".join(" ".join(sample.lower().split()) for sample in samples)
+    for characteristic in characteristics:
+        if _shares_a_long_run_of_words(characteristic.signal, sample_text):
+            raise StyleExtractionError(
+                reason="a characteristic's signal appears to reproduce the sample's own content instead of "
+                "describing a style pattern"
+            )
+
+
+def _shares_a_long_run_of_words(signal: str, sample_text: str) -> bool:
+    words = signal.lower().split()
+    if len(words) < _VERBATIM_LEAK_WORD_WINDOW:
+        return False
+    for start in range(len(words) - _VERBATIM_LEAK_WORD_WINDOW + 1):
+        window = " ".join(words[start : start + _VERBATIM_LEAK_WORD_WINDOW])
+        if window in sample_text:
+            return True
+    return False
