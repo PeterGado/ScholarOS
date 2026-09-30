@@ -6,7 +6,12 @@ from app.auth.google_sign_in import GoogleSignInUseCase
 from app.auth.registration import RegisterUserUseCase
 from app.auth.schemas import GoogleSignInRequest, LoginRequest, RegisterRequest, TokenResponse
 from app.auth.service import AuthService
-from app.core.dependencies import get_auth_service, get_google_sign_in_use_case, get_register_user_use_case
+from app.core.dependencies import (
+    get_auth_service,
+    get_current_user_id,
+    get_google_sign_in_use_case,
+    get_register_user_use_case,
+)
 from app.core.rate_limit import limiter
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -108,6 +113,26 @@ def google_sign_in(
     """
     token = use_case.execute(id_token=payload.id_token, invite_code=payload.invite_code)
     return TokenResponse(access_token=token)
+
+
+@router.get(
+    "/me",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        401: {"model": ErrorResponse, "description": "Missing, malformed, unknown, or ended session."},
+    },
+)
+def get_current_session(
+    user_id: int = Depends(get_current_user_id),
+) -> None:
+    """Verifies the presented bearer token still identifies a real, active session (2026-09-30,
+    added after a real frontend bug: the client tracked "logged in" as merely holding *a* token
+    in local storage, never confirming it was still valid - a stale or already-ended session
+    silently skipped the landing page and bounced into a broken authenticated app state instead,
+    with no way back to the landing page short of manually clearing browser storage). No body:
+    the status code alone (204 valid, 401 not) is the only signal a caller needs.
+    """
+    return None
 
 
 @router.post(

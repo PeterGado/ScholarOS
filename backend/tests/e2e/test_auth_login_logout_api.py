@@ -144,3 +144,43 @@ def test_token_reused_against_a_business_route_after_logout_returns_401(client, 
     reuse_response = client.post("/agents", json={"project_title": "Thesis", "project_topic": "Topic"}, headers=headers)
     assert reuse_response.status_code == 401
     assert reuse_response.json()["error_type"] == "InvalidSessionError"
+
+
+# --- GET /auth/me (2026-09-30, real session validation for the frontend) ----------------------
+
+
+def test_me_returns_204_for_a_valid_token(client, provisioned_user):
+    login_response = client.post("/auth/login", json={"username": USERNAME, "password": PASSWORD})
+    token = login_response.json()["access_token"]
+
+    response = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 204
+    assert response.content == b""
+
+
+def test_me_without_an_authorization_header_returns_401(client, provisioned_user):
+    response = client.get("/auth/me")
+    assert response.status_code == 401
+    assert response.json()["error_type"] == "InvalidSessionError"
+
+
+def test_me_with_an_unknown_token_returns_401(client, provisioned_user):
+    response = client.get("/auth/me", headers={"Authorization": "Bearer not-a-real-token"})
+    assert response.status_code == 401
+    assert response.json()["error_type"] == "InvalidSessionError"
+
+
+def test_me_after_logout_returns_401(client, provisioned_user):
+    """The exact scenario the frontend fix depends on: a token that was valid a moment ago but
+    whose session has since ended must be reported as invalid here, not accepted.
+    """
+    login_response = client.post("/auth/login", json={"username": USERNAME, "password": PASSWORD})
+    token = login_response.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    client.post("/auth/logout", headers=headers)
+
+    response = client.get("/auth/me", headers=headers)
+
+    assert response.status_code == 401
+    assert response.json()["error_type"] == "InvalidSessionError"
