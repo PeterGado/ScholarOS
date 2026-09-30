@@ -26,6 +26,26 @@ class ProviderRateLimitError(ProviderRequestError):
     """
 
 
+class ProviderContentBlockedError(ProviderRequestError):
+    """Raised when the AI provider's own safety filtering blocked a prompt or its response
+    (2026-09-30, added after friend testing found violent/harassing/derogatory input passing
+    straight through with no moderation at all). A subclass of ProviderRequestError, not a
+    sibling, so it automatically gets the same HTTP 502 handling as any other provider request
+    failure (app.api.exception_handlers) without a separate registration - the same reasoning
+    ProviderRateLimitError already uses.
+
+    Retrying the same message unmodified cannot succeed any more than a rate limit can, so the
+    worker treats this the same way: fail permanently on the first attempt rather than burning
+    through the normal retry budget (see app.workers.executor's `isinstance(exc, ...)` checks).
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            "This message couldn't be processed because it was flagged by the AI provider's "
+            "safety filters. Please rephrase and try again."
+        )
+
+
 class AiUsageQuotaExceededError(AIProviderError):
     """Raised by AiUsageGuard (app.ai.usage_guard, 2026-09-21 security pass) when a user's
     estimated AI usage over the last 24 hours would exceed Settings.ai_daily_token_cap_per_user.

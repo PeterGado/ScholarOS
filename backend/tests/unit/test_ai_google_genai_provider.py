@@ -1,6 +1,11 @@
 import pytest
 
-from app.ai.exceptions import ProviderConfigurationError, ProviderRateLimitError, ProviderRequestError
+from app.ai.exceptions import (
+    ProviderConfigurationError,
+    ProviderContentBlockedError,
+    ProviderRateLimitError,
+    ProviderRequestError,
+)
 from app.ai.providers.failover import FailoverProvider
 from app.ai.providers.google_genai import GoogleGenAIProvider, create_google_genai_provider
 from app.ai.providers.rate_limited import RateLimitedProvider
@@ -10,6 +15,35 @@ from app.core.config import Settings
 class FakeGenerateResponse:
     def __init__(self, text):
         self.text = text
+
+
+class FakePromptFeedback:
+    def __init__(self, block_reason):
+        self.block_reason = block_reason
+
+
+class FakeFinishReason:
+    """Mimics the SDK's enum member shape (a `.name` attribute), matching real usage where
+    `candidates[0].finish_reason` is a `types.FinishReason` member, not a plain string.
+    """
+
+    def __init__(self, name):
+        self.name = name
+
+
+class FakeCandidate:
+    def __init__(self, finish_reason=None):
+        self.finish_reason = finish_reason
+
+
+class BlockedResponse:
+    """No `.text` attribute at all, matching how a real blocked GenerateContentResponse has no
+    usable text - `getattr(response, "text", None)` in generate() must fall through to None.
+    """
+
+    def __init__(self, *, prompt_feedback=None, candidates=None):
+        self.prompt_feedback = prompt_feedback
+        self.candidates = candidates or []
 
 
 class FakeEmbeddingValue:
@@ -85,13 +119,90 @@ def test_generate_passes_max_output_tokens_to_the_provider_config():
     assert models.generate_configs[0].max_output_tokens == 4096
 
 
-def test_generate_omits_config_entirely_when_no_max_output_tokens_is_configured():
+def test_generate_always_passes_safety_settings_even_with_no_max_output_tokens_configured():
+    """2026-09-30: config used to be omitted entirely (None) when max_output_tokens was unset -
+    no longer true now that safety_settings (below) must always be applied regardless.
+    """
     models = FakeModels(generate_response=FakeGenerateResponse("text"))
     provider = _build_provider(models, max_output_tokens=None)
 
     provider.generate("prompt")
 
-    assert models.generate_configs[0] is None
+    config = models.generate_configs[0]
+    assert config is not None
+    assert config.max_output_tokens is None
+    assert len(config.safety_settings) == 4
+
+
+def test_generate_configures_safety_settings_at_block_medium_and_above():
+    """2026-09-30, added after friend testing found violent/harassing/derogatory messages
+    passing through with no moderation - the SDK's unset default was never deliberately chosen.
+    """
+    from google.genai import types
+
+    models = FakeModels(generate_response=FakeGenerateResponse("text"))
+    provider = _build_provider(models)
+
+    provider.generate("prompt")
+
+    safety_settings = models.generate_configs[0].safety_settings
+    categories = {setting.category for setting in safety_settings}
+    assert categories == {
+        types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+        types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+        types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+        types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+    }
+    assert all(setting.threshold == types.HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE for setting in safety_settings)
+
+
+# --- safety-blocked responses (2026-09-30) -------------------------------------------------
+
+
+def test_generate_raises_content_blocked_error_when_the_whole_prompt_is_blocked():
+    models = FakeModels(generate_response=BlockedResponse(prompt_feedback=FakePromptFeedback("SAFETY")))
+    provider = _build_provider(models)
+
+    with pytest.raises(ProviderContentBlockedError, match="safety filters"):
+        provider.generate("a violent, harassing prompt")
+
+
+def test_generate_raises_content_blocked_error_when_the_response_is_cut_off_for_safety():
+    models = FakeModels(
+        generate_response=BlockedResponse(candidates=[FakeCandidate(finish_reason=FakeFinishReason("SAFETY"))])
+    )
+    provider = _build_provider(models)
+
+    with pytest.raises(ProviderContentBlockedError, match="safety filters"):
+        provider.generate("prompt")
+
+
+def test_generate_raises_content_blocked_error_for_prohibited_content_finish_reason():
+    models = FakeModels(
+        generate_response=BlockedResponse(
+            candidates=[FakeCandidate(finish_reason=FakeFinishReason("PROHIBITED_CONTENT"))]
+        )
+    )
+    provider = _build_provider(models)
+
+    with pytest.raises(ProviderContentBlockedError):
+        provider.generate("prompt")
+
+
+def test_generate_raises_plain_request_error_for_a_malformed_response_not_a_safety_block():
+    """No text, no block_reason, no blocked finish_reason - a genuinely malformed response must
+    still raise the generic error, not be misreported as a safety block.
+    """
+
+    class NoTextResponse:
+        pass
+
+    models = FakeModels(generate_response=NoTextResponse())
+    provider = _build_provider(models)
+
+    with pytest.raises(ProviderRequestError) as exc_info:
+        provider.generate("prompt")
+    assert not isinstance(exc_info.value, ProviderContentBlockedError)
 
 
 def test_generate_raises_provider_request_error_when_the_sdk_raises():

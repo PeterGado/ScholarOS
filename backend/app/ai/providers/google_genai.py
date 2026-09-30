@@ -3,11 +3,36 @@ from typing import Protocol
 from google import genai
 from google.genai import types
 
-from app.ai.exceptions import ProviderConfigurationError, ProviderRateLimitError, ProviderRequestError
+from app.ai.exceptions import (
+    ProviderConfigurationError,
+    ProviderContentBlockedError,
+    ProviderRateLimitError,
+    ProviderRequestError,
+)
 from app.ai.providers.failover import FailoverProvider
 from app.ai.providers.rate_limited import RateLimitedProvider
 
 __all__ = ["GoogleGenAIProvider", "create_google_genai_provider"]
+
+_SAFETY_SETTINGS = [
+    types.SafetySetting(category=category, threshold=types.HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE)
+    for category in (
+        types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+        types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+        types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+        types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+    )
+]
+"""2026-09-30: added after friend testing found violent/harassing/derogatory chat messages
+passing straight through with no moderation at all - the SDK applies its own default
+thresholds when safety_settings is left unset, but that default was never deliberately chosen
+here and wasn't catching what friends actually tried. BLOCK_MEDIUM_AND_ABOVE (Google's own
+general-purpose recommendation) blocks medium-and-higher-probability harmful content while
+still allowing a thesis or research project to discuss difficult topics (violence, abuse,
+hate) at a factual, non-graphic register - a stricter BLOCK_LOW_AND_ABOVE risks false-positive
+blocking legitimate academic writing. HARM_CATEGORY_CIVIC_INTEGRITY/JAILBREAK and the IMAGE_*
+categories are left at the SDK default - out of scope for a text-only writing assistant.
+"""
 
 
 class _GenAIClient(Protocol):
@@ -50,7 +75,7 @@ class GoogleGenAIProvider:
         self._client = client if client is not None else genai.Client(api_key=api_key)
 
     def generate(self, prompt: str) -> str:
-        config = types.GenerateContentConfig(max_output_tokens=self._max_output_tokens) if self._max_output_tokens else None
+        config = types.GenerateContentConfig(max_output_tokens=self._max_output_tokens, safety_settings=_SAFETY_SETTINGS)
         try:
             response = self._client.models.generate_content(model=self._model, contents=prompt, config=config)
         except Exception as exc:  # noqa: BLE001 - the SDK's exception hierarchy is not part of our contract
@@ -63,6 +88,8 @@ class GoogleGenAIProvider:
 
         text = getattr(response, "text", None)
         if not text:
+            if _is_safety_blocked(response):
+                raise ProviderContentBlockedError()
             raise ProviderRequestError("Provider response did not contain expected generated content.")
         return text
 
@@ -148,6 +175,31 @@ def _is_rate_limit_error(exc: Exception) -> bool:
     if status_code == 429:
         return True
     return "resource_exhausted" in str(exc).lower() or "rate limit" in str(exc).lower()
+
+
+_BLOCKED_FINISH_REASONS = {"SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "IMAGE_SAFETY"}
+
+
+def _is_safety_blocked(response) -> bool:
+    """A safety block never raises from the SDK call itself - the request succeeds and comes
+    back with no usable text, either because the whole prompt was rejected before generation
+    started (`prompt_feedback.block_reason` set, no candidates) or the response was cut off
+    mid-generation (`candidates[0].finish_reason` is SAFETY/PROHIBITED_CONTENT/etc). Distinguishing
+    this from a genuinely malformed response is what lets `generate()` raise
+    ProviderContentBlockedError's clear message instead of a generic "no content" error.
+    Reads every field via getattr with a default so a test double missing these SDK-specific
+    attributes (as every existing FakeGenerateResponse does) is correctly treated as not blocked.
+    """
+    prompt_feedback = getattr(response, "prompt_feedback", None)
+    if getattr(prompt_feedback, "block_reason", None):
+        return True
+
+    candidates = getattr(response, "candidates", None) or []
+    if not candidates:
+        return False
+    finish_reason = getattr(candidates[0], "finish_reason", None)
+    reason_name = getattr(finish_reason, "name", finish_reason)
+    return reason_name in _BLOCKED_FINISH_REASONS
 
 
 _MAX_PROVIDER_DETAIL_LENGTH = 500

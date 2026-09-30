@@ -6,8 +6,9 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
-from app.ai.exceptions import ProviderRateLimitError
+from app.ai.exceptions import ProviderContentBlockedError, ProviderRateLimitError
 from app.ai.providers.base import EmbeddingProvider, TextGenerationProvider
+from app.ai.wikipedia import fetch_wikipedia_background
 from app.database.unit_of_work import SqlAlchemyUnitOfWork
 from app.modules.agent.infrastructure.repositories import SqlAlchemyAgentRepository
 from app.modules.document.domain.enums import DocumentProcessingStatus
@@ -47,6 +48,7 @@ def process_one_work_item(
     embedding_provider: EmbeddingProvider,
     embedding_model_version: str,
     storage: ContentStore,
+    background_knowledge_provider: Callable[[str], str | None] = fetch_wikipedia_background,
 ) -> bool:
     """Claims and fully processes at most one queued Work Item using `session`.
 
@@ -94,14 +96,16 @@ def process_one_work_item(
                 SqlAlchemyMemoryProvenanceLinkRepository(session),
                 text_provider,
                 uow,
+                background_knowledge_provider=background_knowledge_provider,
             ).execute(conversation_id=conversation_id, context=chat_context)
         except Exception as exc:  # noqa: BLE001 - worker routes all failures through bounded retry
             updated_item = work_items.mark_failed(
                 item.work_item_id,
                 error=str(exc),
-                # A quota reset needs time; immediate automatic attempts only burn through the
-                # retry budget and create duplicate provider requests.
-                max_attempts=1 if isinstance(exc, ProviderRateLimitError) else 3,
+                # A quota reset needs time, and a safety-blocked message will be blocked again
+                # unmodified - immediate automatic attempts only burn through the retry budget
+                # and create duplicate provider requests.
+                max_attempts=1 if isinstance(exc, (ProviderRateLimitError, ProviderContentBlockedError)) else 3,
             )
             uow.commit()
             logger.warning("Work item %s failed (attempt %d): %s",
@@ -151,9 +155,12 @@ def process_one_work_item(
         updated_item = work_items.mark_failed(
             item.work_item_id,
             error=str(exc),
-            # A provider daily quota cannot recover during the next polling cycle. Preserve
-            # the failed item for the existing explicit Retry action instead.
-            max_attempts=1 if (document_is_missing or isinstance(exc, ProviderRateLimitError)) else 3,
+            # A provider daily quota cannot recover during the next polling cycle, and a
+            # safety-blocked document will be blocked again unmodified. Preserve the failed
+            # item for the existing explicit Retry action instead.
+            max_attempts=1
+            if (document_is_missing or isinstance(exc, (ProviderRateLimitError, ProviderContentBlockedError)))
+            else 3,
         )
         if not document_is_missing:
             next_status = (
@@ -203,6 +210,7 @@ class WorkItemExecutorLoop:
         poll_interval: float = 1.0,
         stale_running_threshold: timedelta = timedelta(minutes=10),
         worker_count: int = 1,
+        background_knowledge_provider: Callable[[str], str | None] = fetch_wikipedia_background,
     ) -> None:
         self._session_factory = session_factory
         self._text_provider = text_provider
@@ -212,6 +220,7 @@ class WorkItemExecutorLoop:
         self._poll_interval = poll_interval
         self._stale_running_threshold = stale_running_threshold
         self._worker_count = worker_count
+        self._background_knowledge_provider = background_knowledge_provider
         self._stop_event = threading.Event()
         self._threads: list[threading.Thread] = []
 
@@ -275,6 +284,7 @@ class WorkItemExecutorLoop:
                 embedding_provider=self._embedding_provider,
                 embedding_model_version=self._embedding_model_version,
                 storage=self._storage,
+                background_knowledge_provider=self._background_knowledge_provider,
             )
         except Exception:
             logger.exception(
