@@ -12,6 +12,8 @@ from app.database.shared_models import User
 from app.main import app
 from app.storage.filesystem import FilesystemStorage
 from app.workers.executor import process_one_work_item
+from app.workers.enums import WorkItemState
+from app.workers.models import WorkItem as WorkItemModel
 
 
 class FakeEmbeddingProvider:
@@ -310,6 +312,33 @@ def test_a_deleted_conversation_can_no_longer_be_read_from_or_sent_to(client, au
         headers=auth_headers,
     )
     assert send_response.status_code == 404
+
+
+def test_deleting_a_conversation_cancels_its_still_queued_reply(client, auth_headers, db_engine):
+    """Regression test: a reply Work Item queued right before its conversation is deleted used
+    to sit there until the executor eventually claimed it, burned its retry budget discovering
+    the conversation was gone, and only then reached `failed` - wasted work for something
+    guaranteed to fail. Deleting the conversation should cancel it immediately instead.
+    """
+    _create_workspace(client, auth_headers)
+    conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
+    client.post(
+        f"/writing/conversations/{conversation['conversation_id']}/messages",
+        json={"content": "Will this reply survive?"},
+        headers=auth_headers,
+    )
+
+    response = client.delete(f"/writing/conversations/{conversation['conversation_id']}", headers=auth_headers)
+    assert response.status_code == 204
+
+    session = build_sessionmaker(db_engine)()
+    try:
+        items = session.query(WorkItemModel).all()
+        assert len(items) == 1
+        assert items[0].state == WorkItemState.FAILED
+        assert items[0].attempts == 0  # cancelled outright, not discovered via a real attempt
+    finally:
+        session.close()
 
 
 def test_deleting_an_already_deleted_conversation_returns_404(client, auth_headers):

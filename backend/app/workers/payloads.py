@@ -85,6 +85,17 @@ def build_generate_chat_reply_payload_reference(
     return payload_reference, f"{_GENERATE_CHAT_REPLY_PREFIX}{request_id}"
 
 
+def build_generate_chat_reply_payload_reference_prefix(conversation_id: int) -> str:
+    """Unlike `build_process_document_payload_reference` (a single fixed key per document), a
+    chat reply's payload_reference also encodes the specific message_id/request_id/context
+    reference, so a conversation's queued reply can't be found by exact match. This prefix
+    (with its trailing `:`, load-bearing - without it, conversation 1's prefix would also match
+    conversation 11's, 12's, etc.) is for a `LIKE` lookup covering every reply ever queued for
+    this conversation, used to cancel them when the conversation is deleted.
+    """
+    return f"{_GENERATE_CHAT_REPLY_PREFIX}{conversation_id}:"
+
+
 def parse_generate_chat_reply_conversation_id(payload_reference: str) -> int:
     """Cheaply extracts just the conversation_id a `generate_chat_reply` Work Item belongs to,
     without reading its content-store-backed context (unlike `parse_generate_chat_reply_

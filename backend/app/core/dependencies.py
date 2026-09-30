@@ -456,9 +456,12 @@ def get_list_conversations_use_case(
 def get_delete_conversation_use_case(
     conversation_repository: SqlAlchemyConversationRepository = Depends(get_conversation_repository),
     agent_repository: SqlAlchemyAgentRepository = Depends(get_agent_repository),
+    work_item_repository: WorkItemRepository = Depends(get_work_item_repository),
     unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
 ) -> DeleteConversationUseCase:
-    return DeleteConversationUseCase(conversation_repository, agent_repository, unit_of_work)
+    return DeleteConversationUseCase(
+        conversation_repository, agent_repository, work_item_repository, unit_of_work
+    )
 
 
 def get_list_conversation_messages_use_case(

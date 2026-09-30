@@ -54,7 +54,11 @@ from app.modules.writing.domain.repositories import (
 )
 from app.workers.enums import WorkItemKind, WorkItemState
 from app.workers.entities import WorkItem
-from app.workers.payloads import build_generate_chat_reply_payload_reference, parse_generate_chat_reply_conversation_id
+from app.workers.payloads import (
+    build_generate_chat_reply_payload_reference,
+    build_generate_chat_reply_payload_reference_prefix,
+    parse_generate_chat_reply_conversation_id,
+)
 from app.workers.ports import WorkItemEnqueuer, WorkItemOutcomeLookup
 
 
@@ -162,10 +166,12 @@ class DeleteConversationUseCase:
         self,
         conversation_repository: ConversationRepository,
         agent_repository: AgentRepository,
+        work_items: WorkItemOutcomeLookup,
         unit_of_work: UnitOfWork,
     ) -> None:
         self._conversations = conversation_repository
         self._agents = agent_repository
+        self._work_items = work_items
         self._uow = unit_of_work
 
     def execute(self, *, user_id: int, conversation_id: int) -> None:
@@ -181,6 +187,14 @@ class DeleteConversationUseCase:
             raise ConversationNotFoundError(conversation_id=conversation_id)
 
         try:
+            # A conversation can be deleted while a reply to it is still queued (unlike a
+            # Research Document, deletion here has no status gate) - cancel any not-yet-claimed
+            # reply so the executor never burns retries discovering the conversation is gone
+            # (a `running` reply is left alone: GenerateConversationReplyUseCase.execute already
+            # checks for a deleted conversation itself, so it's handled correctly either way).
+            self._work_items.cancel_queued_by_payload_prefix(
+                build_generate_chat_reply_payload_reference_prefix(conversation_id)
+            )
             self._conversations.mark_deleted(
                 conversation_id, deleted_at=datetime.now(timezone.utc))
             self._uow.commit()

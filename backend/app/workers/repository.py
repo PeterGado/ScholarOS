@@ -74,6 +74,36 @@ class WorkItemRepository:
         self._session.flush()
         return self._to_domain(row)
 
+    def cancel_queued_by_payload_prefix(self, payload_reference_prefix: str) -> int:
+        """Terminally fails every still-`queued` Work Item whose payload_reference starts with
+        the given prefix - the chat-reply counterpart to `cancel_queued_by_payload_reference`
+        (an exact match isn't possible here: a chat reply's payload_reference also encodes its
+        message_id/request_id/context reference, not just the conversation it belongs to, so a
+        deleted conversation's queued replies - normally at most one, but nothing here enforces
+        that - are found by prefix instead; see `build_generate_chat_reply_payload_reference_
+        prefix`'s own docstring for why the prefix must include its trailing delimiter). Only
+        `queued` items are touched, for the same reason as `cancel_queued_by_payload_reference`:
+        a `running` item is being actively processed right now, and `GenerateConversationReplyUse
+        Case.execute` already checks for a deleted conversation itself at the top of its own run,
+        so a running item completing after its conversation was deleted is already handled
+        correctly without touching it here.
+        """
+        rows = (
+            self._session.query(WorkItemModel)
+            .filter(
+                WorkItemModel.state == WorkItemState.QUEUED,
+                WorkItemModel.payload_reference.like(f"{payload_reference_prefix}%"),
+            )
+            .all()
+        )
+        now = datetime.now(timezone.utc)
+        for row in rows:
+            row.state = WorkItemState.FAILED
+            row.last_error = "Cancelled: the record this work item refers to no longer exists."
+            row.completed_at = now
+        self._session.flush()
+        return len(rows)
+
     def requeue_failed_by_payload_reference(self, payload_reference: str) -> WorkItem | None:
         """Resets an already-terminal `failed` Work Item back to `queued` for a fresh bounded
         retry - used by "Retry" on a failed document. Resets the existing row rather than
