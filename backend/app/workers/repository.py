@@ -25,6 +25,25 @@ class WorkItemRepository:
         self._session.flush()
         return self._to_domain(row)
 
+    def oldest_unresolved_created_at(self) -> datetime | None:
+        """The `created_at` of the oldest Work Item still in `queued` or `running` - the queue
+        health check's only real signal (2026-09-30, added after a production outage): a
+        genuinely healthy queue never has an unresolved item older than a few tens of seconds,
+        since every kind of work here (an AI generation call, document processing) completes or
+        reaches a terminal `failed` state well within that. `created_at`, not `executed_at`, so a
+        long-`queued` item (never even claimed) is caught the same as a long-`running` one -
+        `requeue_stale_running` already handles the latter at executor startup, but only once, and
+        this needs to keep noticing regardless of *why* an item is stuck. Returns None when the
+        queue is fully drained (nothing to report).
+        """
+        row = (
+            self._session.query(WorkItemModel)
+            .filter(WorkItemModel.state.in_([WorkItemState.QUEUED, WorkItemState.RUNNING]))
+            .order_by(WorkItemModel.created_at.asc())
+            .first()
+        )
+        return row.created_at if row is not None else None
+
     def get_by_payload_reference(self, payload_reference: str) -> WorkItem | None:
         """The most recent Work Item for a given payload_reference (e.g. `process_document:7`) -
         used to surface *why* a document's processing terminally failed, without the document

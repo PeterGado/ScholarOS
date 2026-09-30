@@ -84,6 +84,13 @@ class Settings(BaseSettings):
     # app.api.exception_handlers). Not a secret in the usual sense (a DSN is write-only, it
     # can't be used to read data out of Sentry), but treated like other config here regardless.
     sentry_dsn: str | None = None
+    # Work Item queue health check (2026-09-30, added after a production outage where the
+    # executor silently stopped making progress for hours with no signal anywhere - Fly's own
+    # `/health` check kept passing the whole time, since the web server itself was never the
+    # problem). 600s (10 min) is well past the slowest legitimate single item (an AI generation
+    # call, seconds; document processing, at most low tens of seconds) - a real item should
+    # never sit unresolved this long in normal operation.
+    queue_stale_threshold_seconds: int = 600
 
 
 @lru_cache
