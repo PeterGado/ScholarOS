@@ -100,12 +100,23 @@ def test_generate_raises_provider_request_error_when_the_sdk_raises():
         provider.generate("prompt")
 
 
-def test_generate_exposes_a_quota_error_without_exposing_provider_details():
+def test_generate_quota_error_includes_the_providers_own_detail():
+    """2026-09-30, found while diagnosing a real rate-limit incident: the raised error used to
+    discard the SDK's own message entirely, leaving only a generic "rate limit reached" string
+    in both WorkItem.last_error and server logs - useless for telling a per-minute limit apart
+    from an exhausted daily quota, or knowing which quota was hit at all. The SDK's own text is
+    safe to include (never the API key - see test_api_key_never_appears_in_a_provider_request_
+    error_message below, which covers that guarantee separately) and is the only place this
+    diagnostic detail exists.
+    """
     models = FakeModels(generate_error=RuntimeError("429 RESOURCE_EXHAUSTED: daily quota"))
     provider = _build_provider(models)
 
-    with pytest.raises(ProviderRateLimitError, match="rate limit"):
+    with pytest.raises(ProviderRateLimitError, match="rate limit") as exc_info:
         provider.generate("prompt")
+
+    assert "RESOURCE_EXHAUSTED" in str(exc_info.value)
+    assert "daily quota" in str(exc_info.value)
 
 
 def test_generate_raises_provider_request_error_on_empty_text():

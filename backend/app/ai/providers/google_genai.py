@@ -55,8 +55,9 @@ class GoogleGenAIProvider:
             if _is_rate_limit_error(exc):
                 raise ProviderRateLimitError(
                     "AI provider rate limit reached. Please retry after the provider quota resets."
+                    f" {_provider_detail(exc)}"
                 ) from exc
-            raise ProviderRequestError("AI provider request failed.") from exc
+            raise ProviderRequestError(f"AI provider request failed. {_provider_detail(exc)}") from exc
 
         text = getattr(response, "text", None)
         if not text:
@@ -70,8 +71,9 @@ class GoogleGenAIProvider:
             if _is_rate_limit_error(exc):
                 raise ProviderRateLimitError(
                     "AI provider rate limit reached. Please retry after the provider quota resets."
+                    f" {_provider_detail(exc)}"
                 ) from exc
-            raise ProviderRequestError("AI provider request failed.") from exc
+            raise ProviderRequestError(f"AI provider request failed. {_provider_detail(exc)}") from exc
 
         try:
             return list(response.embeddings[0].values)
@@ -88,8 +90,9 @@ class GoogleGenAIProvider:
             if _is_rate_limit_error(exc):
                 raise ProviderRateLimitError(
                     "AI provider rate limit reached. Please retry after the provider quota resets."
+                    f" {_provider_detail(exc)}"
                 ) from exc
-            raise ProviderRequestError("AI provider request failed.") from exc
+            raise ProviderRequestError(f"AI provider request failed. {_provider_detail(exc)}") from exc
 
         try:
             embeddings = [list(item.values) for item in response.embeddings]
@@ -119,3 +122,23 @@ def _is_rate_limit_error(exc: Exception) -> bool:
     if status_code == 429:
         return True
     return "resource_exhausted" in str(exc).lower() or "rate limit" in str(exc).lower()
+
+
+_MAX_PROVIDER_DETAIL_LENGTH = 500
+"""2026-09-30, found while diagnosing a real rate-limit incident: every raise site here used to
+discard the SDK's own exception text entirely, leaving only a generic "rate limit reached"/
+"request failed" message - both in what's shown to the user (`WorkItem.last_error`, surfaced via
+mark_failed(error=str(exc))) and in server logs (which only ever logged that same generic
+`str(exc)`, since `exc` there is already this wrapped exception, not the original one). The
+SDK's own message is genuinely useful here - Google's 429 responses typically name the specific
+quota exceeded (e.g. a free-tier per-day request limit vs. per-minute) - and contains no secret
+(never the API key; confirmed by inspection of what these errors actually contain, and this
+provider's own contract already promises never to leak it). Truncated defensively in case an
+unusually verbose SDK error body ever shows up."""
+
+
+def _provider_detail(exc: Exception) -> str:
+    detail = str(exc).strip()
+    if len(detail) > _MAX_PROVIDER_DETAIL_LENGTH:
+        detail = detail[:_MAX_PROVIDER_DETAIL_LENGTH] + "..."
+    return f"(Provider detail: {detail})" if detail else ""

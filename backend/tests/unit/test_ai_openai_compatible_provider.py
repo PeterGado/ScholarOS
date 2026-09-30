@@ -97,6 +97,26 @@ def test_generate_identifies_a_rate_limit_response():
         provider.generate("prompt")
 
 
+def test_generate_quota_error_includes_the_providers_own_response_body():
+    """2026-09-30, found while diagnosing a real rate-limit incident: the raised error used to
+    discard the provider's own response body entirely, leaving only a generic "rate limit
+    reached" string in both WorkItem.last_error and server logs - useless for telling a
+    per-minute limit apart from an exhausted daily quota. The response body is safe to include
+    (never the API key - see test_api_key_never_appears_in_a_provider_request_error_message,
+    which covers that guarantee separately).
+    """
+    provider = _build_provider(
+        lambda request: httpx.Response(
+            429, json={"error": {"message": "Rate limit exceeded for requests-per-day"}}, request=request
+        )
+    )
+
+    with pytest.raises(ProviderRateLimitError, match="rate limit") as exc_info:
+        provider.generate("prompt")
+
+    assert "requests-per-day" in str(exc_info.value)
+
+
 def test_generate_raises_provider_request_error_on_malformed_response():
     provider = _build_provider(lambda request: httpx.Response(200, json={"unexpected": "shape"}))
     with pytest.raises(ProviderRequestError):

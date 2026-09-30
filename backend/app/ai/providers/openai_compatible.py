@@ -78,14 +78,38 @@ class OpenAICompatibleProvider:
             response = self._client.post(f"{self._base_url}{path}", json=json_body, headers=self._headers)
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
+            detail = _response_detail(exc.response)
             if exc.response.status_code == 429:
                 raise ProviderRateLimitError(
                     "AI provider rate limit reached. Please retry after the provider quota resets."
+                    f" {detail}"
                 ) from exc
-            raise ProviderRequestError(f"AI provider request failed with status {exc.response.status_code}.") from exc
+            raise ProviderRequestError(
+                f"AI provider request failed with status {exc.response.status_code}. {detail}"
+            ) from exc
         except httpx.HTTPError as exc:
-            raise ProviderRequestError("AI provider request failed.") from exc
+            raise ProviderRequestError(f"AI provider request failed. (Provider detail: {exc})") from exc
         return response.json()
+
+
+_MAX_PROVIDER_DETAIL_LENGTH = 500
+"""2026-09-30, found while diagnosing a real rate-limit incident: every raise site here used to
+discard the provider's own response body entirely, leaving only a generic "rate limit reached"/
+"request failed" message in both `WorkItem.last_error` and server logs. The response body is
+genuinely useful - an OpenAI-compatible 429 typically names the specific quota exceeded - and
+contains no secret (never the API key; this provider's own contract already promises never to
+leak it, confirmed by inspection of what these bodies actually contain). Truncated defensively
+in case an unusually verbose error body ever shows up."""
+
+
+def _response_detail(response: httpx.Response) -> str:
+    try:
+        detail = response.text.strip()
+    except Exception:  # noqa: BLE001 - reading the body must never itself raise here
+        return ""
+    if len(detail) > _MAX_PROVIDER_DETAIL_LENGTH:
+        detail = detail[:_MAX_PROVIDER_DETAIL_LENGTH] + "..."
+    return f"(Provider detail: {detail})" if detail else ""
 
 
 def create_default_provider(settings: Settings) -> OpenAICompatibleProvider:
