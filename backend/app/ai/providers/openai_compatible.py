@@ -1,6 +1,7 @@
 import httpx
 
 from app.ai.exceptions import ProviderConfigurationError, ProviderRateLimitError, ProviderRequestError
+from app.ai.providers.failover import FailoverProvider
 from app.core.config import Settings
 
 __all__ = ["OpenAICompatibleProvider", "create_default_provider"]
@@ -112,10 +113,28 @@ def _response_detail(response: httpx.Response) -> str:
     return f"(Provider detail: {detail})" if detail else ""
 
 
-def create_default_provider(settings: Settings) -> OpenAICompatibleProvider:
+def create_default_provider(settings: Settings) -> OpenAICompatibleProvider | FailoverProvider:
     """Constructs the configured provider (ADR-002: "selected by configuration, never by
     business logic"). The only place `Settings.ai_*` fields are read for provider wiring.
+
+    `settings.ai_api_keys` (2026-09-30, multi-account failover), when set, takes priority over
+    the single `ai_api_key` - see `FailoverProvider`'s own docstring and `google_genai.py`'s
+    identical wiring for why.
     """
+    if settings.ai_api_keys:
+        return FailoverProvider(
+            [
+                OpenAICompatibleProvider(
+                    base_url=settings.ai_base_url,
+                    api_key=api_key,
+                    model=settings.ai_model,
+                    embedding_model=settings.ai_embedding_model,
+                    max_output_tokens=settings.ai_max_output_tokens,
+                )
+                for api_key in settings.ai_api_keys
+            ]
+        )
+
     return OpenAICompatibleProvider(
         base_url=settings.ai_base_url,
         api_key=settings.ai_api_key or "",

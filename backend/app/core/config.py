@@ -55,6 +55,13 @@ class Settings(BaseSettings):
     ai_provider: str = "google_genai"
     ai_base_url: str = "https://api.openai.com/v1"
     ai_api_key: str | None = None
+    # Multi-key failover (2026-09-30, for personal use across multiple free-tier accounts,
+    # each with its own separate daily quota): when set (a JSON array in the env var, same
+    # parsing as cors_allowed_origins), the provider factory wraps one provider instance per
+    # key in FailoverProvider instead of constructing a single provider from ai_api_key -
+    # ai_api_key is simply unused when this is set. Left empty by default so every existing
+    # single-key deployment is completely unaffected.
+    ai_api_keys: list[str] = []
     ai_model: str = "gemini-3.6-flash"
     ai_embedding_model: str = "gemini-embedding-001"
     # 2026-09-21: no per-call output bound existed anywhere - a single generate() call could run

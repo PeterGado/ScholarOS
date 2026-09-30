@@ -4,6 +4,7 @@ from google import genai
 from google.genai import types
 
 from app.ai.exceptions import ProviderConfigurationError, ProviderRateLimitError, ProviderRequestError
+from app.ai.providers.failover import FailoverProvider
 
 __all__ = ["GoogleGenAIProvider", "create_google_genai_provider"]
 
@@ -104,10 +105,29 @@ class GoogleGenAIProvider:
         return embeddings
 
 
-def create_google_genai_provider(settings) -> GoogleGenAIProvider:
+def create_google_genai_provider(settings) -> GoogleGenAIProvider | FailoverProvider:
     """Constructs the configured provider (ADR-002: "selected by configuration, never by
     business logic"). The only place `Settings.ai_*` fields are read for this provider's wiring.
+
+    `settings.ai_api_keys` (2026-09-30, multi-account failover), when set, takes priority over
+    the single `ai_api_key` - one `GoogleGenAIProvider` is constructed per key and wrapped in a
+    `FailoverProvider`, which moves to the next key only when the current one's quota is
+    exhausted (see that class's own docstring). Every existing single-key deployment leaves
+    `ai_api_keys` unset and is completely unaffected.
     """
+    if settings.ai_api_keys:
+        return FailoverProvider(
+            [
+                GoogleGenAIProvider(
+                    api_key=api_key,
+                    model=settings.ai_model,
+                    embedding_model=settings.ai_embedding_model,
+                    max_output_tokens=settings.ai_max_output_tokens,
+                )
+                for api_key in settings.ai_api_keys
+            ]
+        )
+
     return GoogleGenAIProvider(
         api_key=settings.ai_api_key or "",
         model=settings.ai_model,
