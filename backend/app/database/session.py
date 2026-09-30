@@ -130,6 +130,22 @@ def build_sessionmaker(engine: Engine) -> sessionmaker[Session]:
 engine = build_engine(get_settings().app_database_url or get_settings().database_url)
 SessionLocal = build_sessionmaker(engine)
 
+# Background executor connection (2026-09-30, found via a production outage this session): the
+# executor runs its own DB sessions completely outside any HTTP request, so `get_current_user_id`
+# never runs for it and `current_user_id` (above) is always None on its connections - every RLS
+# policy then fails closed (NULL never equals a user_id), making every RLS-protected table
+# invisible to it, for every row, not just ones it shouldn't see (this is what actually broke
+# chat replies, not just the poisoned-work-item bug fixed alongside this). RLS's own purpose -
+# catching a *request-scoped* query that forgot a WHERE clause - doesn't apply to a trusted
+# background process that legitimately processes work queued by many different users; threading
+# a user_id through every Work Item payload just to satisfy RLS for a process that was never
+# request-scoped to begin with would be a large, invasive change for no real security benefit.
+# Connects with the unrestricted owner role instead (the same one Alembic always uses via
+# `database_url`, `rolbypassrls`) - a second, explicit engine, never `engine`/`SessionLocal`
+# above, so the web-facing restricted role is completely unaffected by this.
+worker_engine = build_engine(get_settings().database_url)
+WorkerSessionLocal = build_sessionmaker(worker_engine)
+
 
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()

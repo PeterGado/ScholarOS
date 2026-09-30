@@ -69,8 +69,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # SQLite. Falls back to the real factory when nothing overrides it, so production behavior
     # is unchanged.
     storage = app.dependency_overrides.get(get_content_store, get_content_store)()
+    # WorkerSessionLocal, not SessionLocal (2026-09-30): the executor runs outside any HTTP
+    # request, so it never sets the RLS `current_user_id` session variable SessionLocal's
+    # connection requires - every RLS-protected table (conversations, documents, memory, ...)
+    # was invisible to it as a result, the actual cause of a "stuck on Thinking" production
+    # outage this session. See db_session_module.WorkerSessionLocal's own docstring/comment.
     executor_loop = WorkItemExecutorLoop(
-        lambda: db_session_module.SessionLocal(),
+        lambda: db_session_module.WorkerSessionLocal(),
         text_provider,
         text_provider,  # every concrete provider satisfies both provider Protocols
         settings.ai_embedding_model,
