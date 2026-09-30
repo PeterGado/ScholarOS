@@ -145,23 +145,25 @@ def test_human_sounding_writing_guidance_survives_truncation_alongside_grounding
 
 
 def test_truncation_prefers_sentence_boundaries():
-    # max_characters is calibrated so PROJECT TOPIC, PROJECT DESCRIPTION, and the reserved
-    # BUILT-IN SYSTEM GUIDANCE + GROUNDING RULES + HUMAN-SOUNDING WRITING + RESPONSE TASK tail
-    # sections all fit in full, leaving just enough room for WRITING INSTRUCTIONS to be
-    # truncated - at a sentence boundary - after its first sentence. (2026-09-30: recalibrated
-    # twice today as HUMANIZER_GUIDANCE grew - first with the attribution/epistemic-honesty/
-    # placeholder additions, then with the plain-verb-substitution/inflated-significance
-    # additions added after a live quality-confirmation test caught both patterns slipping
-    # through - each growth reserves more space up front than before.)
+    # max_characters is calibrated so PROJECT TOPIC, PROJECT DESCRIPTION, BACKGROUND KNOWLEDGE
+    # (WIKIPEDIA), and the reserved BUILT-IN SYSTEM GUIDANCE + GROUNDING RULES + HUMAN-SOUNDING
+    # WRITING + RESPONSE TASK tail sections all fit in full, leaving just enough room for
+    # WRITING INSTRUCTIONS to be truncated - at a sentence boundary - after its first sentence.
+    # (2026-09-30: recalibrated three times today - HUMANIZER_GUIDANCE grew twice, first with
+    # the attribution/epistemic-honesty/placeholder additions, then with the plain-verb-
+    # substitution/inflated-significance additions found via a live quality-confirmation test;
+    # then BUILTIN_SYSTEM_GUIDANCE and the new BACKGROUND KNOWLEDGE (WIKIPEDIA) section both
+    # grew when Wikipedia background knowledge was added - each growth reserves more space up
+    # front than before.)
     context = ContextAssemblyInput(
         topic="Topic",
         instructions="First instruction sentence. Second instruction sentence.",
-        max_characters=3615,
+        max_characters=3880,
     )
 
     assembled = assemble_context(context)
 
-    assert len(assembled.prompt) <= 3615
+    assert len(assembled.prompt) <= 3880
     assert "First instruction sentence." in assembled.prompt
     assert "Second instruction sentence" not in assembled.prompt
 
@@ -236,6 +238,35 @@ def test_blank_project_description_renders_a_clean_placeholder():
     assembled = assemble_context(context)
 
     assert "## PROJECT DESCRIPTION\nNo project description was provided." in assembled.prompt
+
+
+# --- Wikipedia background knowledge (2026-09-30) -------------------------------------------
+
+
+def test_background_knowledge_reaches_the_assembled_prompt():
+    context = ContextAssemblyInput(
+        topic="Topic",
+        instructions="Instructions",
+        background_knowledge="Topic: a short Wikipedia-sourced summary of the subject.",
+    )
+
+    assembled = assemble_context(context)
+
+    assert "## BACKGROUND KNOWLEDGE (WIKIPEDIA)" in assembled.prompt
+    assert "a short Wikipedia-sourced summary of the subject." in assembled.prompt
+    # Never presented as the user's own research/citable evidence.
+    assert "not the user's own research evidence, and not citable as such" in assembled.prompt
+
+
+def test_absent_background_knowledge_renders_a_clean_placeholder():
+    context = ContextAssemblyInput(topic="Topic", instructions="Instructions", background_knowledge=None)
+
+    assembled = assemble_context(context)
+
+    assert (
+        "## BACKGROUND KNOWLEDGE (WIKIPEDIA)\nNo Wikipedia background knowledge was available "
+        "for this topic." in assembled.prompt
+    )
 
 
 # --- Persistent Brain: RELEVANT CONVERSATION CONTEXT --------------------------------------
@@ -429,12 +460,14 @@ def test_full_section_structure_is_present_with_every_context_source_populated()
         conversation_messages=(
             ContextConversationMessage(direction=MessageDirection.USER_REQUEST, content="Focus on the north end."),
         ),
+        background_knowledge="Barrier island: a coastal landform that protects the mainland from wave action.",
     )
 
     assembled = assemble_context(context)
     expected_headings = [
         "## PROJECT TOPIC",
         "## PROJECT DESCRIPTION",
+        "## BACKGROUND KNOWLEDGE (WIKIPEDIA)",
         "## WRITING INSTRUCTIONS",
         "## RELEVANT CONVERSATION CONTEXT",
         "## RESEARCH EVIDENCE",

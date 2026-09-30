@@ -104,8 +104,11 @@ BUILTIN_SYSTEM_GUIDANCE = (
     "You are ScholarOS's writing assistant, operating inside one user's private Agent "
     "Workspace. Use the project topic, project description, conversation context, research "
     "evidence, writing style guidance, and current project memory above as background context "
-    "for this request. When research evidence is not available, rely on your own general "
-    "knowledge and say so rather than inventing sources or citations.\n\n"
+    "for this request. BACKGROUND KNOWLEDGE (WIKIPEDIA), when present, is general context about "
+    "the topic only - combine it with your own knowledge, but never treat it as the user's own "
+    "research or as something citable in place of RESEARCH EVIDENCE. When research evidence is "
+    "not available, rely on your own general knowledge (and background knowledge, if present) "
+    "and say so rather than inventing sources or citations.\n\n"
     "WRITING INSTRUCTIONS above states exactly what to produce right now - follow its stated "
     "scope precisely. If it asks for one specific section or a narrower slice of something "
     "written earlier, produce only that: do not restate, repeat, or continue material already "
@@ -175,6 +178,14 @@ class ContextConversationMessage:
 
 @dataclass(frozen=True)
 class ContextAssemblyInput:
+    """`background_knowledge` (2026-09-30): a Wikipedia-sourced summary for the project's topic,
+    fetched by the caller (app.ai.wikipedia.fetch_wikipedia_background) and handed in as plain
+    data - assemble_context itself stays pure, no I/O. Rendered as its own section, combined
+    with the model's own inherent knowledge at generation time, and kept clearly distinct from
+    RESEARCH EVIDENCE (the user's own uploaded documents) so it's never mistaken for something
+    the user provided or something citable - see _format_background_knowledge.
+    """
+
     topic: str
     instructions: str
     description: str | None = None
@@ -182,6 +193,7 @@ class ContextAssemblyInput:
     style_signals: tuple[ContextStyleSignal, ...] = ()
     memories: tuple[ContextMemory, ...] = ()
     conversation_messages: tuple[ContextConversationMessage, ...] = ()
+    background_knowledge: str | None = None
     max_characters: int = DEFAULT_CONTEXT_CHARACTER_LIMIT
     max_evidence: int = DEFAULT_MAX_EVIDENCE
     max_conversation_messages: int = DEFAULT_MAX_CONVERSATION_MESSAGES
@@ -218,6 +230,7 @@ def assemble_context(context: ContextAssemblyInput) -> AssembledContext:
     sections = [
         ("PROJECT TOPIC", context.topic),
         ("PROJECT DESCRIPTION", _format_description(context.description)),
+        ("BACKGROUND KNOWLEDGE (WIKIPEDIA)", _format_background_knowledge(context.background_knowledge)),
         ("WRITING INSTRUCTIONS", context.instructions),
         ("RELEVANT CONVERSATION CONTEXT", _format_conversation(recent_messages, context.max_conversation_context_characters)),
         ("RESEARCH EVIDENCE", _format_evidence(evidence)),
@@ -279,6 +292,16 @@ def _format_description(description: str | None) -> str:
     if description is None or not description.strip():
         return "No project description was provided."
     return description.strip()
+
+
+def _format_background_knowledge(background_knowledge: str | None) -> str:
+    if background_knowledge is None or not background_knowledge.strip():
+        return "No Wikipedia background knowledge was available for this topic."
+    return (
+        background_knowledge.strip()
+        + "\n\n(General background only, drawn from Wikipedia - not the user's own research "
+        "evidence, and not citable as such.)"
+    )
 
 
 def _format_conversation(

@@ -69,6 +69,8 @@ def _process_one(session, storage, *, text_provider, embedding_provider=None) ->
         embedding_provider=embedding_provider or FakeEmbeddingProvider(),
         embedding_model_version="test-embedding-model",
         storage=storage,
+        # Never make a real Wikipedia network call from a test (2026-09-30).
+        background_knowledge_provider=lambda topic: None,
     )
 
 

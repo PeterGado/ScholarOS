@@ -1,8 +1,11 @@
 import logging
+from collections.abc import Callable
+from dataclasses import replace
 
 from app.ai.providers.base import TextGenerationProvider
 from app.ai.token_estimate import estimate_tokens
 from app.ai.usage_guard import AiUsageGuard
+from app.ai.wikipedia import fetch_wikipedia_background
 from app.core.pagination import DEFAULT_LIST_LIMIT
 from app.core.unit_of_work import UnitOfWork
 from app.modules.agent.domain.exceptions import AgentNotFoundForUserError
@@ -462,6 +465,8 @@ class GenerateConversationReplyUseCase:
         memory_provenance_link_repository: MemoryProvenanceLinkRepository,
         text_provider: TextGenerationProvider,
         unit_of_work: UnitOfWork,
+        *,
+        background_knowledge_provider: Callable[[str], str | None] = fetch_wikipedia_background,
     ) -> None:
         self._messages = message_repository
         self._conversations = conversation_repository
@@ -469,6 +474,11 @@ class GenerateConversationReplyUseCase:
         self._memory_provenance_links = memory_provenance_link_repository
         self._text_provider = text_provider
         self._uow = unit_of_work
+        # Injectable (2026-09-30) so tests never make a real Wikipedia network call by default -
+        # mirrors every other provider/client dependency in this codebase (ADR-005 §AI
+        # Engineering Implications: retrieval-adjacent components must be testable without
+        # network access).
+        self._background_knowledge_provider = background_knowledge_provider
 
     def execute(self, *, conversation_id: int, context: ContextAssemblyInput) -> Message:
         # A queued reply may outlive a user deleting its conversation. Do not spend an AI call
@@ -477,7 +487,15 @@ class GenerateConversationReplyUseCase:
         if conversation is None or conversation.deleted_at is not None:
             raise ConversationNotFoundError(conversation_id=conversation_id)
 
-        assembled = assemble_context(context)
+        # Wikipedia background (2026-09-30) is fetched here, worker-side, not at send-time in
+        # SendChatMessageUseCase - a network call to an external service must never sit inline
+        # in the synchronous HTTP request path (the same lesson the executor's own asyncio ->
+        # threading rewrite exists for). assemble_context itself stays pure/I/O-free; this is
+        # the one place that does the fetch and hands the result in as plain data.
+        context_with_background = replace(
+            context, background_knowledge=self._background_knowledge_provider(context.topic)
+        )
+        assembled = assemble_context(context_with_background)
         generated_content = self._text_provider.generate(assembled.prompt)
         if not generated_content or not generated_content.strip():
             raise EmptyGeneratedContentError()

@@ -155,6 +155,8 @@ def test_only_the_most_recent_memories_reach_a_real_chat_prompt(session, storage
     claimed = process_one_work_item(
         session, text_provider=spy, embedding_provider=FakeEmbeddingProvider(),
         embedding_model_version="test-embedding-model", storage=storage,
+        # Never make a real Wikipedia network call from a test (2026-09-30).
+        background_knowledge_provider=lambda topic: None,
     )
     assert claimed is True
     assert len(spy.prompts) == 1
@@ -165,4 +167,63 @@ def test_only_the_most_recent_memories_reach_a_real_chat_prompt(session, storage
     assert "Memory number 5." in real_prompt
     # ...but the 5 oldest (0-4) are bounded out, exactly as DEFAULT_MAX_MEMORIES=20 intends.
     assert "Memory number 4." not in real_prompt
+
+
+# --- Wikipedia background knowledge (2026-09-30) reaching a real chat prompt ------------------
+
+
+def test_background_knowledge_provider_result_reaches_a_real_chat_prompt(session, storage):
+    """Proves the wiring through the real pipeline: SendChatMessageUseCase enqueues a plain
+    ContextAssemblyInput with no background_knowledge set (fetched later, worker-side - see
+    GenerateConversationReplyUseCase.execute's own comment on why), and process_one_work_item's
+    injected background_knowledge_provider is what actually reaches the final assembled prompt.
+    """
+    workspace = _make_workspace(session, topic="Coastal erosion")
+    conversation = StartConversationUseCase(
+        SqlAlchemyConversationRepository(session), SqlAlchemyAgentRepository(session), SqlAlchemyUnitOfWork(session)
+    ).execute(user_id=workspace.agent.user_id)
+
+    search_knowledge = SearchKnowledgeUseCase(
+        SqlAlchemyAgentRepository(session),
+        FakeEmbeddingProvider(),
+        SqlAlchemyKnowledgeChunkEmbeddingRepository(session),
+        SqlAlchemyKnowledgeChunkRepository(session),
+        SqlAlchemyChunkEvidenceLinkRepository(session),
+        SqlAlchemyDocumentRepository(session),
+        SqlAlchemyLexicalSearchRepository(session),
+        AiUsageGuard(None, None, daily_token_cap=None),
+    )
+    send_message = SendChatMessageUseCase(
+        SqlAlchemyConversationRepository(session),
+        SqlAlchemyMessageRepository(session),
+        SqlAlchemyAgentRepository(session),
+        SqlAlchemyProjectRepository(session),
+        SqlAlchemyWritingProfileRepository(session),
+        SqlAlchemyProfileCharacteristicRepository(session),
+        SqlAlchemyMemoryRecordRepository(session),
+        search_knowledge,
+        WorkItemRepository(session),
+        storage,
+        SqlAlchemyUnitOfWork(session),
+        AiUsageGuard(None, None, daily_token_cap=None),
+    )
+    send_message.execute(user_id=workspace.agent.user_id, conversation_id=conversation.conversation_id, content="Hello.")
+
+    spy = SpyingTextGenerationProvider()
+    topics_queried: list[str] = []
+
+    def fake_background_knowledge(topic: str) -> str | None:
+        topics_queried.append(topic)
+        return "Coastal erosion: the wearing away of land along a shoreline by waves and currents."
+
+    claimed = process_one_work_item(
+        session, text_provider=spy, embedding_provider=FakeEmbeddingProvider(),
+        embedding_model_version="test-embedding-model", storage=storage,
+        background_knowledge_provider=fake_background_knowledge,
+    )
+    assert claimed is True
+    assert topics_queried == ["Coastal erosion"]
+    real_prompt = spy.prompts[0]
+    assert "## BACKGROUND KNOWLEDGE (WIKIPEDIA)" in real_prompt
+    assert "the wearing away of land along a shoreline" in real_prompt
     assert "Memory number 0." not in real_prompt
