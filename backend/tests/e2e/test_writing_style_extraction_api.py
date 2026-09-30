@@ -163,3 +163,59 @@ def test_malformed_provider_response_returns_400(client, auth_headers):
         assert response.json()["error_type"] == "StyleExtractionError"
     finally:
         app.dependency_overrides.pop(get_text_generation_provider, None)
+
+
+# --- DELETE /writing/style-profile (2026-09-30, reset for recovery from a bad extraction) -----
+
+
+def test_reset_then_extract_again_returns_201_instead_of_409(client, auth_headers, fake_provider):
+    _create_workspace(client, auth_headers)
+    uploaded = _upload_style_document(client, auth_headers)
+    first = client.post(
+        "/writing/style-profile/extract", json={"document_ids": [uploaded["document_id"]]}, headers=auth_headers
+    )
+    assert first.status_code == 201
+
+    reset = client.delete("/writing/style-profile", headers=auth_headers)
+    assert reset.status_code == 204
+
+    second = client.post(
+        "/writing/style-profile/extract", json={"document_ids": [uploaded["document_id"]]}, headers=auth_headers
+    )
+    assert second.status_code == 201
+    # A genuinely new profile, not the old (now-inactive) one.
+    assert second.json()["profile_id"] != first.json()["profile_id"]
+
+
+def test_get_writing_profile_returns_404_after_reset(client, auth_headers, fake_provider):
+    _create_workspace(client, auth_headers)
+    uploaded = _upload_style_document(client, auth_headers)
+    client.post("/writing/style-profile/extract", json={"document_ids": [uploaded["document_id"]]}, headers=auth_headers)
+
+    client.delete("/writing/style-profile", headers=auth_headers)
+
+    response = client.get("/writing/style-profile", headers=auth_headers)
+    assert response.status_code == 404
+    assert response.json()["error_type"] == "WritingProfileNotFoundError"
+
+
+def test_reset_without_an_active_profile_returns_404(client, auth_headers):
+    _create_workspace(client, auth_headers)
+
+    response = client.delete("/writing/style-profile", headers=auth_headers)
+
+    assert response.status_code == 404
+    assert response.json()["error_type"] == "WritingProfileNotFoundError"
+
+
+def test_reset_without_authentication_returns_401(client, auth_headers):
+    response = client.delete("/writing/style-profile")
+
+    assert response.status_code == 401
+
+
+def test_reset_for_user_with_no_agent_returns_404(client, auth_headers):
+    response = client.delete("/writing/style-profile", headers=auth_headers)
+
+    assert response.status_code == 404
+    assert response.json()["error_type"] == "AgentNotFoundForUserError"

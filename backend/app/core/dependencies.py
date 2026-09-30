@@ -49,7 +49,7 @@ from app.modules.writing.application.chat import (
     StartConversationUseCase,
 )
 from app.modules.writing.application.memory_inspection import ListMemoryUseCase, SupersedeMemoryRecordUseCase
-from app.modules.writing.application.profile_view import GetWritingProfileUseCase
+from app.modules.writing.application.profile_view import GetWritingProfileUseCase, ResetWritingProfileUseCase
 from app.modules.writing.application.style_extraction import ExtractWritingStyleProfileUseCase
 from app.modules.writing.application.style_ingestion import (
     ListWritingStyleDocumentsUseCase,
@@ -552,3 +552,11 @@ def get_get_writing_profile_use_case(
     agent_repository: SqlAlchemyAgentRepository = Depends(get_agent_repository),
 ) -> GetWritingProfileUseCase:
     return GetWritingProfileUseCase(writing_profile_repository, profile_characteristic_repository, agent_repository)
+
+
+def get_reset_writing_profile_use_case(
+    writing_profile_repository: SqlAlchemyWritingProfileRepository = Depends(get_writing_profile_repository),
+    agent_repository: SqlAlchemyAgentRepository = Depends(get_agent_repository),
+    unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
+) -> ResetWritingProfileUseCase:
+    return ResetWritingProfileUseCase(writing_profile_repository, agent_repository, unit_of_work)

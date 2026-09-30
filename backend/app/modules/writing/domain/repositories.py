@@ -24,6 +24,9 @@ class WritingProfileRepository(ABC):
     def get_active_by_agent_id(
         self, agent_id: int) -> WritingProfile | None: ...
 
+    @abstractmethod
+    def deactivate(self, profile_id: int, *, updated_at: datetime) -> None: ...
+
 
 class ProfileCharacteristicRepository(ABC):
     @abstractmethod

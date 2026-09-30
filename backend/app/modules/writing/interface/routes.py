@@ -15,6 +15,7 @@ from app.core.dependencies import (
     get_list_conversations_use_case,
     get_list_memory_use_case,
     get_list_writing_style_documents_use_case,
+    get_reset_writing_profile_use_case,
     get_retry_chat_reply_use_case,
     get_send_chat_message_use_case,
     get_start_conversation_use_case,
@@ -39,7 +40,7 @@ from app.modules.writing.application.memory_inspection import (
     MemoryRecordWithProvenance,
     SupersedeMemoryRecordUseCase,
 )
-from app.modules.writing.application.profile_view import GetWritingProfileUseCase
+from app.modules.writing.application.profile_view import GetWritingProfileUseCase, ResetWritingProfileUseCase
 from app.modules.writing.application.style_extraction import ExtractWritingStyleProfileUseCase
 from app.modules.writing.application.style_ingestion import (
     ListWritingStyleDocumentsUseCase,
@@ -201,6 +202,30 @@ def get_writing_profile(
     """Fetch the authenticated user's own Agent's active Writing Profile and its
     characteristics."""
     return WritingProfileViewResponse.from_domain(use_case.execute(user_id=user_id))
+
+
+@router.delete(
+    "/style-profile",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        401: {"model": ErrorResponse, "description": "Missing, malformed, unknown, or ended session."},
+        404: {
+            "model": ErrorResponse,
+            "description": "The authenticated user has no Agent yet, or their Agent has no active Writing Profile.",
+        },
+    },
+)
+def reset_writing_profile(
+    user_id: int = Depends(get_current_user_id),
+    use_case: ResetWritingProfileUseCase = Depends(get_reset_writing_profile_use_case),
+) -> None:
+    """Deactivates the active Writing Profile (2026-09-30) so `POST /writing/style-profile/
+    extract` can run again from scratch - recovery for a bad extraction (e.g. one that leaked a
+    sample's actual content instead of describing its style) without wiping the whole workspace
+    the way `DELETE /agents/me` would. The old profile and its characteristics are preserved,
+    simply no longer active - see ResetWritingProfileUseCase's own docstring.
+    """
+    use_case.execute(user_id=user_id)
 
 
 # --- Persistent Brain v2: Memory inspection -------------------------------------------------

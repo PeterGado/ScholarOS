@@ -11,7 +11,7 @@ from app.modules.project.domain.entities import Project
 from app.modules.project.domain.repositories import ProjectRepository
 from app.modules.writing.application.style_extraction import ExtractWritingStyleProfileUseCase
 from app.modules.writing.domain.entities import ProfileCharacteristic, ProfileCharacteristicSource, WritingProfile
-from app.modules.writing.domain.enums import ProfileCharacteristicType
+from app.modules.writing.domain.enums import ProfileCharacteristicType, WritingProfileStatus
 from app.modules.writing.domain.exceptions import (
     InvalidStyleSampleReferenceError,
     MissingStoredStyleSampleError,
@@ -121,6 +121,11 @@ class FakeWritingProfileRepository(WritingProfileRepository):
 
     def get_active_by_agent_id(self, agent_id):
         return next((p for p in self._by_id.values() if p.agent_id == agent_id and p.status.value == "active"), None)
+
+    def deactivate(self, profile_id, *, updated_at):
+        profile = self._by_id[profile_id]
+        profile.status = WritingProfileStatus.INACTIVE
+        profile.updated_at = updated_at
 
 
 class FakeProfileCharacteristicRepository(ProfileCharacteristicRepository):

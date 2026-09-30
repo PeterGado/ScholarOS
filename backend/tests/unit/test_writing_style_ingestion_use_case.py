@@ -16,6 +16,7 @@ from app.modules.writing.application.style_ingestion import (
     UploadWritingStyleDocumentUseCase,
 )
 from app.modules.writing.domain.entities import WritingProfile
+from app.modules.writing.domain.enums import WritingProfileStatus
 from app.modules.writing.domain.exceptions import TooManyWritingStyleSamplesError
 from app.modules.writing.domain.repositories import WritingProfileRepository
 
@@ -106,6 +107,11 @@ class FakeWritingProfileRepository(WritingProfileRepository):
 
     def get_active_by_agent_id(self, agent_id):
         return next((p for p in self._by_id.values() if p.agent_id == agent_id and p.status.value == "active"), None)
+
+    def deactivate(self, profile_id, *, updated_at):
+        profile = self._by_id[profile_id]
+        profile.status = WritingProfileStatus.INACTIVE
+        profile.updated_at = updated_at
 
 
 class FakeContentStore:

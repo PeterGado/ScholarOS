@@ -63,6 +63,12 @@ class SqlAlchemyWritingProfileRepository(WritingProfileRepository):
         )
         return self._to_domain(row) if row is not None else None
 
+    def deactivate(self, profile_id: int, *, updated_at) -> None:
+        row = self._session.get(WritingProfileModel, profile_id)
+        row.status = WritingProfileStatus.INACTIVE
+        row.updated_at = updated_at
+        self._session.flush()
+
     @staticmethod
     def _to_domain(row: WritingProfileModel) -> WritingProfile:
         return WritingProfile(
