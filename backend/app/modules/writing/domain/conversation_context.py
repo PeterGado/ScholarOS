@@ -1,5 +1,6 @@
 from app.modules.writing.domain.context_assembly import ContextConversationMessage
 from app.modules.writing.domain.entities import Message
+from app.modules.writing.domain.enums import MessageDirection
 
 CONVERSATION_SUMMARY_ORIGIN = "conversation_summary"
 """The `Message.origin` marker distinguishing a rolling AI-generated summary from a real
@@ -46,6 +47,7 @@ def resolve_bounded_conversation_messages(
         if summary is not None
         else [m for m in ordered if m.origin != CONVERSATION_SUMMARY_ORIGIN]
     )
+    real_messages = _exclude_unanswered_user_messages(real_messages)
     recent = real_messages[-max_recent:] if max_recent > 0 else []
 
     resolved = [
@@ -56,3 +58,34 @@ def resolve_bounded_conversation_messages(
             0, ContextConversationMessage(direction=summary.direction, content=summary.content, is_summary=True)
         )
     return tuple(resolved)
+
+
+def _exclude_unanswered_user_messages(messages: list[Message]) -> list[Message]:
+    """A user message whose reply never arrived - still mid-flight, or permanently failed (a
+    safety block, an exhausted rate limit, any other terminal failure) - has no matching
+    SYSTEM_RESPONSE message immediately after it. Left in place, it gets replayed into every
+    future prompt for this conversation.
+
+    2026-09-30: a real live test found exactly why that's harmful, not just untidy. A message
+    containing harassing/abusive language was correctly blocked by the AI provider's safety
+    filtering - but because the blocked message stayed in conversation history with no reply,
+    its own text kept getting resent as part of RELEVANT CONVERSATION CONTEXT on every later
+    message, which caused the safety filter to reject every subsequent message in that same
+    conversation too, even entirely unrelated, benign ones. One blocked message poisoned the
+    whole thread going forward, with no way to recover short of starting a new conversation.
+
+    Filtering out any user message without an immediately-following reply fixes this generally
+    (not just for safety blocks - a rate-limited-to-exhaustion or otherwise permanently failed
+    message has the identical poisoning risk) and costs nothing for the ordinary case: a
+    successful reply is always persisted directly after its user message, so this never drops
+    anything from a normal conversation.
+    """
+    kept: list[Message] = []
+    for index, message in enumerate(messages):
+        if message.direction != MessageDirection.USER_REQUEST:
+            kept.append(message)
+            continue
+        has_reply = index + 1 < len(messages) and messages[index + 1].direction == MessageDirection.SYSTEM_RESPONSE
+        if has_reply:
+            kept.append(message)
+    return kept

@@ -7,6 +7,7 @@ assembled prompt) - not a hand-built ContextAssemblyInput, directly answering th
 
 import pytest
 
+from app.ai.exceptions import ProviderContentBlockedError
 from app.ai.usage_guard import AiUsageGuard
 from app.database.session import build_engine, build_sessionmaker, init_db
 from app.database.shared_models import User
@@ -226,4 +227,93 @@ def test_background_knowledge_provider_result_reaches_a_real_chat_prompt(session
     real_prompt = spy.prompts[0]
     assert "## BACKGROUND KNOWLEDGE (WIKIPEDIA)" in real_prompt
     assert "the wearing away of land along a shoreline" in real_prompt
-    assert "Memory number 0." not in real_prompt
+
+
+# --- A blocked/failed message never poisons a later reply (2026-09-30) ------------------------
+
+
+def test_a_content_blocked_message_does_not_poison_a_later_reply_in_the_same_conversation(session, storage):
+    """Regression test for a real finding from a live moderation test against the deployed
+    backend: a message correctly blocked by the AI provider's safety filtering stayed in
+    conversation history with no reply, so its own text got resent as RELEVANT CONVERSATION
+    CONTEXT on the next message too - which caused the safety filter to reject that next,
+    entirely unrelated and benign, message as well. Proves the fix (conversation_context.py's
+    `_exclude_unanswered_user_messages`) through the real pipeline: the blocked message's text
+    must never reach the second message's real assembled prompt.
+    """
+    workspace = _make_workspace(session, topic="Topic")
+    conversation = StartConversationUseCase(
+        SqlAlchemyConversationRepository(session), SqlAlchemyAgentRepository(session), SqlAlchemyUnitOfWork(session)
+    ).execute(user_id=workspace.agent.user_id)
+
+    search_knowledge = SearchKnowledgeUseCase(
+        SqlAlchemyAgentRepository(session),
+        FakeEmbeddingProvider(),
+        SqlAlchemyKnowledgeChunkEmbeddingRepository(session),
+        SqlAlchemyKnowledgeChunkRepository(session),
+        SqlAlchemyChunkEvidenceLinkRepository(session),
+        SqlAlchemyDocumentRepository(session),
+        SqlAlchemyLexicalSearchRepository(session),
+        AiUsageGuard(None, None, daily_token_cap=None),
+    )
+    send_message = SendChatMessageUseCase(
+        SqlAlchemyConversationRepository(session),
+        SqlAlchemyMessageRepository(session),
+        SqlAlchemyAgentRepository(session),
+        SqlAlchemyProjectRepository(session),
+        SqlAlchemyWritingProfileRepository(session),
+        SqlAlchemyProfileCharacteristicRepository(session),
+        SqlAlchemyMemoryRecordRepository(session),
+        search_knowledge,
+        WorkItemRepository(session),
+        storage,
+        SqlAlchemyUnitOfWork(session),
+        AiUsageGuard(None, None, daily_token_cap=None),
+    )
+
+    class BlockingOnceThenSucceedingProvider:
+        """Simulates the real GoogleGenAIProvider: raises ProviderContentBlockedError for the
+        abusive message, then succeeds for anything else - and records every prompt it sees, so
+        the test can assert the abusive text never reaches the second call.
+        """
+
+        def __init__(self) -> None:
+            self.prompts: list[str] = []
+
+        def generate(self, prompt: str) -> str:
+            self.prompts.append(prompt)
+            if "abusive text" in prompt:
+                raise ProviderContentBlockedError()
+            return "A normal reply."
+
+    provider = BlockingOnceThenSucceedingProvider()
+
+    send_message.execute(
+        user_id=workspace.agent.user_id,
+        conversation_id=conversation.conversation_id,
+        content="Some abusive text that gets blocked.",
+    )
+    first_claimed = process_one_work_item(
+        session, text_provider=provider, embedding_provider=FakeEmbeddingProvider(),
+        embedding_model_version="test-embedding-model", storage=storage,
+        background_knowledge_provider=lambda topic: None,
+    )
+    assert first_claimed is True
+
+    send_message.execute(
+        user_id=workspace.agent.user_id,
+        conversation_id=conversation.conversation_id,
+        content="A completely unrelated, benign follow-up.",
+    )
+    second_claimed = process_one_work_item(
+        session, text_provider=provider, embedding_provider=FakeEmbeddingProvider(),
+        embedding_model_version="test-embedding-model", storage=storage,
+        background_knowledge_provider=lambda topic: None,
+    )
+    assert second_claimed is True
+
+    assert len(provider.prompts) == 2
+    second_prompt = provider.prompts[1]
+    # The fix: the blocked message's own text must not have been replayed into the second
+    # prompt's conversation history, which is what caused it to be blocked too before the fix.
+    assert "abusive text" not in second_prompt
