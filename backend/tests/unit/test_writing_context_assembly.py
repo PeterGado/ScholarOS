@@ -148,18 +148,18 @@ def test_truncation_prefers_sentence_boundaries():
     # max_characters is calibrated so PROJECT TOPIC, PROJECT DESCRIPTION, and the reserved
     # BUILT-IN SYSTEM GUIDANCE + GROUNDING RULES + HUMAN-SOUNDING WRITING + RESPONSE TASK tail
     # sections all fit in full, leaving just enough room for WRITING INSTRUCTIONS to be
-    # truncated - at a sentence boundary - after its first sentence. (2026-09-23: recalibrated
-    # again after RESPONSE TASK - LATEST USER MESSAGE was added as a fourth reserved tail
-    # section, which reserves more space up front than before.)
+    # truncated - at a sentence boundary - after its first sentence. (2026-09-30: recalibrated
+    # again after HUMANIZER_GUIDANCE grew with the attribution/epistemic-honesty/placeholder
+    # additions, which reserves more space up front than before.)
     context = ContextAssemblyInput(
         topic="Topic",
         instructions="First instruction sentence. Second instruction sentence.",
-        max_characters=2520,
+        max_characters=3245,
     )
 
     assembled = assemble_context(context)
 
-    assert len(assembled.prompt) <= 2520
+    assert len(assembled.prompt) <= 3245
     assert "First instruction sentence." in assembled.prompt
     assert "Second instruction sentence" not in assembled.prompt
 

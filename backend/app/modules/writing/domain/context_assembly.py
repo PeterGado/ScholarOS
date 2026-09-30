@@ -60,7 +60,16 @@ HUMANIZER_GUIDANCE = (
     "label adds no information; staged openers ('Let's dive in', 'Here's what you need to "
     "know'); and chatbot leftovers ('I hope this helps!', 'Let me know if you'd like more.'). "
     "State points directly and let sentence length vary naturally, the way a person writing "
-    "for one specific reader would - not the safest phrasing that fits every reader."
+    "for one specific reader would - not the safest phrasing that fits every reader. "
+    "State relationships and attributions specifically: name the actual person, source, or "
+    "role (e.g. 'the 2023 study found' or 'she was CEO of X') rather than vague phrasing like "
+    "'experts say', 'observers have noted', or 'associated with'. Distinguish a verified fact "
+    "from your own inference, speculation, or opinion rather than blending them together, and "
+    "say plainly when something is uncertain instead of reaching for a canned disclaimer like "
+    "'information is limited'. Never leave template placeholders (e.g. '[Insert Source]', "
+    "'[Your Name]', 'XX/XX/XXXX') in finished writing, and never describe what you did to the "
+    "text after producing it (e.g. 'this has been streamlined for clarity') - just produce the "
+    "result."
 )
 """Applies the same 'Signs of AI Writing' patterns (Wikipedia, WikiProject AI Cleanup) the
 `humanizer` Claude Code skill teaches - requested explicitly by the project owner (2026-09-18)
@@ -70,6 +79,14 @@ skill's own "mark tells, then rewrite" workflow doesn't apply to text that doesn
 Rendered as its own section (not folded into BUILTIN_SYSTEM_GUIDANCE) so it stays independently
 testable and readable, and protected from truncation the same way GROUNDING RULES already is -
 see _fit_sections_reserving_tail, generalized to reserve both.
+
+2026-09-30: extended with the attribution/epistemic-honesty/placeholder rules from a longer
+"anti-slop" style prompt the project owner supplied, merging only what wasn't already covered
+elsewhere - fabricated citations/sources were already ruled out by GROUNDING RULES below, so
+that part wasn't duplicated here. Two parts of the source prompt were deliberately left out:
+a default to Australian English (that prompt author's own preference, not requested here) and
+a "final self-edit checklist" step, which assumes a multi-pass editing workflow ScholarOS's
+single-pass generation call doesn't have.
 """
 
 BUILTIN_SYSTEM_GUIDANCE = (
