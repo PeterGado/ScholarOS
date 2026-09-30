@@ -149,17 +149,19 @@ def test_truncation_prefers_sentence_boundaries():
     # BUILT-IN SYSTEM GUIDANCE + GROUNDING RULES + HUMAN-SOUNDING WRITING + RESPONSE TASK tail
     # sections all fit in full, leaving just enough room for WRITING INSTRUCTIONS to be
     # truncated - at a sentence boundary - after its first sentence. (2026-09-30: recalibrated
-    # again after HUMANIZER_GUIDANCE grew with the attribution/epistemic-honesty/placeholder
-    # additions, which reserves more space up front than before.)
+    # twice today as HUMANIZER_GUIDANCE grew - first with the attribution/epistemic-honesty/
+    # placeholder additions, then with the plain-verb-substitution/inflated-significance
+    # additions added after a live quality-confirmation test caught both patterns slipping
+    # through - each growth reserves more space up front than before.)
     context = ContextAssemblyInput(
         topic="Topic",
         instructions="First instruction sentence. Second instruction sentence.",
-        max_characters=3245,
+        max_characters=3615,
     )
 
     assembled = assemble_context(context)
 
-    assert len(assembled.prompt) <= 3245
+    assert len(assembled.prompt) <= 3615
     assert "First instruction sentence." in assembled.prompt
     assert "Second instruction sentence" not in assembled.prompt
 

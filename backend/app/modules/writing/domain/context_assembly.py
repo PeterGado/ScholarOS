@@ -55,10 +55,14 @@ HUMANIZER_GUIDANCE = (
     "closers that just restate the point ('That's the real difference.'); forced groups of "
     "three; overused words such as delve, crucial, testament, underscore, robust, meticulous, "
     "pivotal, landscape, tapestry, fostering; inflated significance ('marks a pivotal moment', "
-    "'stands as a testament to'); sales-style language ('nestled in', 'breathtaking', "
-    "'vibrant'); em dashes used as a catch-all connector; bold-labeled list items where the "
-    "label adds no information; staged openers ('Let's dive in', 'Here's what you need to "
-    "know'); and chatbot leftovers ('I hope this helps!', 'Let me know if you'd like more.'). "
+    "'stands as a testament to', 'immense historical significance', 'fundamentally shaped'); "
+    "sales-style language ('nestled in', 'breathtaking', 'vibrant'); em dashes used as a "
+    "catch-all connector; bold-labeled list items where the label adds no information; staged "
+    "openers ('Let's dive in', 'Here's what you need to know'); and chatbot leftovers ('I hope "
+    "this helps!', 'Let me know if you'd like more.'). Prefer plain, simple verbs over inflated "
+    "synonyms: 'is' instead of 'serves as', 'has' instead of 'features' or 'boasts', 'uses' "
+    "instead of 'utilizes', 'shows' instead of 'showcases'. Do not tack an unearned claim of "
+    "importance onto an ordinary fact merely to round out a sentence - state the fact and stop. "
     "State points directly and let sentence length vary naturally, the way a person writing "
     "for one specific reader would - not the safest phrasing that fits every reader. "
     "State relationships and attributions specifically: name the actual person, source, or "
@@ -87,6 +91,13 @@ that part wasn't duplicated here. Two parts of the source prompt were deliberate
 a default to Australian English (that prompt author's own preference, not requested here) and
 a "final self-edit checklist" step, which assumes a multi-pass editing workflow ScholarOS's
 single-pass generation call doesn't have.
+
+Also extended same day with the plain-verb substitutions ('is' not 'serves as', etc.) and a
+tighter inflated-significance rule, after a live quality-confirmation smoke test against the
+real deployed backend caught both patterns slipping through on a real reply ("serves as the
+country's political, economic, and cultural center"; "immense historical significance... "
+fundamentally shaped") despite the first merge pass - evidence the existing phrasing wasn't
+specific enough yet, not a hypothetical gap.
 """
 
 BUILTIN_SYSTEM_GUIDANCE = (
