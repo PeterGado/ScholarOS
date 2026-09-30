@@ -80,6 +80,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         text_provider,  # every concrete provider satisfies both provider Protocols
         settings.ai_embedding_model,
         storage,
+        worker_count=settings.work_item_worker_count,
     )
     executor_loop.start()
 

@@ -91,6 +91,17 @@ class Settings(BaseSettings):
     # call, seconds; document processing, at most low tens of seconds) - a real item should
     # never sit unresolved this long in normal operation.
     queue_stale_threshold_seconds: int = 600
+    # Work Item executor concurrency (2026-09-30, concurrent-load planning): the executor now
+    # runs this many OS threads concurrently claiming/processing Work Items, instead of exactly
+    # one (see WorkItemExecutorLoop's own docstring for why threads, not asyncio tasks). Left at
+    # 1 for this rollout stage deliberately - this change on its own only fixes the event-loop-
+    # freeze bug (see WorkItemExecutorLoop), and stays behaviorally identical to before it
+    # otherwise. Raise only once claim_next_queued is concurrency-safe (Postgres SKIP LOCKED,
+    # not yet true when this default was set), a real Postgres test has proven concurrent
+    # claiming never double-processes an item, and the real Neon connection ceiling has been
+    # checked and the pool sized against it (see `worker_engine` in app/database/session.py) -
+    # do not raise this blind.
+    work_item_worker_count: int = 1
 
 
 @lru_cache

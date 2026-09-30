@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Enum, Integer, String, Text
+from sqlalchemy import Enum, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
@@ -20,6 +20,12 @@ class WorkItem(Base):
     """
 
     __tablename__ = "work_items"
+    __table_args__ = (
+        # 2026-09-30, concurrent-load planning: claim_next_queued's WHERE state='queued' scan
+        # had no supporting index at all before this - see the matching migration's own
+        # docstring (b017cd8cd1c0) for why this matters more once claiming is concurrent.
+        Index("ix_work_items_state_work_item_id", "state", "work_item_id"),
+    )
 
     work_item_id: Mapped[int] = mapped_column(primary_key=True)
     kind: Mapped[WorkItemKind] = mapped_column(Enum(WorkItemKind, native_enum=False, length=16), nullable=False)

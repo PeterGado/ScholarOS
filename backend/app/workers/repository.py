@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.workers.entities import WorkItem
@@ -147,11 +148,47 @@ class WorkItemRepository:
         return self._to_domain(row)
 
     def claim_next_queued(self) -> WorkItem | None:
-        """Claims the oldest queued item, transitioning it to `running`. Single-writer-safe
-        for the MVP's one in-process executor (ADR-006 Decision 3); not safe against
-        multiple concurrent claimers - true concurrency safety is the durable-broker
-        extraction path (ADR-006 Decision 4), not an MVP requirement.
+        """Claims the oldest queued item, transitioning it to `running`.
+
+        On Postgres, uses a single atomic `UPDATE ... WHERE id = (SELECT ... FOR UPDATE SKIP
+        LOCKED) RETURNING` statement (2026-09-30, concurrent-load planning) - `SKIP LOCKED`
+        makes a second concurrent claimer (the executor now runs `work_item_worker_count`
+        threads) physically skip a row another claimer already holds the lock on, rather than
+        block on it or re-select it, so two callers can never both come back with the same row.
+        One round trip, and no ORM identity-map subtlety to keep verifying as this method's
+        callers change.
+
+        SQLite (tests/local dev) keeps the previous simple SELECT + mutate + flush form
+        unchanged: it doesn't support `SKIP LOCKED`, and has no concurrent claimers to guard
+        against in the first place (this codebase's tests never call this method from more than
+        one thread against a SQLite session).
         """
+        if self._session.get_bind().dialect.name == "postgresql":
+            # `state`/`kind` bound as parameters, never inlined string literals: the Enum
+            # columns are `native_enum=False`, which persists the Python member *name*
+            # (`"QUEUED"`), not `.value` (`"queued"`) - binding `WorkItemState.RUNNING.name`
+            # keeps this correct even if that storage detail is ever revisited, instead of a
+            # hand-typed literal silently drifting out of sync with it.
+            row = self._session.execute(
+                text(
+                    """
+                    UPDATE work_items
+                    SET state = :running_state, executed_at = now()
+                    WHERE work_item_id = (
+                        SELECT work_item_id FROM work_items
+                        WHERE state = :queued_state
+                        ORDER BY work_item_id
+                        FOR UPDATE SKIP LOCKED
+                        LIMIT 1
+                    )
+                    RETURNING work_item_id, kind, state, payload_reference, idempotency_key,
+                              attempts, last_error, created_at, executed_at, completed_at
+                    """
+                ),
+                {"running_state": WorkItemState.RUNNING.name, "queued_state": WorkItemState.QUEUED.name},
+            ).first()
+            return self._to_domain_from_row(row) if row is not None else None
+
         row = (
             self._session.query(WorkItemModel)
             .filter_by(state=WorkItemState.QUEUED)
@@ -205,13 +242,20 @@ class WorkItemRepository:
         its worker still terminates in `failed` rather than looping forever.
 
         Returns the number of rows recovered (requeued or terminally failed).
+
+        On Postgres, locks the matching rows with `FOR UPDATE SKIP LOCKED` (2026-09-30,
+        concurrent-load planning) so two processes recovering stale items at the same moment
+        (e.g. two Fly machines restarting together) can't both grab the same row - not a
+        concern yet with this rollout's single-machine design, but cheap to make correct now
+        while `claim_next_queued` gets the same treatment for the same underlying reason.
         """
         threshold = datetime.now(timezone.utc) - stale_after
-        rows = (
-            self._session.query(WorkItemModel)
-            .filter(WorkItemModel.state == WorkItemState.RUNNING, WorkItemModel.executed_at < threshold)
-            .all()
+        query = self._session.query(WorkItemModel).filter(
+            WorkItemModel.state == WorkItemState.RUNNING, WorkItemModel.executed_at < threshold
         )
+        if self._session.get_bind().dialect.name == "postgresql":
+            query = query.with_for_update(skip_locked=True)
+        rows = query.all()
         for row in rows:
             row.attempts += 1
             row.last_error = (
@@ -231,6 +275,27 @@ class WorkItemRepository:
             work_item_id=row.work_item_id,
             kind=row.kind,
             state=row.state,
+            payload_reference=row.payload_reference,
+            idempotency_key=row.idempotency_key,
+            attempts=row.attempts,
+            last_error=row.last_error,
+            created_at=row.created_at,
+            executed_at=row.executed_at,
+            completed_at=row.completed_at,
+        )
+
+    @staticmethod
+    def _to_domain_from_row(row) -> WorkItem:
+        """Same mapping as `_to_domain`, for a raw `Row` from `claim_next_queued`'s Postgres
+        `RETURNING` statement instead of an ORM `WorkItemModel` instance - `kind`/`state` come
+        back as the raw persisted strings (the columns are `native_enum=False`, which persists
+        the Python enum member's *name*, e.g. `"QUEUED"`, not `.value`) rather than enum members,
+        so they're looked up by name here, not by value.
+        """
+        return WorkItem(
+            work_item_id=row.work_item_id,
+            kind=WorkItemKind[row.kind],
+            state=WorkItemState[row.state],
             payload_reference=row.payload_reference,
             idempotency_key=row.idempotency_key,
             attempts=row.attempts,

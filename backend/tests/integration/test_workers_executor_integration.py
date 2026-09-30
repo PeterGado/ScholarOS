@@ -1,4 +1,6 @@
 import asyncio
+import threading
+import time
 from datetime import timedelta
 
 import pytest
@@ -411,5 +413,84 @@ def test_a_work_item_whose_document_no_longer_exists_fails_permanently_instead_o
     # The queue is genuinely unblocked, not just this one item resolved - a second poll finds
     # nothing left to claim rather than reclaiming and crashing on the same item again.
     assert _process_one(session, storage, text_provider=provider) is False
+
+
+# --- WorkItemExecutorLoop threading (2026-09-30, concurrent-load planning) -------------------
+
+
+def test_a_slow_work_item_does_not_block_the_event_loop(session_factory, storage):
+    """Regression test for the event-loop-freeze bug found while planning concurrent Work Item
+    processing: `WorkItemExecutorLoop` used to call the fully-synchronous `_process_one_safely`
+    directly inside an `async def` polling loop with no thread-offload, so a slow AI call (or any
+    single work item) held the process's one event loop thread hostage for its full duration -
+    freezing every concurrent request in the whole app, not just other queued items. Proves the
+    replacement (real `threading.Thread`s) actually fixes this: while a worker thread is blocked
+    inside a deliberately slow provider call, the event loop itself - simulating a concurrent
+    HTTP request being served on it - stays fully responsive.
+    """
+    provider_started = threading.Event()
+    release_provider = threading.Event()
+
+    class SlowTextGenerationProvider:
+        def generate(self, prompt: str) -> str:
+            provider_started.set()
+            assert release_provider.wait(timeout=5), "test itself is stuck - never released"
+            return '[{"element_type": "concept", "label": "Slow", "description": "d"}]'
+
+    session = session_factory()
+    try:
+        _upload_document(session, storage)
+    finally:
+        session.close()
+
+    loop = WorkItemExecutorLoop(
+        session_factory,
+        SlowTextGenerationProvider(),
+        FakeEmbeddingProvider(),
+        "test-embedding-model",
+        storage,
+        poll_interval=0.05,
+    )
+
+    async def _drive() -> float:
+        start_returned_at = time.monotonic()
+        loop.start()
+        start_duration = time.monotonic() - start_returned_at
+        assert start_duration < 0.5, "start() must spawn threads and return immediately"
+
+        assert provider_started.wait(timeout=5), "the slow provider call never started"
+
+        # The real proof: this coroutine runs on the same event loop `_run()` used to occupy
+        # directly (the old bug). If a worker thread were still blocking that loop, awaiting a
+        # trivial coroutine here would stall for the same duration as the slow provider call.
+        quick_start = time.monotonic()
+        await asyncio.sleep(0)
+        quick_elapsed = time.monotonic() - quick_start
+
+        release_provider.set()
+        await loop.stop()
+        return quick_elapsed
+
+    quick_elapsed = asyncio.run(_drive())
+    assert quick_elapsed < 0.5
+
+
+def test_worker_count_spawns_that_many_threads(session_factory, storage):
+    loop = WorkItemExecutorLoop(
+        session_factory,
+        FakeTextGenerationProvider(),
+        FakeEmbeddingProvider(),
+        "test-embedding-model",
+        storage,
+        poll_interval=0.05,
+        worker_count=3,
+    )
+
+    loop.start()
+    try:
+        assert len(loop._threads) == 3
+        assert all(t.is_alive() for t in loop._threads)
+    finally:
+        asyncio.run(loop.stop())
 
 

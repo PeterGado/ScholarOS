@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import threading
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 
@@ -174,9 +175,21 @@ def process_one_work_item(
 
 
 class WorkItemExecutorLoop:
-    """Thin polling wrapper around `process_one_work_item` (ADR-006 Decision 3: an
-    in-process executor for the MVP, no broker). Drains back-to-back queued items before
-    falling back to polling on `poll_interval`.
+    """Polling wrapper around `process_one_work_item` (ADR-006 Decision 3: an in-process
+    executor for the MVP, no broker), running `worker_count` concurrent OS threads rather than
+    asyncio tasks (2026-09-30, found while planning concurrent Work Item processing): every
+    frame below `_process_one_safely` - the SQLAlchemy `Session` (sync, not `AsyncSession`) and
+    the `google-genai` SDK client (sync, not its `.aio` client) - is fully blocking, synchronous
+    code with no `await` anywhere inside it. Calling that directly from an `async def` loop, as
+    this class used to, holds the single event loop thread hostage for the full duration of
+    every AI call or document-processing run - freezing every concurrent HTTP request in the
+    whole process, not just other queued items, and making N concurrent `asyncio.Task`s worth
+    zero extra throughput regardless of N, since only one can ever be inside the blocking call
+    at a time. Real `threading.Thread`s let the OS actually run them concurrently during I/O
+    waits (DB round trips, outbound AI HTTP calls both release the GIL), which is what this
+    workload actually needs - matching the fully-synchronous shape of everything it calls
+    instead of dressing it up in an async wrapper that must never contain a blocking call.
+    Drains back-to-back queued items before falling back to polling on `poll_interval`.
     """
 
     def __init__(
@@ -189,6 +202,7 @@ class WorkItemExecutorLoop:
         *,
         poll_interval: float = 1.0,
         stale_running_threshold: timedelta = timedelta(minutes=10),
+        worker_count: int = 1,
     ) -> None:
         self._session_factory = session_factory
         self._text_provider = text_provider
@@ -197,12 +211,18 @@ class WorkItemExecutorLoop:
         self._storage = storage
         self._poll_interval = poll_interval
         self._stale_running_threshold = stale_running_threshold
-        self._stop_event = asyncio.Event()
-        self._task: asyncio.Task | None = None
+        self._worker_count = worker_count
+        self._stop_event = threading.Event()
+        self._threads: list[threading.Thread] = []
 
     def start(self) -> None:
         self._recover_stale_running_items()
-        self._task = asyncio.create_task(self._run())
+        self._threads = [
+            threading.Thread(target=self._run, name=f"work-item-worker-{i}", daemon=True)
+            for i in range(self._worker_count)
+        ]
+        for thread in self._threads:
+            thread.start()
 
     def _recover_stale_running_items(self) -> None:
         """Runs once, synchronously, before polling begins - recovers Work Items a prior
@@ -210,7 +230,8 @@ class WorkItemExecutorLoop:
         docstring for why this is needed at all). Safe to call unconditionally: on a clean
         start there are no `running` rows left over, so this is a no-op query in the common
         case, mirroring `sync_configured_user`'s own "cheap and idempotent every startup"
-        pattern in `main.py`.
+        pattern in `main.py`. Runs once regardless of `worker_count` - it's startup recovery,
+        not a per-worker concern.
         """
         session = self._session_factory()
         try:
@@ -230,17 +251,20 @@ class WorkItemExecutorLoop:
 
     async def stop(self) -> None:
         self._stop_event.set()
-        if self._task is not None:
-            await self._task
+        # The only legitimate blocking wait in this class - a one-time join at shutdown, never
+        # in the hot polling path. Offloaded via to_thread so it doesn't itself block the event
+        # loop while threads finish whatever item they're mid-processing.
+        await asyncio.to_thread(self._join_all)
 
-    async def _run(self) -> None:
+    def _join_all(self) -> None:
+        for thread in self._threads:
+            thread.join()
+
+    def _run(self) -> None:
         while not self._stop_event.is_set():
             claimed = self._process_one_safely()
             if not claimed:
-                try:
-                    await asyncio.wait_for(self._stop_event.wait(), timeout=self._poll_interval)
-                except TimeoutError:
-                    pass
+                self._stop_event.wait(timeout=self._poll_interval)
 
     def _process_one_safely(self) -> bool:
         session = self._session_factory()
