@@ -34,6 +34,12 @@ describe("RegisterPage", () => {
     vi.clearAllMocks();
   });
 
+  it("has a way back to the landing page", () => {
+    renderRegisterPage();
+
+    expect(screen.getByRole("link", { name: /back to home/i })).toHaveAttribute("href", "/");
+  });
+
   it("submits the entered username, password, and invite code to the register API", async () => {
     vi.mocked(authApi.register).mockResolvedValue({ access_token: "token-123", token_type: "bearer" });
     const user = userEvent.setup();

@@ -34,6 +34,12 @@ describe("LoginPage", () => {
     vi.clearAllMocks();
   });
 
+  it("has a way back to the landing page", () => {
+    renderLoginPage();
+
+    expect(screen.getByRole("link", { name: /back to home/i })).toHaveAttribute("href", "/");
+  });
+
   it("submits the entered credentials to the login API", async () => {
     vi.mocked(authApi.login).mockResolvedValue({ access_token: "token-123", token_type: "bearer" });
     const user = userEvent.setup();
