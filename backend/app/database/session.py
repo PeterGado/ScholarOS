@@ -212,6 +212,7 @@ def init_db(target_engine: Engine | None = None) -> None:
         ProfileCharacteristic,
         ProfileCharacteristicSource,
         WritingProfile,
+        WritingSegment,
     )
     from app.workers.models import WorkItem  # noqa: F401
 

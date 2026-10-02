@@ -10,6 +10,7 @@ from app.modules.writing.domain.entities import (
     ProfileCharacteristic,
     ProfileCharacteristicSource,
     WritingProfile,
+    WritingSegment,
 )
 
 
@@ -164,3 +165,31 @@ class MessageContextLinkRepository(ABC):
     @abstractmethod
     def list_by_message_id(
         self, message_id: int) -> list[MessageContextLink]: ...
+
+
+class WritingSegmentRepository(ABC):
+    @abstractmethod
+    def add(self, segment: WritingSegment) -> WritingSegment: ...
+
+    @abstractmethod
+    def get_by_id(self, segment_id: int) -> WritingSegment | None: ...
+
+    @abstractmethod
+    def get_by_agent_id_and_name(self, agent_id: int, name: str) -> WritingSegment | None: ...
+
+    @abstractmethod
+    def list_by_agent_id(self, agent_id: int) -> list[WritingSegment]: ...
+
+    @abstractmethod
+    def count_by_agent_id(self, agent_id: int) -> int: ...
+
+    @abstractmethod
+    def update(self, segment_id: int, *, name: str, instructions: str, updated_at: datetime) -> None: ...
+
+    @abstractmethod
+    def delete(self, segment_id: int) -> None:
+        """A hard delete, unlike Conversation's soft-delete - a segment is a saved preference
+        with no continuity record or provenance to preserve (see WritingSegment's own
+        docstring), so once removed it's genuinely gone.
+        """
+        ...

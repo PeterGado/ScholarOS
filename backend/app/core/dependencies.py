@@ -50,6 +50,12 @@ from app.modules.writing.application.chat import (
 )
 from app.modules.writing.application.memory_inspection import ListMemoryUseCase, SupersedeMemoryRecordUseCase
 from app.modules.writing.application.profile_view import GetWritingProfileUseCase, ResetWritingProfileUseCase
+from app.modules.writing.application.segments import (
+    CreateWritingSegmentUseCase,
+    DeleteWritingSegmentUseCase,
+    ListWritingSegmentsUseCase,
+    UpdateWritingSegmentUseCase,
+)
 from app.modules.writing.application.style_extraction import ExtractWritingStyleProfileUseCase
 from app.modules.writing.application.style_ingestion import (
     ListWritingStyleDocumentsUseCase,
@@ -63,6 +69,7 @@ from app.modules.writing.infrastructure.repositories import (
     SqlAlchemyProfileCharacteristicRepository,
     SqlAlchemyProfileCharacteristicSourceRepository,
     SqlAlchemyWritingProfileRepository,
+    SqlAlchemyWritingSegmentRepository,
 )
 from app.modules.document.domain.ports import ContentStore
 from app.storage.exceptions import InvalidStorageConfigurationError
@@ -336,6 +343,41 @@ def get_writing_profile_repository(db: Session = Depends(get_db)) -> SqlAlchemyW
     return SqlAlchemyWritingProfileRepository(db)
 
 
+def get_writing_segment_repository(db: Session = Depends(get_db)) -> SqlAlchemyWritingSegmentRepository:
+    return SqlAlchemyWritingSegmentRepository(db)
+
+
+def get_create_writing_segment_use_case(
+    segment_repository: SqlAlchemyWritingSegmentRepository = Depends(get_writing_segment_repository),
+    agent_repository: SqlAlchemyAgentRepository = Depends(get_agent_repository),
+    unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
+) -> CreateWritingSegmentUseCase:
+    return CreateWritingSegmentUseCase(segment_repository, agent_repository, unit_of_work)
+
+
+def get_list_writing_segments_use_case(
+    segment_repository: SqlAlchemyWritingSegmentRepository = Depends(get_writing_segment_repository),
+    agent_repository: SqlAlchemyAgentRepository = Depends(get_agent_repository),
+) -> ListWritingSegmentsUseCase:
+    return ListWritingSegmentsUseCase(segment_repository, agent_repository)
+
+
+def get_update_writing_segment_use_case(
+    segment_repository: SqlAlchemyWritingSegmentRepository = Depends(get_writing_segment_repository),
+    agent_repository: SqlAlchemyAgentRepository = Depends(get_agent_repository),
+    unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
+) -> UpdateWritingSegmentUseCase:
+    return UpdateWritingSegmentUseCase(segment_repository, agent_repository, unit_of_work)
+
+
+def get_delete_writing_segment_use_case(
+    segment_repository: SqlAlchemyWritingSegmentRepository = Depends(get_writing_segment_repository),
+    agent_repository: SqlAlchemyAgentRepository = Depends(get_agent_repository),
+    unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
+) -> DeleteWritingSegmentUseCase:
+    return DeleteWritingSegmentUseCase(segment_repository, agent_repository, unit_of_work)
+
+
 def get_upload_writing_style_document_use_case(
     document_repository: SqlAlchemyDocumentRepository = Depends(get_document_repository),
     project_repository: SqlAlchemyProjectRepository = Depends(get_project_repository),
@@ -487,6 +529,7 @@ def get_send_chat_message_use_case(
     content_store: ContentStore = Depends(get_content_store),
     unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
     ai_usage_guard: AiUsageGuard = Depends(get_ai_usage_guard),
+    writing_segment_repository: SqlAlchemyWritingSegmentRepository = Depends(get_writing_segment_repository),
 ) -> SendChatMessageUseCase:
     return SendChatMessageUseCase(
         conversation_repository,
@@ -501,6 +544,7 @@ def get_send_chat_message_use_case(
         content_store,
         unit_of_work,
         ai_usage_guard,
+        writing_segment_repository=writing_segment_repository,
     )
 
 

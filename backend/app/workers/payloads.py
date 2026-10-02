@@ -136,10 +136,21 @@ def parse_generate_chat_reply_payload_reference(
 
 
 def _context_to_dict(context: ContextAssemblyInput) -> dict:
+    """An explicit field map, not `dataclasses.asdict(context)` - adding a new
+    `ContextAssemblyInput` field here is a conscious choice, not automatic. `background_knowledge`
+    is deliberately absent: it's always `None` at send time (resolved later, worker-side, by
+    `GenerateConversationReplyUseCase` - see that field's own docstring for why), so persisting
+    it here would just round-trip a `None`. `segment_name`/`segment_instructions` (2026-10-02),
+    by contrast, ARE resolved synchronously at send time in `SendChatMessageUseCase` - a real
+    bug found via a live e2e test confirmed that omitting them here silently dropped a selected
+    segment's instructions before they ever reached the worker's assembled prompt.
+    """
     return {
         "topic": context.topic,
         "description": context.description,
         "instructions": context.instructions,
+        "segment_name": context.segment_name,
+        "segment_instructions": context.segment_instructions,
         "max_characters": context.max_characters,
         "max_evidence": context.max_evidence,
         "max_conversation_messages": context.max_conversation_messages,
@@ -185,6 +196,8 @@ def _context_from_dict(payload: dict) -> ContextAssemblyInput:
         topic=payload["topic"],
         description=payload.get("description"),
         instructions=payload["instructions"],
+        segment_name=payload.get("segment_name"),
+        segment_instructions=payload.get("segment_instructions"),
         max_characters=payload["max_characters"],
         max_evidence=payload["max_evidence"],
         max_conversation_messages=payload.get("max_conversation_messages", 10),

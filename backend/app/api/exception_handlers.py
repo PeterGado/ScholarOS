@@ -36,14 +36,17 @@ from app.modules.writing.domain.exceptions import (
     ChatReplyCannotBeRetriedError,
     ChatReplyWorkItemNotFoundError,
     ConversationNotFoundError,
+    DuplicateWritingSegmentNameError,
     InvalidStyleSampleReferenceError,
     MemoryRecordAlreadySupersededError,
     MemoryRecordNotFoundError,
     NoUsableWritingStyleSamplesError,
+    TooManyWritingSegmentsError,
     TooManyWritingStyleSamplesError,
     UnusableWritingStyleSampleError,
     WritingProfileAlreadyExtractedError,
     WritingProfileNotFoundError,
+    WritingSegmentNotFoundError,
 )
 
 
@@ -164,6 +167,9 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(UnusableWritingStyleSampleError, _handle_invalid_input)
     app.add_exception_handler(WritingProfileAlreadyExtractedError, _handle_conflict)
     app.add_exception_handler(WritingProfileNotFoundError, _handle_not_found)
+    app.add_exception_handler(WritingSegmentNotFoundError, _handle_not_found)
+    app.add_exception_handler(DuplicateWritingSegmentNameError, _handle_conflict)
+    app.add_exception_handler(TooManyWritingSegmentsError, _handle_conflict)
     app.add_exception_handler(ConversationNotFoundError, _handle_not_found)
     app.add_exception_handler(ChatReplyWorkItemNotFoundError, _handle_not_found)
     app.add_exception_handler(ChatReplyCannotBeRetriedError, _handle_conflict)

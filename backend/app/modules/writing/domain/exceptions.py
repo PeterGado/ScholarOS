@@ -230,3 +230,52 @@ class WritingProfileAlreadyExtractedError(WritingDomainError):
             "re-extraction is not yet supported (regeneration semantics are undecided - see Stage 4 report)."
         )
         self.profile_id = profile_id
+
+
+class InvalidWritingSegmentNameError(WritingDomainError):
+    """A Writing Segment's name must not be blank (2026-10-02)."""
+
+    def __init__(self) -> None:
+        super().__init__("Writing segment name must not be blank.")
+
+
+class InvalidWritingSegmentInstructionsError(WritingDomainError):
+    """A Writing Segment's instructions must not be blank - an empty instruction would render
+    as a no-op section in the prompt, silently doing nothing for the user who just set it.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("Writing segment instructions must not be blank.")
+
+
+class WritingSegmentNotFoundError(WritingDomainError):
+    """No such Writing Segment, or it does not belong to the authenticated user's own Agent -
+    deliberately indistinguishable (non-enumeration), mirroring InvalidStyleSampleReferenceError's
+    own established precedent.
+    """
+
+    def __init__(self, *, segment_id: int) -> None:
+        super().__init__(f"Writing segment {segment_id} was not found.")
+        self.segment_id = segment_id
+
+
+class DuplicateWritingSegmentNameError(WritingDomainError):
+    """An Agent's Writing Segment names must be unique - otherwise a selector listing them by
+    name would be ambiguous about which one actually gets applied.
+    """
+
+    def __init__(self, *, name: str) -> None:
+        super().__init__(f"A writing segment named {name!r} already exists.")
+        self.name = name
+
+
+class TooManyWritingSegmentsError(WritingDomainError):
+    """An Agent may hold at most `segments.MAX_WRITING_SEGMENTS_PER_AGENT` Writing Segments -
+    generous for even a heavily-subdivided thesis, but still bounded rather than unlimited.
+    """
+
+    def __init__(self, *, limit: int) -> None:
+        super().__init__(
+            f"You already have the maximum of {limit} writing segments. Delete one before adding another."
+        )
+        self.limit = limit

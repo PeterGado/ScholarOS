@@ -41,6 +41,7 @@ from app.modules.writing.domain.exceptions import (
     ChatReplyWorkItemNotFoundError,
     ConversationNotFoundError,
     EmptyGeneratedContentError,
+    WritingSegmentNotFoundError,
 )
 from app.modules.writing.domain.memory_extraction import (
     MEMORY_EXTRACTION_TRIGGER_COUNT,
@@ -54,6 +55,7 @@ from app.modules.writing.domain.repositories import (
     MessageRepository,
     ProfileCharacteristicRepository,
     WritingProfileRepository,
+    WritingSegmentRepository,
 )
 from app.workers.enums import WorkItemKind, WorkItemState
 from app.workers.entities import WorkItem
@@ -226,6 +228,7 @@ class SendChatMessageUseCase:
         content_store: ContentStore,
         unit_of_work: UnitOfWork,
         ai_usage_guard: AiUsageGuard,
+        writing_segment_repository: WritingSegmentRepository | None = None,
     ) -> None:
         self._conversations = conversation_repository
         self._messages = message_repository
@@ -239,8 +242,14 @@ class SendChatMessageUseCase:
         self._content_store = content_store
         self._uow = unit_of_work
         self._ai_usage_guard = ai_usage_guard
+        # Optional (2026-10-02, added after construction) so every pre-existing caller/test that
+        # builds this use case positionally without a segment repository keeps working unchanged;
+        # a segment_id can simply never be passed without it.
+        self._segments = writing_segment_repository
 
-    def execute(self, *, user_id: int, conversation_id: int, content: str) -> WorkItem:
+    def execute(
+        self, *, user_id: int, conversation_id: int, content: str, segment_id: int | None = None
+    ) -> WorkItem:
         conversation = self._conversations.get_by_id(conversation_id)
         agent = self._agents.get_by_id(
             conversation.agent_id) if conversation is not None else None
@@ -298,6 +307,16 @@ class SendChatMessageUseCase:
             for record in self._memory_records.list_current_by_agent_id(agent.agent_id)
         )
 
+        segment_name = None
+        segment_instructions = None
+        if segment_id is not None:
+            assert self._segments is not None, "segment_id was passed but no WritingSegmentRepository was wired"
+            segment = self._segments.get_by_id(segment_id)
+            if segment is None or segment.agent_id != agent.agent_id:
+                raise WritingSegmentNotFoundError(segment_id=segment_id)
+            segment_name = segment.name
+            segment_instructions = segment.instructions
+
         context = ContextAssemblyInput(
             topic=project.topic,
             description=project.description,
@@ -306,6 +325,8 @@ class SendChatMessageUseCase:
             style_signals=style_signals,
             memories=memories,
             conversation_messages=conversation_messages,
+            segment_name=segment_name,
+            segment_instructions=segment_instructions,
         )
 
         self._conversations.lock_for_message_sequence(conversation_id)

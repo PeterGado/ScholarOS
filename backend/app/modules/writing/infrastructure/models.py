@@ -25,6 +25,7 @@ __all__ = [
     "Conversation",
     "Message",
     "MessageContextLink",
+    "WritingSegment",
 ]
 
 
@@ -259,3 +260,23 @@ class MessageContextLink(Base):
     chunk_id: Mapped[int | None] = mapped_column(ForeignKey("knowledge_chunks.chunk_id"), nullable=True)
     memory_record_id: Mapped[int | None] = mapped_column(ForeignKey("memory_records.record_id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class WritingSegment(Base):
+    """A named part of the project with its own saved writing instructions (2026-10-02) - see
+    the domain entity's own docstring for why this is simple CRUD rather than MemoryRecord's
+    supersession model.
+    """
+
+    __tablename__ = "writing_segments"
+    __table_args__ = (
+        UniqueConstraint("agent_id", "name", name="uq_writing_segment_agent_name"),
+        Index("ix_writing_segments_agent_id", "agent_id"),
+    )
+
+    segment_id: Mapped[int] = mapped_column(primary_key=True)
+    agent_id: Mapped[int] = mapped_column(ForeignKey("agents.agent_id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    instructions: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at: Mapped[datetime | None] = mapped_column(nullable=True)

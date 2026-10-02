@@ -24,8 +24,10 @@ class FakeEmbeddingProvider:
 class FakeTextGenerationProvider:
     def __init__(self, response: str = "Hello, how can I help with your project?") -> None:
         self.response = response
+        self.prompts: list[str] = []
 
     def generate(self, prompt: str) -> str:
+        self.prompts.append(prompt)
         return self.response
 
 
@@ -182,6 +184,88 @@ def test_send_message_and_receive_a_reply(client, auth_headers, db_engine, tmp_p
     assert messages[0]["direction"] == "user_request"
     assert messages[1]["direction"] == "system_response"
     assert messages[1]["content"] == "Understood."
+
+
+def test_sending_a_message_with_a_segment_applies_its_instructions_to_the_real_prompt(
+    client, auth_headers, db_engine, tmp_path
+):
+    _create_workspace(client, auth_headers)
+    segment = client.post(
+        "/writing/segments",
+        json={"name": "Background of the Study", "instructions": "Always cite at least two sources."},
+        headers=auth_headers,
+    ).json()
+    conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
+
+    response = client.post(
+        f"/writing/conversations/{conversation['conversation_id']}/messages",
+        json={"content": "Write the opening paragraph.", "segment_id": segment["segment_id"]},
+        headers=auth_headers,
+    )
+    assert response.status_code == 202
+
+    provider = FakeTextGenerationProvider("Draft text.")
+    assert _process_next_work_item(db_engine, tmp_path, text_provider=provider) is True
+
+    real_prompt = provider.prompts[0]
+    assert "## SEGMENT INSTRUCTIONS (Background of the Study)" in real_prompt
+    assert "Always cite at least two sources." in real_prompt
+
+
+def test_sending_a_message_with_an_unknown_segment_id_returns_404(client, auth_headers):
+    _create_workspace(client, auth_headers)
+    conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
+
+    response = client.post(
+        f"/writing/conversations/{conversation['conversation_id']}/messages",
+        json={"content": "Write something.", "segment_id": 999999},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error_type"] == "WritingSegmentNotFoundError"
+
+
+def test_sending_a_message_with_another_users_segment_id_returns_404(client, db_engine, auth_headers):
+    _create_workspace(client, auth_headers)
+    segment = client.post(
+        "/writing/segments", json={"name": "Background", "instructions": "x"}, headers=auth_headers
+    ).json()
+
+    session = build_sessionmaker(db_engine)()
+    try:
+        session.add(User(username="intruder2", password_hash=hash_password("intruder-pass")))
+        session.commit()
+    finally:
+        session.close()
+    intruder_login = client.post("/auth/login", json={"username": "intruder2", "password": "intruder-pass"})
+    intruder_headers = {"Authorization": f"Bearer {intruder_login.json()['access_token']}"}
+    client.post("/agents", json={"project_title": "Intruder Thesis", "project_topic": "Other"}, headers=intruder_headers)
+    intruder_conversation = client.post("/writing/conversations", json={}, headers=intruder_headers).json()
+
+    response = client.post(
+        f"/writing/conversations/{intruder_conversation['conversation_id']}/messages",
+        json={"content": "Write something.", "segment_id": segment["segment_id"]},
+        headers=intruder_headers,
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error_type"] == "WritingSegmentNotFoundError"
+
+
+def test_sending_a_message_with_no_segment_renders_the_placeholder(client, auth_headers, db_engine, tmp_path):
+    _create_workspace(client, auth_headers)
+    conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
+    client.post(
+        f"/writing/conversations/{conversation['conversation_id']}/messages",
+        json={"content": "Write something."},
+        headers=auth_headers,
+    )
+
+    provider = FakeTextGenerationProvider("Draft text.")
+    assert _process_next_work_item(db_engine, tmp_path, text_provider=provider) is True
+
+    assert "No project segment was selected for this message." in provider.prompts[0]
 
 
 def test_a_message_over_the_length_limit_is_rejected(client, auth_headers):

@@ -73,6 +73,30 @@ def test_chat_reply_payload_round_trips_context_and_request_identity():
     assert idempotency_key == "generate_chat_reply:request-1"
 
 
+def test_chat_reply_payload_round_trips_segment_name_and_instructions():
+    """Regression test for a real bug found via a live e2e test: segment_name/segment_instructions
+    are resolved synchronously at send time (unlike background_knowledge, resolved later,
+    worker-side), but _context_to_dict's explicit field map didn't include them - a selected
+    segment's instructions were silently dropped before ever reaching the worker.
+    """
+    content_store = FakeContentStore()
+    context = ContextAssemblyInput(
+        topic="Topic",
+        instructions="Write a paragraph.",
+        segment_name="Background of the Study",
+        segment_instructions="Always cite at least two sources.",
+    )
+
+    payload, _idempotency_key = build_generate_chat_reply_payload_reference(12, 5, context, content_store)
+
+    _conversation_id, _user_message_id, parsed_context, _request_id = parse_generate_chat_reply_payload_reference(
+        payload, content_store
+    )
+    assert parsed_context.segment_name == "Background of the Study"
+    assert parsed_context.segment_instructions == "Always cite at least two sources."
+    assert parsed_context == context
+
+
 def test_chat_reply_payload_reference_is_short_regardless_of_context_size():
     """The defect this replaces: an earlier version inlined the full serialized context into
     payload_reference and rejected anything over 512 characters - unusable for any context

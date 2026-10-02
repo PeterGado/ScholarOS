@@ -113,7 +113,9 @@ BUILTIN_SYSTEM_GUIDANCE = (
     "scope precisely. If it asks for one specific section or a narrower slice of something "
     "written earlier, produce only that: do not restate, repeat, or continue material already "
     "covered in RELEVANT CONVERSATION CONTEXT just because it exists there, and do not expand "
-    "scope to a fuller draft than what was actually asked for."
+    "scope to a fuller draft than what was actually asked for. When a SEGMENT INSTRUCTIONS "
+    "section is present, its guidance applies specifically to the named project segment and "
+    "should be followed on top of WRITING INSTRUCTIONS, not instead of it."
 )
 """Built-in system-level behavior (Persistent Brain §6 point 1: "built-in system behavior" as
 one of the context sources generation can fall back on even when every optional source is
@@ -184,6 +186,13 @@ class ContextAssemblyInput:
     with the model's own inherent knowledge at generation time, and kept clearly distinct from
     RESEARCH EVIDENCE (the user's own uploaded documents) so it's never mistaken for something
     the user provided or something citable - see _format_background_knowledge.
+
+    `segment_name`/`segment_instructions` (2026-10-02): the user-selected project segment
+    (e.g. "Background of the Study") and its saved instructions, when the caller chose one for
+    this message (app.modules.writing.application.segments) - requested directly: "extra
+    instructions for different segments of the project". Rendered as its own section, next to
+    WRITING INSTRUCTIONS, so a segment's standing guidance applies on top of whatever the
+    specific message asks for, not instead of it. Both are `None` when no segment was selected.
     """
 
     topic: str
@@ -194,6 +203,8 @@ class ContextAssemblyInput:
     memories: tuple[ContextMemory, ...] = ()
     conversation_messages: tuple[ContextConversationMessage, ...] = ()
     background_knowledge: str | None = None
+    segment_name: str | None = None
+    segment_instructions: str | None = None
     max_characters: int = DEFAULT_CONTEXT_CHARACTER_LIMIT
     max_evidence: int = DEFAULT_MAX_EVIDENCE
     max_conversation_messages: int = DEFAULT_MAX_CONVERSATION_MESSAGES
@@ -232,6 +243,10 @@ def assemble_context(context: ContextAssemblyInput) -> AssembledContext:
         ("PROJECT DESCRIPTION", _format_description(context.description)),
         ("BACKGROUND KNOWLEDGE (WIKIPEDIA)", _format_background_knowledge(context.background_knowledge)),
         ("WRITING INSTRUCTIONS", context.instructions),
+        (
+            _segment_heading(context.segment_name),
+            _format_segment_instructions(context.segment_instructions),
+        ),
         ("RELEVANT CONVERSATION CONTEXT", _format_conversation(recent_messages, context.max_conversation_context_characters)),
         ("RESEARCH EVIDENCE", _format_evidence(evidence)),
         ("WRITING STYLE AND TONE", _format_style_signals(context.style_signals)),
@@ -302,6 +317,18 @@ def _format_background_knowledge(background_knowledge: str | None) -> str:
         + "\n\n(General background only, drawn from Wikipedia - not the user's own research "
         "evidence, and not citable as such.)"
     )
+
+
+def _segment_heading(segment_name: str | None) -> str:
+    if segment_name is None or not segment_name.strip():
+        return "SEGMENT INSTRUCTIONS"
+    return f"SEGMENT INSTRUCTIONS ({segment_name.strip()})"
+
+
+def _format_segment_instructions(segment_instructions: str | None) -> str:
+    if segment_instructions is None or not segment_instructions.strip():
+        return "No project segment was selected for this message."
+    return segment_instructions.strip()
 
 
 def _format_conversation(

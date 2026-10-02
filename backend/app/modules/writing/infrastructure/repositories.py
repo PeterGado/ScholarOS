@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.modules.writing.domain.entities import (
@@ -11,12 +12,14 @@ from app.modules.writing.domain.entities import (
     ProfileCharacteristic,
     ProfileCharacteristicSource,
     WritingProfile,
+    WritingSegment,
 )
 from app.modules.writing.domain.enums import (
     ConversationStatus,
     MemoryRecordStatus,
     WritingProfileStatus,
 )
+from app.modules.writing.domain.exceptions import DuplicateWritingSegmentNameError
 from app.modules.writing.domain.repositories import (
     ConversationRepository,
     MemoryProvenanceLinkRepository,
@@ -26,6 +29,7 @@ from app.modules.writing.domain.repositories import (
     ProfileCharacteristicRepository,
     ProfileCharacteristicSourceRepository,
     WritingProfileRepository,
+    WritingSegmentRepository,
 )
 from app.modules.writing.infrastructure.models import Conversation as ConversationModel
 from app.modules.writing.infrastructure.models import MemoryProvenanceLink as MemoryProvenanceLinkModel
@@ -35,6 +39,7 @@ from app.modules.writing.infrastructure.models import MessageContextLink as Mess
 from app.modules.writing.infrastructure.models import ProfileCharacteristic as ProfileCharacteristicModel
 from app.modules.writing.infrastructure.models import ProfileCharacteristicSource as ProfileCharacteristicSourceModel
 from app.modules.writing.infrastructure.models import WritingProfile as WritingProfileModel
+from app.modules.writing.infrastructure.models import WritingSegment as WritingSegmentModel
 
 
 class SqlAlchemyWritingProfileRepository(WritingProfileRepository):
@@ -396,4 +401,73 @@ class SqlAlchemyMessageContextLinkRepository(MessageContextLinkRepository):
             chunk_id=row.chunk_id,
             memory_record_id=row.memory_record_id,
             created_at=row.created_at,
+        )
+
+
+class SqlAlchemyWritingSegmentRepository(WritingSegmentRepository):
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(self, segment: WritingSegment) -> WritingSegment:
+        row = WritingSegmentModel(agent_id=segment.agent_id, name=segment.name, instructions=segment.instructions)
+        self._session.add(row)
+        try:
+            self._session.flush()
+        except IntegrityError:
+            # A real race, not just a defensive precaution: the application layer's own
+            # duplicate-name precheck and this insert are two separate statements. Translated
+            # here, at the infrastructure boundary, rather than in the use case - the writing
+            # module's application layer is architecturally forbidden from importing sqlalchemy
+            # directly (test_writing_dependency_direction.py), so this is the one place that
+            # can actually see the real IntegrityError and turn it into a domain exception.
+            raise DuplicateWritingSegmentNameError(name=segment.name) from None
+        segment.segment_id = row.segment_id
+        segment.created_at = row.created_at
+        return segment
+
+    def get_by_id(self, segment_id: int) -> WritingSegment | None:
+        row = self._session.get(WritingSegmentModel, segment_id)
+        return self._to_domain(row) if row is not None else None
+
+    def get_by_agent_id_and_name(self, agent_id: int, name: str) -> WritingSegment | None:
+        row = self._session.query(WritingSegmentModel).filter_by(agent_id=agent_id, name=name).one_or_none()
+        return self._to_domain(row) if row is not None else None
+
+    def list_by_agent_id(self, agent_id: int) -> list[WritingSegment]:
+        rows = (
+            self._session.query(WritingSegmentModel)
+            .filter_by(agent_id=agent_id)
+            .order_by(WritingSegmentModel.name.asc())
+            .all()
+        )
+        return [self._to_domain(row) for row in rows]
+
+    def count_by_agent_id(self, agent_id: int) -> int:
+        return self._session.query(WritingSegmentModel).filter_by(agent_id=agent_id).count()
+
+    def update(self, segment_id: int, *, name: str, instructions: str, updated_at: datetime) -> None:
+        row = self._session.get(WritingSegmentModel, segment_id)
+        row.name = name
+        row.instructions = instructions
+        row.updated_at = updated_at
+        try:
+            self._session.flush()
+        except IntegrityError:
+            # Same race as add() above - a concurrent rename to the same name.
+            raise DuplicateWritingSegmentNameError(name=name) from None
+
+    def delete(self, segment_id: int) -> None:
+        row = self._session.get(WritingSegmentModel, segment_id)
+        self._session.delete(row)
+        self._session.flush()
+
+    @staticmethod
+    def _to_domain(row: WritingSegmentModel) -> WritingSegment:
+        return WritingSegment(
+            segment_id=row.segment_id,
+            agent_id=row.agent_id,
+            name=row.name,
+            instructions=row.instructions,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
         )

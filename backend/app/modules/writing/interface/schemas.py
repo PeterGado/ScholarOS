@@ -7,7 +7,7 @@ from app.modules.writing.application.profile_view import WritingProfileView
 from app.modules.writing.application.style_extraction import WritingStyleProfileExtraction
 from app.modules.writing.application.style_ingestion import WritingStyleDocumentUpload
 from app.modules.writing.application.memory_inspection import MemoryRecordWithProvenance
-from app.modules.writing.domain.entities import Conversation, Message
+from app.modules.writing.domain.entities import Conversation, Message, WritingSegment
 from app.workers.entities import WorkItem
 
 
@@ -187,6 +187,9 @@ class SendChatMessageRequest(BaseModel):
     # The whitespace-rejection pattern: reject whitespace before it becomes a persisted user
     # message and an asynchronously failing Work Item.
     content: str = Field(..., min_length=1, max_length=8000, pattern=r"(?s).*\S.*")
+    # 2026-10-02: optional - a message sent with no segment selected behaves exactly as before
+    # this field existed.
+    segment_id: int | None = None
 
 
 class ChatMessageResponse(BaseModel):
@@ -317,3 +320,39 @@ class WritingProfileViewResponse(BaseModel):
                 for c in view.characteristics
             ],
         )
+
+
+class CreateWritingSegmentRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255, pattern=r"(?s).*\S.*")
+    instructions: str = Field(..., min_length=1, max_length=4000, pattern=r"(?s).*\S.*")
+
+
+class UpdateWritingSegmentRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255, pattern=r"(?s).*\S.*")
+    instructions: str = Field(..., min_length=1, max_length=4000, pattern=r"(?s).*\S.*")
+
+
+class WritingSegmentResponse(BaseModel):
+    segment_id: int
+    name: str
+    instructions: str
+    created_at: datetime
+    updated_at: datetime | None
+
+    @classmethod
+    def from_domain(cls, segment: WritingSegment) -> "WritingSegmentResponse":
+        return cls(
+            segment_id=segment.segment_id,
+            name=segment.name,
+            instructions=segment.instructions,
+            created_at=segment.created_at,
+            updated_at=segment.updated_at,
+        )
+
+
+class WritingSegmentListResponse(BaseModel):
+    segments: list[WritingSegmentResponse]
+
+    @classmethod
+    def from_domain(cls, segments: list[WritingSegment]) -> "WritingSegmentListResponse":
+        return cls(segments=[WritingSegmentResponse.from_domain(s) for s in segments])

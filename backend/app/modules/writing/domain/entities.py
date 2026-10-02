@@ -18,6 +18,8 @@ from app.modules.writing.domain.exceptions import (
     InvalidMessageSequenceError,
     InvalidProfileCharacteristicSignalError,
     InvalidWritingProfileNameError,
+    InvalidWritingSegmentInstructionsError,
+    InvalidWritingSegmentNameError,
     MemoryProvenanceLinkTargetError,
     MessageContextLinkTargetError,
 )
@@ -218,3 +220,32 @@ class MessageContextLink:
         }
         if expected[self.target_type] is None:
             raise MessageContextLinkTargetError()
+
+
+@dataclass
+class WritingSegment:
+    """A named part of the project (e.g. "Background of the Study", "Statement of the
+    Problem") with its own saved writing instructions, so a chat message can be scoped to that
+    specific section without retyping the same guidance every time (2026-10-02, requested
+    directly: "extra instructions for different segments of the project"). Agent-scoped, like
+    WritingProfile and MemoryRecord - names are unique per Agent (enforced at the database
+    layer) so a selector listing them is never ambiguous about which one gets applied.
+
+    Deliberately simple CRUD, unlike MemoryRecord's supersession-only model or
+    ProfileCharacteristic's no-update rule: a segment's instructions are the user's own saved
+    preference, not a derived/historical record, so editing in place is the right semantics -
+    there's no provenance or audit trail requirement to preserve.
+    """
+
+    agent_id: int
+    name: str
+    instructions: str
+    segment_id: int | None = None
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        if not self.name or not self.name.strip():
+            raise InvalidWritingSegmentNameError()
+        if not self.instructions or not self.instructions.strip():
+            raise InvalidWritingSegmentInstructionsError()

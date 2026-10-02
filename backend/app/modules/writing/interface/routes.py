@@ -6,7 +6,9 @@ from app.api.exception_handlers import ErrorResponse
 from app.core.config import get_settings
 from app.core.pagination import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT
 from app.core.dependencies import (
+    get_create_writing_segment_use_case,
     get_current_user_id,
+    get_delete_writing_segment_use_case,
     get_extract_writing_style_profile_use_case,
     get_get_chat_reply_status_use_case,
     get_get_writing_profile_use_case,
@@ -14,12 +16,14 @@ from app.core.dependencies import (
     get_delete_conversation_use_case,
     get_list_conversations_use_case,
     get_list_memory_use_case,
+    get_list_writing_segments_use_case,
     get_list_writing_style_documents_use_case,
     get_reset_writing_profile_use_case,
     get_retry_chat_reply_use_case,
     get_send_chat_message_use_case,
     get_start_conversation_use_case,
     get_supersede_memory_record_use_case,
+    get_update_writing_segment_use_case,
     get_upload_writing_style_document_use_case,
 )
 from app.core.document_formats import looks_like_a_supported_document
@@ -41,6 +45,12 @@ from app.modules.writing.application.memory_inspection import (
     SupersedeMemoryRecordUseCase,
 )
 from app.modules.writing.application.profile_view import GetWritingProfileUseCase, ResetWritingProfileUseCase
+from app.modules.writing.application.segments import (
+    CreateWritingSegmentUseCase,
+    DeleteWritingSegmentUseCase,
+    ListWritingSegmentsUseCase,
+    UpdateWritingSegmentUseCase,
+)
 from app.modules.writing.application.style_extraction import ExtractWritingStyleProfileUseCase
 from app.modules.writing.application.style_ingestion import (
     ListWritingStyleDocumentsUseCase,
@@ -51,13 +61,17 @@ from app.modules.writing.interface.schemas import (
     ChatReplyStatusResponse,
     ConversationListResponse,
     ConversationResponse,
+    CreateWritingSegmentRequest,
     ExtractWritingStyleProfileRequest,
     MemoryRecordListResponse,
     MemoryRecordResponse,
     SendChatMessageRequest,
     StartConversationRequest,
     SupersedeMemoryRecordRequest,
+    UpdateWritingSegmentRequest,
     WritingProfileViewResponse,
+    WritingSegmentListResponse,
+    WritingSegmentResponse,
     WritingStyleDocumentListResponse,
     WritingStyleDocumentResponse,
     WritingStyleProfileExtractionResponse,
@@ -228,6 +242,109 @@ def reset_writing_profile(
     use_case.execute(user_id=user_id)
 
 
+# --- Writing Segments (2026-10-02) ----------------------------------------------------------
+
+
+@router.post(
+    "/segments",
+    response_model=WritingSegmentResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        401: {"model": ErrorResponse, "description": "Missing, malformed, unknown, or ended session."},
+        404: {"model": ErrorResponse, "description": "The authenticated user has no Agent yet."},
+        409: {
+            "model": ErrorResponse,
+            "description": "A segment with this name already exists, or the maximum number of segments was reached.",
+        },
+        422: {"model": ErrorResponse, "description": "Blank name/instructions, or too long."},
+    },
+)
+def create_writing_segment(
+    payload: CreateWritingSegmentRequest,
+    user_id: int = Depends(get_current_user_id),
+    use_case: CreateWritingSegmentUseCase = Depends(get_create_writing_segment_use_case),
+) -> WritingSegmentResponse:
+    """Creates a named project segment (e.g. "Background of the Study") with its own saved
+    writing instructions - requested directly: "extra instructions for different segments of
+    the project". Selecting this segment on a later `POST .../messages` call
+    (`segment_id`) applies its instructions to that specific message's generation.
+    """
+    segment = use_case.execute(user_id=user_id, name=payload.name, instructions=payload.instructions)
+    return WritingSegmentResponse.from_domain(segment)
+
+
+@router.get(
+    "/segments",
+    response_model=WritingSegmentListResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"model": ErrorResponse, "description": "Missing, malformed, unknown, or ended session."},
+        404: {"model": ErrorResponse, "description": "The authenticated user has no Agent yet."},
+    },
+)
+def list_writing_segments(
+    user_id: int = Depends(get_current_user_id),
+    use_case: ListWritingSegmentsUseCase = Depends(get_list_writing_segments_use_case),
+) -> WritingSegmentListResponse:
+    """Lists every Writing Segment the authenticated user's own Agent has defined, alphabetical
+    by name - the set a client offers as a selector before sending a chat message.
+    """
+    return WritingSegmentListResponse.from_domain(use_case.execute(user_id=user_id))
+
+
+@router.patch(
+    "/segments/{segment_id}",
+    response_model=WritingSegmentResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"model": ErrorResponse, "description": "Missing, malformed, unknown, or ended session."},
+        404: {
+            "model": ErrorResponse,
+            "description": "No such Writing Segment, or it does not belong to the authenticated user.",
+        },
+        409: {"model": ErrorResponse, "description": "Another segment already has this name."},
+        422: {"model": ErrorResponse, "description": "Blank name/instructions, or too long."},
+    },
+)
+def update_writing_segment(
+    segment_id: int,
+    payload: UpdateWritingSegmentRequest,
+    user_id: int = Depends(get_current_user_id),
+    use_case: UpdateWritingSegmentUseCase = Depends(get_update_writing_segment_use_case),
+) -> WritingSegmentResponse:
+    """Edits a Writing Segment's name and/or instructions in place - no versioning or history,
+    see WritingSegment's own docstring for why that's the right semantics here.
+    """
+    segment = use_case.execute(
+        user_id=user_id, segment_id=segment_id, name=payload.name, instructions=payload.instructions
+    )
+    return WritingSegmentResponse.from_domain(segment)
+
+
+@router.delete(
+    "/segments/{segment_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        401: {"model": ErrorResponse, "description": "Missing, malformed, unknown, or ended session."},
+        404: {
+            "model": ErrorResponse,
+            "description": "No such Writing Segment, or it does not belong to the authenticated user.",
+        },
+    },
+)
+def delete_writing_segment(
+    segment_id: int,
+    user_id: int = Depends(get_current_user_id),
+    use_case: DeleteWritingSegmentUseCase = Depends(get_delete_writing_segment_use_case),
+) -> None:
+    """Permanently removes a Writing Segment (a hard delete - see WritingSegmentRepository's
+    own docstring for why no soft-delete/history is needed here). A conversation that already
+    used this segment keeps whatever was generated; only future messages lose the option to
+    select it.
+    """
+    use_case.execute(user_id=user_id, segment_id=segment_id)
+
+
 # --- Persistent Brain v2: Memory inspection -------------------------------------------------
 
 
@@ -388,7 +505,8 @@ def list_conversation_messages(
         401: {"model": ErrorResponse, "description": "Missing, malformed, unknown, or ended session."},
         404: {
             "model": ErrorResponse,
-            "description": "No such Conversation, or it does not belong to the authenticated user.",
+            "description": "No such Conversation, or it does not belong to the authenticated user. Also "
+            "returned when segment_id is set but does not reference a Writing Segment owned by this Agent.",
         },
         422: {"model": ErrorResponse, "description": "Blank content."},
         429: {"model": ErrorResponse, "description": "Too many messages sent from this client."},
@@ -409,8 +527,13 @@ def send_chat_message(
     {draft_id}/generate` already uses. The message itself is persisted synchronously here;
     the AI reply is generated later, in the Work Item executor, and appears as a new Message
     once `GET /writing/conversations/{conversation_id}/messages` is polled again.
+
+    `segment_id` (2026-10-02), when set, applies that Writing Segment's saved instructions to
+    this specific message's generation - see SendChatMessageUseCase's own docstring.
     """
-    work_item = use_case.execute(user_id=user_id, conversation_id=conversation_id, content=payload.content)
+    work_item = use_case.execute(
+        user_id=user_id, conversation_id=conversation_id, content=payload.content, segment_id=payload.segment_id
+    )
     return ChatReplyStatusResponse.from_domain(conversation_id=conversation_id, work_item=work_item)
 
 

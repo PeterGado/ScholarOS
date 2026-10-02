@@ -146,24 +146,21 @@ def test_human_sounding_writing_guidance_survives_truncation_alongside_grounding
 
 def test_truncation_prefers_sentence_boundaries():
     # max_characters is calibrated so PROJECT TOPIC, PROJECT DESCRIPTION, BACKGROUND KNOWLEDGE
-    # (WIKIPEDIA), and the reserved BUILT-IN SYSTEM GUIDANCE + GROUNDING RULES + HUMAN-SOUNDING
-    # WRITING + RESPONSE TASK tail sections all fit in full, leaving just enough room for
-    # WRITING INSTRUCTIONS to be truncated - at a sentence boundary - after its first sentence.
-    # (2026-09-30: recalibrated three times today - HUMANIZER_GUIDANCE grew twice, first with
-    # the attribution/epistemic-honesty/placeholder additions, then with the plain-verb-
-    # substitution/inflated-significance additions found via a live quality-confirmation test;
-    # then BUILTIN_SYSTEM_GUIDANCE and the new BACKGROUND KNOWLEDGE (WIKIPEDIA) section both
-    # grew when Wikipedia background knowledge was added - each growth reserves more space up
-    # front than before.)
+    # (WIKIPEDIA), the (absent, placeholder) SEGMENT INSTRUCTIONS section, and the reserved
+    # BUILT-IN SYSTEM GUIDANCE + GROUNDING RULES + HUMAN-SOUNDING WRITING + RESPONSE TASK tail
+    # sections all fit in full, leaving just enough room for WRITING INSTRUCTIONS to be
+    # truncated - at a sentence boundary - after its first sentence. (Recalibrated repeatedly as
+    # these grew over 2026-09-30/2026-10-02 - see git history for each prior reason - most
+    # recently when the SEGMENT INSTRUCTIONS section was added.)
     context = ContextAssemblyInput(
         topic="Topic",
         instructions="First instruction sentence. Second instruction sentence.",
-        max_characters=3880,
+        max_characters=4060,
     )
 
     assembled = assemble_context(context)
 
-    assert len(assembled.prompt) <= 3880
+    assert len(assembled.prompt) <= 4060
     assert "First instruction sentence." in assembled.prompt
     assert "Second instruction sentence" not in assembled.prompt
 
@@ -267,6 +264,33 @@ def test_absent_background_knowledge_renders_a_clean_placeholder():
         "## BACKGROUND KNOWLEDGE (WIKIPEDIA)\nNo Wikipedia background knowledge was available "
         "for this topic." in assembled.prompt
     )
+
+
+# --- Writing Segments (2026-10-02) ----------------------------------------------------------
+
+
+def test_segment_instructions_reach_the_assembled_prompt_with_the_segment_name_in_the_heading():
+    context = ContextAssemblyInput(
+        topic="Topic",
+        instructions="Instructions",
+        segment_name="Statement of the Problem",
+        segment_instructions="Open with the research gap before stating the problem.",
+    )
+
+    assembled = assemble_context(context)
+
+    assert "## SEGMENT INSTRUCTIONS (Statement of the Problem)" in assembled.prompt
+    assert "Open with the research gap before stating the problem." in assembled.prompt
+
+
+def test_absent_segment_renders_a_clean_placeholder_with_a_generic_heading():
+    context = ContextAssemblyInput(topic="Topic", instructions="Instructions")
+
+    assembled = assemble_context(context)
+
+    assert "## SEGMENT INSTRUCTIONS\nNo project segment was selected for this message." in assembled.prompt
+    # No stray parenthesised name when none was selected.
+    assert "## SEGMENT INSTRUCTIONS (" not in assembled.prompt
 
 
 # --- Persistent Brain: RELEVANT CONVERSATION CONTEXT --------------------------------------
@@ -461,6 +485,8 @@ def test_full_section_structure_is_present_with_every_context_source_populated()
             ContextConversationMessage(direction=MessageDirection.USER_REQUEST, content="Focus on the north end."),
         ),
         background_knowledge="Barrier island: a coastal landform that protects the mainland from wave action.",
+        segment_name="Background of the Study",
+        segment_instructions="Always cite at least two sources for this section.",
     )
 
     assembled = assemble_context(context)
@@ -469,6 +495,7 @@ def test_full_section_structure_is_present_with_every_context_source_populated()
         "## PROJECT DESCRIPTION",
         "## BACKGROUND KNOWLEDGE (WIKIPEDIA)",
         "## WRITING INSTRUCTIONS",
+        "## SEGMENT INSTRUCTIONS (Background of the Study)",
         "## RELEVANT CONVERSATION CONTEXT",
         "## RESEARCH EVIDENCE",
         "## WRITING STYLE AND TONE",
