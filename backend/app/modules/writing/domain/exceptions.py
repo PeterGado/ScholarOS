@@ -279,3 +279,14 @@ class TooManyWritingSegmentsError(WritingDomainError):
             f"You already have the maximum of {limit} writing segments. Delete one before adding another."
         )
         self.limit = limit
+
+
+class SegmentTemplateNotFoundError(WritingDomainError):
+    """No built-in Segment Template matches the given template_id (app.modules.writing.domain.
+    segment_templates.SEGMENT_TEMPLATES) - always a client error, never an ownership question,
+    since templates aren't user-scoped data.
+    """
+
+    def __init__(self, *, template_id: str) -> None:
+        super().__init__(f"No segment template {template_id!r} was found.")
+        self.template_id = template_id

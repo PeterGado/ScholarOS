@@ -41,6 +41,7 @@ from app.modules.writing.domain.exceptions import (
     MemoryRecordAlreadySupersededError,
     MemoryRecordNotFoundError,
     NoUsableWritingStyleSamplesError,
+    SegmentTemplateNotFoundError,
     TooManyWritingSegmentsError,
     TooManyWritingStyleSamplesError,
     UnusableWritingStyleSampleError,
@@ -170,6 +171,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(WritingSegmentNotFoundError, _handle_not_found)
     app.add_exception_handler(DuplicateWritingSegmentNameError, _handle_conflict)
     app.add_exception_handler(TooManyWritingSegmentsError, _handle_conflict)
+    app.add_exception_handler(SegmentTemplateNotFoundError, _handle_not_found)
     app.add_exception_handler(ConversationNotFoundError, _handle_not_found)
     app.add_exception_handler(ChatReplyWorkItemNotFoundError, _handle_not_found)
     app.add_exception_handler(ChatReplyCannotBeRetriedError, _handle_conflict)

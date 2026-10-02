@@ -6,6 +6,7 @@ from app.api.exception_handlers import ErrorResponse
 from app.core.config import get_settings
 from app.core.pagination import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT
 from app.core.dependencies import (
+    get_apply_segment_template_use_case,
     get_create_writing_segment_use_case,
     get_current_user_id,
     get_delete_writing_segment_use_case,
@@ -16,6 +17,7 @@ from app.core.dependencies import (
     get_delete_conversation_use_case,
     get_list_conversations_use_case,
     get_list_memory_use_case,
+    get_list_segment_templates_use_case,
     get_list_writing_segments_use_case,
     get_list_writing_style_documents_use_case,
     get_reset_writing_profile_use_case,
@@ -45,6 +47,10 @@ from app.modules.writing.application.memory_inspection import (
     SupersedeMemoryRecordUseCase,
 )
 from app.modules.writing.application.profile_view import GetWritingProfileUseCase, ResetWritingProfileUseCase
+from app.modules.writing.application.segment_templates import (
+    ApplySegmentTemplateUseCase,
+    ListSegmentTemplatesUseCase,
+)
 from app.modules.writing.application.segments import (
     CreateWritingSegmentUseCase,
     DeleteWritingSegmentUseCase,
@@ -57,6 +63,7 @@ from app.modules.writing.application.style_ingestion import (
     UploadWritingStyleDocumentUseCase,
 )
 from app.modules.writing.interface.schemas import (
+    ApplySegmentTemplateResponse,
     ChatMessageListResponse,
     ChatReplyStatusResponse,
     ConversationListResponse,
@@ -65,6 +72,7 @@ from app.modules.writing.interface.schemas import (
     ExtractWritingStyleProfileRequest,
     MemoryRecordListResponse,
     MemoryRecordResponse,
+    SegmentTemplateListResponse,
     SendChatMessageRequest,
     StartConversationRequest,
     SupersedeMemoryRecordRequest,
@@ -343,6 +351,52 @@ def delete_writing_segment(
     select it.
     """
     use_case.execute(user_id=user_id, segment_id=segment_id)
+
+
+@router.get(
+    "/segment-templates",
+    response_model=SegmentTemplateListResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"model": ErrorResponse, "description": "Missing, malformed, unknown, or ended session."},
+    },
+)
+def list_segment_templates(
+    user_id: int = Depends(get_current_user_id),
+    use_case: ListSegmentTemplatesUseCase = Depends(get_list_segment_templates_use_case),
+) -> SegmentTemplateListResponse:
+    """Lists every built-in Segment Template (2026-10-02) - static reference data available to
+    any authenticated user, not scoped to an Agent (there's nothing to own yet - a template is
+    only ever applied, never created, through this API).
+    """
+    return SegmentTemplateListResponse.from_domain(use_case.execute())
+
+
+@router.post(
+    "/segment-templates/{template_id}/apply",
+    response_model=ApplySegmentTemplateResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"model": ErrorResponse, "description": "Missing, malformed, unknown, or ended session."},
+        404: {
+            "model": ErrorResponse,
+            "description": "No such Segment Template, or the authenticated user has no Agent yet.",
+        },
+    },
+)
+def apply_segment_template(
+    template_id: str,
+    user_id: int = Depends(get_current_user_id),
+    use_case: ApplySegmentTemplateUseCase = Depends(get_apply_segment_template_use_case),
+) -> ApplySegmentTemplateResponse:
+    """Creates the Writing Segments a built-in template defines, on the caller's own Agent -
+    safe to call more than once (e.g. after a workspace reset): anything that already exists by
+    name is reported under `skipped_existing` rather than failing the whole call. 200, not 201:
+    a partial/no-op application (everything already existed) is still a successful response,
+    not a creation in the REST sense.
+    """
+    result = use_case.execute(user_id=user_id, template_id=template_id)
+    return ApplySegmentTemplateResponse.from_domain(result)
 
 
 # --- Persistent Brain v2: Memory inspection -------------------------------------------------

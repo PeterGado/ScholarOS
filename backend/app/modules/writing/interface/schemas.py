@@ -4,10 +4,12 @@ from pydantic import BaseModel, Field
 
 from app.modules.document.domain.entities import ResearchDocument
 from app.modules.writing.application.profile_view import WritingProfileView
+from app.modules.writing.application.segment_templates import ApplySegmentTemplateResult
 from app.modules.writing.application.style_extraction import WritingStyleProfileExtraction
 from app.modules.writing.application.style_ingestion import WritingStyleDocumentUpload
 from app.modules.writing.application.memory_inspection import MemoryRecordWithProvenance
 from app.modules.writing.domain.entities import Conversation, Message, WritingSegment
+from app.modules.writing.domain.segment_templates import SegmentTemplate
 from app.workers.entities import WorkItem
 
 
@@ -356,3 +358,41 @@ class WritingSegmentListResponse(BaseModel):
     @classmethod
     def from_domain(cls, segments: list[WritingSegment]) -> "WritingSegmentListResponse":
         return cls(segments=[WritingSegmentResponse.from_domain(s) for s in segments])
+
+
+class SegmentTemplateResponse(BaseModel):
+    template_id: str
+    name: str
+    description: str
+    segment_count: int
+
+    @classmethod
+    def from_domain(cls, template: SegmentTemplate) -> "SegmentTemplateResponse":
+        return cls(
+            template_id=template.template_id,
+            name=template.name,
+            description=template.description,
+            segment_count=len(template.entries),
+        )
+
+
+class SegmentTemplateListResponse(BaseModel):
+    templates: list[SegmentTemplateResponse]
+
+    @classmethod
+    def from_domain(cls, templates: tuple[SegmentTemplate, ...]) -> "SegmentTemplateListResponse":
+        return cls(templates=[SegmentTemplateResponse.from_domain(t) for t in templates])
+
+
+class ApplySegmentTemplateResponse(BaseModel):
+    created: list[WritingSegmentResponse]
+    skipped_existing: list[str]
+    limit_reached: bool
+
+    @classmethod
+    def from_domain(cls, result: ApplySegmentTemplateResult) -> "ApplySegmentTemplateResponse":
+        return cls(
+            created=[WritingSegmentResponse.from_domain(s) for s in result.created],
+            skipped_existing=result.skipped_existing,
+            limit_reached=result.limit_reached,
+        )

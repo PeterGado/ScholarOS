@@ -50,6 +50,10 @@ from app.modules.writing.application.chat import (
 )
 from app.modules.writing.application.memory_inspection import ListMemoryUseCase, SupersedeMemoryRecordUseCase
 from app.modules.writing.application.profile_view import GetWritingProfileUseCase, ResetWritingProfileUseCase
+from app.modules.writing.application.segment_templates import (
+    ApplySegmentTemplateUseCase,
+    ListSegmentTemplatesUseCase,
+)
 from app.modules.writing.application.segments import (
     CreateWritingSegmentUseCase,
     DeleteWritingSegmentUseCase,
@@ -353,6 +357,16 @@ def get_create_writing_segment_use_case(
     unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
 ) -> CreateWritingSegmentUseCase:
     return CreateWritingSegmentUseCase(segment_repository, agent_repository, unit_of_work)
+
+
+def get_list_segment_templates_use_case() -> ListSegmentTemplatesUseCase:
+    return ListSegmentTemplatesUseCase()
+
+
+def get_apply_segment_template_use_case(
+    create_segment_use_case: CreateWritingSegmentUseCase = Depends(get_create_writing_segment_use_case),
+) -> ApplySegmentTemplateUseCase:
+    return ApplySegmentTemplateUseCase(create_segment_use_case)
 
 
 def get_list_writing_segments_use_case(
