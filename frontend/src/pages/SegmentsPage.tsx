@@ -1,12 +1,19 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createWritingSegment, deleteWritingSegment, listWritingSegments, updateWritingSegment } from "@/api/writing";
+import {
+  applySegmentTemplate,
+  createWritingSegment,
+  deleteWritingSegment,
+  listSegmentTemplates,
+  listWritingSegments,
+  updateWritingSegment,
+} from "@/api/writing";
 import { ApiError } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { WritingSegmentResponse } from "@/api/schemas";
+import type { ApplySegmentTemplateResponse, WritingSegmentResponse } from "@/api/schemas";
 
 // Mirrors the backend's own MAX_WRITING_SEGMENTS_PER_AGENT (app/modules/writing/application/
 // segments.py) - the backend is the real enforcement point, this only lets the UI show a
@@ -22,9 +29,21 @@ export function SegmentsPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
   const [editInstructions, setEditInstructions] = useState("");
+  const [lastApplyResult, setLastApplyResult] = useState<ApplySegmentTemplateResponse | null>(null);
 
   const segmentsQuery = useQuery({ queryKey: WRITING_SEGMENTS_QUERY_KEY, queryFn: listWritingSegments });
   const segments = segmentsQuery.data ?? [];
+
+  const templatesQuery = useQuery({ queryKey: ["segment-templates"], queryFn: listSegmentTemplates });
+  const templates = templatesQuery.data ?? [];
+
+  const applyTemplateMutation = useMutation({
+    mutationFn: (templateId: string) => applySegmentTemplate(templateId),
+    onSuccess: (result) => {
+      setLastApplyResult(result);
+      queryClient.invalidateQueries({ queryKey: WRITING_SEGMENTS_QUERY_KEY });
+    },
+  });
 
   const createMutation = useMutation({
     mutationFn: () => createWritingSegment(name.trim(), instructions.trim()),
@@ -71,6 +90,59 @@ export function SegmentsPage() {
           the Study", "Statement of the Problem"). Pick a segment before sending a chat message to
           apply its instructions to that specific reply.
         </p>
+      </section>
+
+      {templates.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="text-base font-semibold">Templates</h2>
+          <p className="text-sm text-muted-foreground">
+            Built-in segment sets you can apply in one click. Applying is safe to repeat - anything
+            that already exists by name is left untouched, not duplicated.
+          </p>
+          <ul className="space-y-2">
+            {templates.map((template) => (
+              <li key={template.template_id}>
+                <Card>
+                  <CardContent className="flex items-center justify-between gap-4 py-3">
+                    <div>
+                      <p className="text-sm font-medium">{template.name}</p>
+                      <p className="text-sm text-muted-foreground">{template.description}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{template.segment_count} segments</p>
+                    </div>
+                    <Button
+                      size="sm"
+                      disabled={applyTemplateMutation.isPending}
+                      onClick={() => applyTemplateMutation.mutate(template.template_id)}
+                    >
+                      {applyTemplateMutation.isPending ? "Applying..." : "Apply"}
+                    </Button>
+                  </CardContent>
+                </Card>
+              </li>
+            ))}
+          </ul>
+          {applyTemplateMutation.isError && (
+            <p className="text-sm text-destructive">
+              {applyTemplateMutation.error instanceof ApiError
+                ? applyTemplateMutation.error.message
+                : "Could not apply template."}
+            </p>
+          )}
+          {lastApplyResult && (
+            <p className="text-sm text-muted-foreground">
+              Added {lastApplyResult.created.length} new segment(s)
+              {lastApplyResult.skipped_existing.length > 0
+                ? `, ${lastApplyResult.skipped_existing.length} already existed and were left unchanged.`
+                : "."}
+              {lastApplyResult.limit_reached &&
+                " Stopped early - you've reached the segment limit; delete some to add the rest."}
+            </p>
+          )}
+        </section>
+      )}
+
+      <section className="space-y-4">
+        <h2 className="text-base font-semibold">Add a Segment</h2>
         <form onSubmit={handleCreate} className="space-y-3">
           <Input
             value={name}

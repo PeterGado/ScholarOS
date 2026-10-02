@@ -1,22 +1,26 @@
 import { apiClient } from "../lib/apiClient";
 import type { Page, PageParams } from "./pagination";
 import {
+  applySegmentTemplateResponseSchema,
   chatMessageListResponseSchema,
   chatReplyStatusResponseSchema,
   conversationListResponseSchema,
   conversationResponseSchema,
   memoryRecordListResponseSchema,
   memoryRecordResponseSchema,
+  segmentTemplateListResponseSchema,
   writingProfileViewResponseSchema,
   writingSegmentListResponseSchema,
   writingSegmentResponseSchema,
   writingStyleDocumentListResponseSchema,
   writingStyleDocumentResponseSchema,
   writingStyleProfileExtractionResponseSchema,
+  type ApplySegmentTemplateResponse,
   type ChatMessageResponse,
   type ChatReplyStatusResponse,
   type ConversationResponse,
   type MemoryRecordResponse,
+  type SegmentTemplateResponse,
   type WritingProfileViewResponse,
   type WritingSegmentResponse,
   type WritingStyleDocumentResponse,
@@ -91,6 +95,16 @@ export async function updateWritingSegment(
 
 export async function deleteWritingSegment(segmentId: number): Promise<void> {
   await apiClient.delete(`/writing/segments/${segmentId}`);
+}
+
+export async function listSegmentTemplates(): Promise<SegmentTemplateResponse[]> {
+  const response = await apiClient.get("/writing/segment-templates");
+  return segmentTemplateListResponseSchema.parse(response.data).templates;
+}
+
+export async function applySegmentTemplate(templateId: string): Promise<ApplySegmentTemplateResponse> {
+  const response = await apiClient.post(`/writing/segment-templates/${templateId}/apply`);
+  return applySegmentTemplateResponseSchema.parse(response.data);
 }
 
 // --- Persistent Brain: Agent Workspace chat -------------------------------------------------

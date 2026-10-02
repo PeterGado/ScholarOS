@@ -143,6 +143,25 @@ export const writingSegmentListResponseSchema = z.object({
   segments: z.array(writingSegmentResponseSchema),
 });
 
+export const segmentTemplateResponseSchema = z.object({
+  template_id: z.string(),
+  name: z.string(),
+  description: z.string(),
+  segment_count: z.number(),
+});
+export type SegmentTemplateResponse = z.infer<typeof segmentTemplateResponseSchema>;
+
+export const segmentTemplateListResponseSchema = z.object({
+  templates: z.array(segmentTemplateResponseSchema),
+});
+
+export const applySegmentTemplateResponseSchema = z.object({
+  created: z.array(writingSegmentResponseSchema),
+  skipped_existing: z.array(z.string()),
+  limit_reached: z.boolean(),
+});
+export type ApplySegmentTemplateResponse = z.infer<typeof applySegmentTemplateResponseSchema>;
+
 // --- Persistent Brain: Agent Workspace chat -------------------------------------------------
 
 export const conversationResponseSchema = z.object({
