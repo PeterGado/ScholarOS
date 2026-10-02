@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 
 from app.modules.writing.domain.enums import MemoryRecordType, MessageDirection, ProfileCharacteristicType
@@ -265,7 +266,9 @@ def assemble_context(context: ContextAssemblyInput) -> AssembledContext:
             "Respond directly to the latest user message below. Treat it as the task to complete; "
             "do not merely produce a generic draft or repeat background context. If it asks a "
             "question, answer it. If it asks for writing, provide that writing. Ask one concise "
-            "clarifying question only when essential information is missing.\n\n"
+            "clarifying question only when essential information is missing. If it asks for "
+            "citations or sources that GROUNDING RULES above says are unavailable, follow "
+            "GROUNDING RULES instead of inventing any - that rule overrides this one.\n\n"
             f"User: {context.instructions.strip()}",
         ),
     ]
@@ -425,10 +428,47 @@ def _grounding_rules(*, has_evidence: bool) -> tuple[str, str]:
         text = (
             "No research evidence was supplied for this request. Do not fabricate citations, "
             "sources, or specific findings, and do not claim support from research the user "
-            "has not actually provided. Rely on general knowledge, clearly presented as such, "
-            "together with the project context above."
+            "has not actually provided. This rule holds even if the user's own message "
+            "directly asks for citations, author names, specific studies, or sources - a "
+            "direct request for citations does not make it acceptable to invent ones that "
+            "do not exist. If asked for citations with no real evidence available, say so "
+            "plainly instead of producing any (e.g. \"I don't have real sources to cite here "
+            "- upload the relevant documents and I can cite them accurately\"). Rely on "
+            "general knowledge, clearly presented as such, together with the project context "
+            "above."
         )
     return ("GROUNDING RULES", text)
+
+
+_NAME = r"[A-Z][A-Za-z'-]+"
+# One or more author surnames joined by a comma/&/and, with an optional trailing "et al." -
+# "et al." is a closing marker (no name follows it), so it is not itself part of the repeated
+# "separator + name" group.
+_NAME_LIST = rf"{_NAME}(?:\s*(?:,|&|and)\s*{_NAME})*(?:\s*et\s+al\.?)?"
+_YEAR = r"(?:19|20)\d{2}[a-z]?"
+_CITATION_GROUP = rf"{_NAME_LIST},?\s*{_YEAR}"
+_CITATION_PATTERNS = (
+    # Narrative style: "Uadiale (2012)", "Osemeke and Adegbite (2016)", "Ogbaisi et al. (2019)"
+    re.compile(rf"\b{_NAME_LIST}\s*\(\s*{_YEAR}\s*\)"),
+    # Parenthetical style: "(Enobakhare, 2010)", "(Adeyemi & Fagbemi, 2010)", and multiple
+    # citations sharing one set of parens separated by ";" (e.g. "(Smith, 2010; Lee, 2015)").
+    re.compile(rf"\(\s*{_CITATION_GROUP}(?:\s*;\s*{_CITATION_GROUP})*\s*\)"),
+)
+
+
+def detect_likely_citations(text: str) -> bool:
+    """True if `text` contains an author-name/year pattern that reads like an academic
+    citation (e.g. "Smith (2020)", "(Smith & Lee, 2019)", "Smith et al. (2021)").
+
+    Used as a last-resort, no-evidence-only safety net (see `GenerateConversationReplyUseCase`
+    in the application layer) after a live production reproduction confirmed the GROUNDING
+    RULES prompt instruction above is not reliably obeyed on its own: a user message that
+    directly asks for "specific citations with author names and years" can lead the model to
+    invent plausible-looking ones even with this rule in the prompt. This function doesn't try
+    to fix the generation - it only flags a reply worth distrusting so a clear warning can be
+    attached before the user sees it.
+    """
+    return any(pattern.search(text) for pattern in _CITATION_PATTERNS)
 
 
 def _fit_sections(sections: list[tuple[str, str]], max_characters: int) -> str:

@@ -209,6 +209,42 @@ def test_a_failing_summarization_does_not_fail_the_chat_reply_but_is_logged(sess
     assert any("Conversation summarization failed" in record.message for record in caplog.records)
 
 
+# --- Citation-fabrication guard (real production defect, 2026-10-02) -----------------------
+# A live reproduction against production confirmed that, with zero research evidence, a reply
+# can still contain plausible-looking fabricated citations despite the GROUNDING RULES prompt
+# instruction forbidding it. These tests exercise the programmatic backstop end to end: a real
+# Work Item run through process_one_work_item, not just the pure detection function.
+
+
+def test_a_reply_with_citation_like_patterns_gets_a_warning_when_no_evidence_exists(session, storage):
+    workspace = _make_workspace(session, username="researcher-citations")
+    conversation = StartConversationUseCase(
+        SqlAlchemyConversationRepository(session), SqlAlchemyAgentRepository(session), SqlAlchemyUnitOfWork(session)
+    ).execute(user_id=workspace.agent.user_id)
+    provider = FakeTextGenerationProvider(reply="Uadiale (2012) suggests board independence matters.")
+
+    _send_and_process(session, storage, workspace, conversation.conversation_id, "Add citations please.", provider)
+
+    messages = SqlAlchemyMessageRepository(session).list_by_conversation_id(conversation.conversation_id)
+    reply = next(m for m in messages if m.origin == "FakeTextGenerationProvider")
+    assert "ScholarOS notice" in reply.content
+    assert "Uadiale (2012)" in reply.content  # the original reply is kept, not replaced
+
+
+def test_a_reply_without_citation_like_patterns_gets_no_warning(session, storage):
+    workspace = _make_workspace(session, username="researcher-no-citations")
+    conversation = StartConversationUseCase(
+        SqlAlchemyConversationRepository(session), SqlAlchemyAgentRepository(session), SqlAlchemyUnitOfWork(session)
+    ).execute(user_id=workspace.agent.user_id)
+    provider = FakeTextGenerationProvider(reply="This is a plain reply with no author-year patterns.")
+
+    _send_and_process(session, storage, workspace, conversation.conversation_id, "Write something.", provider)
+
+    messages = SqlAlchemyMessageRepository(session).list_by_conversation_id(conversation.conversation_id)
+    reply = next(m for m in messages if m.origin == "FakeTextGenerationProvider")
+    assert "ScholarOS notice" not in reply.content
+
+
 # --- Memory inspection: cross-agent isolation and supersession -----------------------------
 
 

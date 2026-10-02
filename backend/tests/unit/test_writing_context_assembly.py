@@ -10,6 +10,7 @@ from app.modules.writing.domain.context_assembly import (
     ContextMemory,
     ContextStyleSignal,
     assemble_context,
+    detect_likely_citations,
 )
 from app.modules.writing.domain.enums import MemoryRecordType, MessageDirection, ProfileCharacteristicType
 from app.modules.writing.domain.exceptions import InvalidContextAssemblyInputError
@@ -151,16 +152,17 @@ def test_truncation_prefers_sentence_boundaries():
     # sections all fit in full, leaving just enough room for WRITING INSTRUCTIONS to be
     # truncated - at a sentence boundary - after its first sentence. (Recalibrated repeatedly as
     # these grew over 2026-09-30/2026-10-02 - see git history for each prior reason - most
-    # recently when the SEGMENT INSTRUCTIONS section was added.)
+    # recently when GROUNDING RULES and RESPONSE TASK were strengthened against a real citation-
+    # fabrication defect.)
     context = ContextAssemblyInput(
         topic="Topic",
         instructions="First instruction sentence. Second instruction sentence.",
-        max_characters=4060,
+        max_characters=4636,
     )
 
     assembled = assemble_context(context)
 
-    assert len(assembled.prompt) <= 4060
+    assert len(assembled.prompt) <= 4636
     assert "First instruction sentence." in assembled.prompt
     assert "Second instruction sentence" not in assembled.prompt
 
@@ -467,6 +469,24 @@ def test_grounding_rules_reference_evidence_when_it_is_present():
     assert "Do not fabricate citations" not in assembled.prompt
 
 
+def test_grounding_rules_override_a_direct_request_for_citations_when_no_evidence_exists():
+    """Regression test for a real production defect (2026-10-02): a user message that directly
+    asks for citations ('add specific citations with author names and years') led the model to
+    invent plausible-looking ones despite the pre-existing GROUNDING RULES text, because nothing
+    told it that rule still applies when the user's own message explicitly asks for citations.
+    """
+    context = ContextAssemblyInput(
+        topic="Topic",
+        instructions="Add specific citations with author names and years for each claim.",
+        evidence=(),
+    )
+
+    assembled = assemble_context(context)
+
+    assert "even if the user's own message directly asks for citations" in assembled.prompt
+    assert "GROUNDING RULES instead of inventing any" in assembled.prompt
+
+
 # --- Prompt-inspection: the full section structure, not just field presence ---------------
 
 
@@ -510,3 +530,38 @@ def test_full_section_structure_is_present_with_every_context_source_populated()
     # Headings appear in the documented order (Persistent Brain §7).
     positions = [assembled.prompt.index(heading) for heading in expected_headings]
     assert positions == sorted(positions)
+
+
+# --- detect_likely_citations: the programmatic anti-fabrication backstop -------------------
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Uadiale (2012) suggests that board independence is a determinant of reporting integrity.",
+        "Osemeke and Adegbite (2016) contend that effectiveness is often undermined.",
+        "Prior work has shown this effect (Adeyemi & Fagbemi, 2010).",
+        "The finding has been replicated elsewhere (Oladele & Sunday, 2018).",
+        "Ogbaisi et al. (2019) found a similar pattern in Nigerian firms.",
+        "This matches earlier results (Enobakhare, 2010; Agrawal and Chadha, 2005).",
+    ],
+)
+def test_detect_likely_citations_flags_author_year_patterns(text):
+    """Reproduces the exact fabricated-citation shapes seen in a real production incident
+    (2026-10-02) where the model invented these under zero-evidence conditions.
+    """
+    assert detect_likely_citations(text) is True
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "The study covered the period from 2016 to 2025.",
+        "Chapter Three (Methodology) describes the approach in detail.",
+        "In 2012, the company expanded into three new markets.",
+        "The committee reviewed the report and found it satisfactory.",
+        "World War Two ended in 1945, reshaping global governance.",
+    ],
+)
+def test_detect_likely_citations_does_not_flag_ordinary_text(text):
+    assert detect_likely_citations(text) is False

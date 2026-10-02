@@ -25,6 +25,7 @@ from app.modules.writing.domain.context_assembly import (
     ContextMemory,
     ContextStyleSignal,
     assemble_context,
+    detect_likely_citations,
 )
 from app.modules.writing.domain.conversation_context import (
     CONVERSATION_SUMMARY_ORIGIN,
@@ -453,6 +454,19 @@ def _belongs_to_conversation(work_item: WorkItem, conversation_id: int) -> bool:
         return False
 
 
+CITATION_FABRICATION_WARNING = (
+    "\n\n[ScholarOS notice: no research documents were available for this reply, but it "
+    "contains what look like citations (author names and years). These are almost certainly "
+    "invented, not real sources - do not use them. Upload the actual source documents and ask "
+    "again so real citations can be produced instead.]"
+)
+"""Appended to a generated reply when `detect_likely_citations` fires with no evidence present
+(see that function's docstring). A live production reproduction (2026-10-02) confirmed the
+GROUNDING RULES prompt instruction alone does not reliably stop fabrication when the user's own
+message directly asks for citations - this is a defense-in-depth backstop, not a replacement for
+the prompt rule, mirroring the verbatim-leak guard built for writing-style extraction."""
+
+
 class GenerateConversationReplyUseCase:
     """Worker-side counterpart of `SendChatMessageUseCase` - assembles the final prompt,
     calls the AI provider, and persists the reply as a plain Conversation Message.
@@ -521,13 +535,17 @@ class GenerateConversationReplyUseCase:
         if not generated_content or not generated_content.strip():
             raise EmptyGeneratedContentError()
 
+        content = generated_content.strip()
+        if not assembled.evidence and detect_likely_citations(content):
+            content += CITATION_FABRICATION_WARNING
+
         self._conversations.lock_for_message_sequence(conversation_id)
         sequence = self._messages.count_by_conversation_id(conversation_id) + 1
         message = Message(
             conversation_id=conversation_id,
             sequence=sequence,
             direction=MessageDirection.SYSTEM_RESPONSE,
-            content=generated_content.strip(),
+            content=content,
             origin=type(self._text_provider).__name__,
         )
         try:
