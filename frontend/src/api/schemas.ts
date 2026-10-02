@@ -128,6 +128,21 @@ export const writingProfileViewResponseSchema = z.object({
 });
 export type WritingProfileViewResponse = z.infer<typeof writingProfileViewResponseSchema>;
 
+// --- Writing Segments (2026-10-02) ----------------------------------------------------------
+
+export const writingSegmentResponseSchema = z.object({
+  segment_id: z.number(),
+  name: z.string(),
+  instructions: z.string(),
+  created_at: z.string(),
+  updated_at: z.string().nullable(),
+});
+export type WritingSegmentResponse = z.infer<typeof writingSegmentResponseSchema>;
+
+export const writingSegmentListResponseSchema = z.object({
+  segments: z.array(writingSegmentResponseSchema),
+});
+
 // --- Persistent Brain: Agent Workspace chat -------------------------------------------------
 
 export const conversationResponseSchema = z.object({

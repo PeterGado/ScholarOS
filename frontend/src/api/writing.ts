@@ -8,6 +8,8 @@ import {
   memoryRecordListResponseSchema,
   memoryRecordResponseSchema,
   writingProfileViewResponseSchema,
+  writingSegmentListResponseSchema,
+  writingSegmentResponseSchema,
   writingStyleDocumentListResponseSchema,
   writingStyleDocumentResponseSchema,
   writingStyleProfileExtractionResponseSchema,
@@ -16,6 +18,7 @@ import {
   type ConversationResponse,
   type MemoryRecordResponse,
   type WritingProfileViewResponse,
+  type WritingSegmentResponse,
   type WritingStyleDocumentResponse,
   type WritingStyleDocumentSummaryResponse,
   type WritingStyleProfileExtractionResponse,
@@ -65,6 +68,31 @@ export async function getWritingProfile(): Promise<WritingProfileViewResponse> {
   return writingProfileViewResponseSchema.parse(response.data);
 }
 
+// --- Writing Segments (2026-10-02) ----------------------------------------------------------
+
+export async function listWritingSegments(): Promise<WritingSegmentResponse[]> {
+  const response = await apiClient.get("/writing/segments");
+  return writingSegmentListResponseSchema.parse(response.data).segments;
+}
+
+export async function createWritingSegment(name: string, instructions: string): Promise<WritingSegmentResponse> {
+  const response = await apiClient.post("/writing/segments", { name, instructions });
+  return writingSegmentResponseSchema.parse(response.data);
+}
+
+export async function updateWritingSegment(
+  segmentId: number,
+  name: string,
+  instructions: string,
+): Promise<WritingSegmentResponse> {
+  const response = await apiClient.patch(`/writing/segments/${segmentId}`, { name, instructions });
+  return writingSegmentResponseSchema.parse(response.data);
+}
+
+export async function deleteWritingSegment(segmentId: number): Promise<void> {
+  await apiClient.delete(`/writing/segments/${segmentId}`);
+}
+
 // --- Persistent Brain: Agent Workspace chat -------------------------------------------------
 
 export async function startConversation(title?: string): Promise<ConversationResponse> {
@@ -93,8 +121,15 @@ export async function listConversationMessages(
   return { items: parsed.messages, hasMore: parsed.has_more };
 }
 
-export async function sendChatMessage(conversationId: number, content: string): Promise<ChatReplyStatusResponse> {
-  const response = await apiClient.post(`/writing/conversations/${conversationId}/messages`, { content });
+export async function sendChatMessage(
+  conversationId: number,
+  content: string,
+  segmentId?: number,
+): Promise<ChatReplyStatusResponse> {
+  const response = await apiClient.post(`/writing/conversations/${conversationId}/messages`, {
+    content,
+    segment_id: segmentId ?? null,
+  });
   return chatReplyStatusResponseSchema.parse(response.data);
 }
 

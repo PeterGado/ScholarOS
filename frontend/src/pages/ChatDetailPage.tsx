@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Navigate, useParams } from "react-router-dom";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getChatReplyStatus, listConversationMessages, retryChatReply, sendChatMessage } from "@/api/writing";
+import { getChatReplyStatus, listConversationMessages, listWritingSegments, retryChatReply, sendChatMessage } from "@/api/writing";
+import { WRITING_SEGMENTS_QUERY_KEY } from "@/pages/SegmentsPage";
 import { DEFAULT_LIST_LIMIT } from "@/api/pagination";
 import { ApiError } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
@@ -61,6 +62,7 @@ export function ChatDetailPage() {
 function ChatConversation({ conversationId }: { conversationId: number }) {
   const queryClient = useQueryClient();
   const [content, setContent] = useState("");
+  const [selectedSegmentId, setSelectedSegmentId] = useState<number | null>(null);
   const [activeReply, setActiveReply] = useState<ActiveReply | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const isLoadingOlderRef = useRef(false);
@@ -91,6 +93,7 @@ function ChatConversation({ conversationId }: { conversationId: number }) {
   useEffect(() => {
     setActiveReply(loadActiveReply(conversationId));
     setContent("");
+    setSelectedSegmentId(null);
   }, [conversationId]);
 
   // offset=0 is the tail of the conversation (most recent messages), not the start - each
@@ -148,8 +151,12 @@ function ChatConversation({ conversationId }: { conversationId: number }) {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messagesQuery.data]);
 
+  const segmentsQuery = useQuery({ queryKey: WRITING_SEGMENTS_QUERY_KEY, queryFn: listWritingSegments });
+  const segments = segmentsQuery.data ?? [];
+
   const sendMutation = useMutation({
-    mutationFn: (message: string) => sendChatMessage(conversationId, message),
+    mutationFn: (message: string) =>
+      sendChatMessage(conversationId, message, selectedSegmentId ?? undefined),
     onSuccess: (status, message) => {
       queryClient.invalidateQueries({ queryKey: ["conversation-messages", conversationId] });
       trackActiveReply(status.work_item_id);
@@ -258,6 +265,23 @@ function ChatConversation({ conversationId }: { conversationId: number }) {
       </div>
 
       <div className="border-t border-border p-4">
+        {segments.length > 0 && (
+          <div className="mx-auto mb-2 max-w-2xl">
+            <select
+              value={selectedSegmentId ?? ""}
+              onChange={(e) => setSelectedSegmentId(e.target.value ? Number(e.target.value) : null)}
+              aria-label="Project segment"
+              className="rounded-md border border-input bg-transparent px-2 py-1 text-xs text-muted-foreground"
+            >
+              <option value="">No segment selected</option>
+              {segments.map((segment) => (
+                <option key={segment.segment_id} value={segment.segment_id}>
+                  {segment.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="mx-auto flex max-w-2xl items-end gap-2">
           <Textarea
             value={content}

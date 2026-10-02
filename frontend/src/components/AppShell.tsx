@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate, useOutletContext, useParams } from "react-router-dom";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { FileText, LogOut, Menu, MessageSquare, PenLine, Plus, Settings, X } from "lucide-react";
+import { FileText, Layers, LogOut, Menu, MessageSquare, PenLine, Plus, Settings, X } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { logout as logoutRequest } from "@/api/auth";
 import { deleteConversation, listConversations, startConversation } from "@/api/writing";
@@ -20,6 +20,7 @@ const navItems = [
   { to: "/chat", label: "Chat", icon: MessageSquare },
   { to: "/documents", label: "Research Documents", icon: FileText },
   { to: "/style-profile", label: "Writing Style", icon: PenLine },
+  { to: "/segments", label: "Project Segments", icon: Layers },
 ];
 
 // A single persistent left sidebar for the whole app (ChatGPT/Claude-style): app nav, a

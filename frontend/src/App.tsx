@@ -11,6 +11,7 @@ import { StyleProfilePage } from "@/pages/StyleProfilePage";
 import { ChatPage } from "@/pages/ChatPage";
 import { ChatDetailPage } from "@/pages/ChatDetailPage";
 import { MemoryPage } from "@/pages/MemoryPage";
+import { SegmentsPage } from "@/pages/SegmentsPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 
 function App() {
@@ -40,6 +41,7 @@ function App() {
             <Route path="/chat/:conversationId" element={<ChatDetailPage />} />
             <Route path="/documents" element={<DocumentsPage />} />
             <Route path="/style-profile" element={<StyleProfilePage />} />
+            <Route path="/segments" element={<SegmentsPage />} />
             <Route path="/memory" element={<MemoryPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
