@@ -5,6 +5,8 @@ import { register, loginWithGoogle } from "@/api/auth";
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 import { ApiError } from "@/lib/apiClient";
 import { useAuth } from "@/lib/AuthContext";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 // The invite_code field is always rendered, even though it's only enforced when the backend
 // has REGISTRATION_INVITE_CODE configured (ADR-011) - the frontend never needs to know whether
@@ -64,9 +66,8 @@ export function RegisterPage() {
           <label htmlFor="username" className="text-sm font-medium">
             Username
           </label>
-          <input
+          <Input
             id="username"
-            className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             autoComplete="username"
@@ -77,10 +78,9 @@ export function RegisterPage() {
           <label htmlFor="password" className="text-sm font-medium">
             Password
           </label>
-          <input
+          <Input
             id="password"
             type="password"
-            className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="new-password"
@@ -92,22 +92,17 @@ export function RegisterPage() {
           <label htmlFor="invite-code" className="text-sm font-medium">
             Invite code (if you have one)
           </label>
-          <input
+          <Input
             id="invite-code"
-            className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
             value={inviteCode}
             onChange={(e) => setInviteCode(e.target.value)}
             autoComplete="off"
           />
         </div>
         {error && <p className="text-sm text-destructive">{error}</p>}
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
-        >
+        <Button type="submit" disabled={isSubmitting} className="w-full">
           {isSubmitting ? "Creating account..." : "Create account"}
-        </button>
+        </Button>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <div className="h-px flex-1 bg-border" />
           or

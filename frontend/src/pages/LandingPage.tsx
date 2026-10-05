@@ -94,7 +94,7 @@ export function LandingPage() {
         </section>
 
         <section className="border-t border-border bg-muted/30">
-          <div className="mx-auto max-w-5xl px-6 py-16">
+          <div className="mx-auto max-w-5xl px-6 py-10 sm:py-16">
             <div className="grid gap-4 sm:grid-cols-2">
               {features.map(({ icon: Icon, title, description }) => (
                 <Card key={title}>
@@ -109,7 +109,7 @@ export function LandingPage() {
           </div>
         </section>
 
-        <section className="mx-auto max-w-3xl px-6 py-16 text-center">
+        <section className="mx-auto max-w-3xl px-6 py-10 sm:py-16 text-center">
           <p className="text-muted-foreground">
             ScholarOS doesn't replace the researcher - it amplifies your thinking and cuts the
             repetitive work, while keeping the writing genuinely yours.
