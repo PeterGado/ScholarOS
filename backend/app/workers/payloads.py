@@ -144,6 +144,12 @@ def _context_to_dict(context: ContextAssemblyInput) -> dict:
     by contrast, ARE resolved synchronously at send time in `SendChatMessageUseCase` - a real
     bug found via a live e2e test confirmed that omitting them here silently dropped a selected
     segment's instructions before they ever reached the worker's assembled prompt.
+
+    `sources[].author`/`sources[].publication_year` (2026-10-06) are the same story as
+    segment_name/instructions above - resolved at send time, must be listed explicitly here or
+    they silently vanish before the worker ever sees them. Caught this time by reasoning from
+    the segment_name precedent rather than by another live bug, since citation grounding is
+    exactly the kind of resolved-at-send-time data this field map has already bitten once.
     """
     return {
         "topic": context.topic,
@@ -166,8 +172,12 @@ def _context_to_dict(context: ContextAssemblyInput) -> dict:
                 "summary": item.summary,
                 "score": item.score,
                 "sources": [
-                    {"document_id": source.document_id,
-                        "document_title": source.document_title}
+                    {
+                        "document_id": source.document_id,
+                        "document_title": source.document_title,
+                        "author": source.author,
+                        "publication_year": source.publication_year,
+                    }
                     for source in item.sources
                 ],
             }
@@ -218,7 +228,10 @@ def _context_from_dict(payload: dict) -> ContextAssemblyInput:
                 score=item["score"],
                 sources=tuple(
                     ContextEvidenceSource(
-                        document_id=source["document_id"], document_title=source["document_title"]
+                        document_id=source["document_id"],
+                        document_title=source["document_title"],
+                        author=source.get("author"),
+                        publication_year=source.get("publication_year"),
                     )
                     for source in item.get("sources", [])
                 ),

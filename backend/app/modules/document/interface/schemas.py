@@ -21,6 +21,7 @@ class ResearchDocumentResponse(BaseModel):
     title: str
     author: str | None
     source: str | None
+    publication_year: int | None
     format: str
     processing_status: str
     ingested_at: datetime
@@ -34,6 +35,7 @@ class ResearchDocumentResponse(BaseModel):
             title=document.title,
             author=document.author,
             source=document.source,
+            publication_year=document.publication_year,
             format=document.format,
             processing_status=document.processing_status.value,
             ingested_at=document.ingested_at,

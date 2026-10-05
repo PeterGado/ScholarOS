@@ -21,6 +21,7 @@ from app.modules.knowledge.infrastructure.repositories import (
     SqlAlchemyKnowledgeChunkRepository,
     SqlAlchemyLexicalSearchRepository,
 )
+from app.modules.document.application.use_cases import UploadResearchDocumentUseCase
 from app.modules.document.infrastructure.repositories import SqlAlchemyDocumentRepository
 from app.modules.project.application.use_cases import CreateProjectUseCase
 from app.modules.project.infrastructure.repositories import SqlAlchemyProjectRepository
@@ -73,6 +74,9 @@ class FakeEmbeddingProvider:
     def embed(self, text: str) -> list[float]:
         return [0.0, 0.0]
 
+    def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        return [self.embed(text) for text in texts]
+
 
 @pytest.fixture()
 def session(tmp_path):
@@ -118,6 +122,53 @@ def _search_knowledge_use_case(session) -> SearchKnowledgeUseCase:
         SqlAlchemyLexicalSearchRepository(session),
         AiUsageGuard(None, None, daily_token_cap=None),
     )
+
+
+class FakeKnowledgeExtractionProvider:
+    def generate(self, prompt: str) -> str:
+        return '[{"element_type": "concept", "label": "Board independence", "description": "d"}]'
+
+
+def _provision_document_with_knowledge(
+    session, storage, workspace, *, content: bytes, author: str | None = None, publication_year: int | None = None
+) -> None:
+    """Uploads a real research document and drains its processing Work Item through the real
+    queue (process_one_work_item) - not a direct ExtractDocumentKnowledgeUseCase call, which
+    would leave the Work Item UploadResearchDocumentUseCase enqueues stuck QUEUED, ready to be
+    wrongly claimed by a *later* process_one_work_item call meant for a chat reply. Leaves the
+    workspace's knowledge base populated with real chunks/evidence links, including whatever
+    author/publication_year metadata was supplied here, so a later chat message can retrieve
+    real (not hand-built) evidence.
+    """
+    documents = SqlAlchemyDocumentRepository(session)
+    uow = SqlAlchemyUnitOfWork(session)
+    UploadResearchDocumentUseCase(
+        documents,
+        SqlAlchemyProjectRepository(session),
+        SqlAlchemyAgentRepository(session),
+        storage,
+        uow,
+        WorkItemRepository(session),
+        AiUsageGuard(None, None, daily_token_cap=None),
+    ).execute(
+        project_id=workspace.project.project_id,
+        user_id=workspace.agent.user_id,
+        title="Doc",
+        format="txt",
+        content=content,
+        author=author,
+        publication_year=publication_year,
+    )
+
+    claimed = process_one_work_item(
+        session,
+        text_provider=FakeKnowledgeExtractionProvider(),
+        embedding_provider=FakeEmbeddingProvider(),
+        embedding_model_version="test-embedding-model",
+        storage=storage,
+        background_knowledge_provider=lambda topic: None,
+    )
+    assert claimed is True, "fixture bug: no document-processing Work Item was queued"
 
 
 def _send_and_process(session, storage, workspace, conversation_id, content, provider):
@@ -243,6 +294,60 @@ def test_a_reply_without_citation_like_patterns_gets_no_warning(session, storage
     messages = SqlAlchemyMessageRepository(session).list_by_conversation_id(conversation.conversation_id)
     reply = next(m for m in messages if m.origin == "FakeTextGenerationProvider")
     assert "ScholarOS notice" not in reply.content
+
+
+# --- Citation grounding: a reply's citations checked against real supplied evidence (2026-10-06) --
+# Closes the gap the guard above leaves open: that one only ever fires when there is NO evidence
+# at all. A citation can be just as fabricated when real evidence exists but the model cites an
+# author/year that doesn't match any of it - exercised here through the real retrieval pipeline
+# (a real uploaded, processed, and extracted document), not a hand-built ContextEvidence.
+
+
+def test_a_reply_citing_the_real_sources_author_and_year_gets_no_warning(session, storage):
+    workspace = _make_workspace(session, username="researcher-real-citation")
+    _provision_document_with_knowledge(
+        session, storage, workspace,
+        content=b"A study of board governance and independence in Nigerian firms.",
+        author="Uadiale, O.", publication_year=2012,
+    )
+    conversation = StartConversationUseCase(
+        SqlAlchemyConversationRepository(session), SqlAlchemyAgentRepository(session), SqlAlchemyUnitOfWork(session)
+    ).execute(user_id=workspace.agent.user_id)
+    provider = FakeTextGenerationProvider(
+        reply="Uadiale (2012) found that board independence matters for governance."
+    )
+
+    _send_and_process(
+        session, storage, workspace, conversation.conversation_id,
+        "Discuss board governance and independence.", provider,
+    )
+
+    messages = SqlAlchemyMessageRepository(session).list_by_conversation_id(conversation.conversation_id)
+    reply = next(m for m in messages if m.origin == "FakeTextGenerationProvider")
+    assert "ScholarOS notice" not in reply.content
+
+
+def test_a_reply_citing_a_fabricated_author_despite_real_evidence_gets_a_warning(session, storage):
+    workspace = _make_workspace(session, username="researcher-fake-citation")
+    _provision_document_with_knowledge(
+        session, storage, workspace,
+        content=b"A study of board governance and independence in Nigerian firms.",
+        author="Uadiale, O.", publication_year=2012,
+    )
+    conversation = StartConversationUseCase(
+        SqlAlchemyConversationRepository(session), SqlAlchemyAgentRepository(session), SqlAlchemyUnitOfWork(session)
+    ).execute(user_id=workspace.agent.user_id)
+    provider = FakeTextGenerationProvider(reply="Smith and Jones (2019) found no such effect on governance.")
+
+    _send_and_process(
+        session, storage, workspace, conversation.conversation_id,
+        "Discuss board governance and independence.", provider,
+    )
+
+    messages = SqlAlchemyMessageRepository(session).list_by_conversation_id(conversation.conversation_id)
+    reply = next(m for m in messages if m.origin == "FakeTextGenerationProvider")
+    assert "ScholarOS notice" in reply.content
+    assert "Smith and Jones (2019)" in reply.content
 
 
 # --- Memory inspection: cross-agent isolation and supersession -----------------------------

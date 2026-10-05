@@ -24,6 +24,8 @@ MAX_TOP_K = 50
 class SearchResultEvidence:
     document_id: int
     document_title: str
+    author: str | None = None
+    publication_year: int | None = None
 
 
 @dataclass(frozen=True)
@@ -141,7 +143,12 @@ class SearchKnowledgeUseCase:
                 # never chunk.content itself. Kept explicit here since it's now a real branch.
                 continue
             evidence = [
-                SearchResultEvidence(document_id=document.document_id, document_title=document.title)
+                SearchResultEvidence(
+                    document_id=document.document_id,
+                    document_title=document.title,
+                    author=document.author,
+                    publication_year=document.publication_year,
+                )
                 for link in links_by_chunk_id.get(chunk_id, [])
                 if (document := documents_by_id.get(link.document_id)) is not None
             ]

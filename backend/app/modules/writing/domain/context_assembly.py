@@ -135,6 +135,8 @@ prompt telling it that conversation history is background, not a template to kee
 class ContextEvidenceSource:
     document_id: int
     document_title: str
+    author: str | None = None
+    publication_year: int | None = None
 
 
 @dataclass(frozen=True)
@@ -373,6 +375,21 @@ def _format_conversation(
     return "\n".join(kept) or "No relevant prior conversation was available."
 
 
+def _format_citation_label(source: ContextEvidenceSource) -> str:
+    """Renders a source as the exact text the model is told it may cite (see GROUNDING RULES'
+    has-evidence branch) - "Author (Year)" only when the user actually supplied both; anything
+    missing is spelled out as missing rather than silently dropped, so the model can see at a
+    glance that it isn't allowed to invent the gap.
+    """
+    if source.author and source.publication_year:
+        return f'{source.author} ({source.publication_year}) - "{source.document_title}"'
+    if source.author:
+        return f'{source.author} (year not provided) - "{source.document_title}"'
+    if source.publication_year:
+        return f'"{source.document_title}" ({source.publication_year}, author not provided)'
+    return f'"{source.document_title}" (author/year not provided)'
+
+
 def _format_evidence(evidence: tuple[ContextEvidence, ...]) -> str:
     if not evidence:
         return "No retrieved research evidence was available."
@@ -380,7 +397,7 @@ def _format_evidence(evidence: tuple[ContextEvidence, ...]) -> str:
     entries = []
     for index, item in enumerate(evidence, start=1):
         sources = ", ".join(
-            source.document_title for source in item.sources) or "unknown source"
+            _format_citation_label(source) for source in item.sources) or "unknown source"
         entries.append(
             f"[{index}] chunk_id={item.chunk_id}; score={item.score:.6f}; sources={sources}\n{item.content}")
     return "\n\n".join(entries)
@@ -422,7 +439,13 @@ def _grounding_rules(*, has_evidence: bool) -> tuple[str, str]:
         text = (
             "Use the research evidence above for factual claims. Treat style signals as "
             "writing guidance, not facts. If the evidence is insufficient for a claim, say so "
-            "explicitly rather than inventing support."
+            "explicitly rather than inventing support. When citing a source, use exactly the "
+            "author and year shown next to it in RESEARCH EVIDENCE above (e.g. \"Smith (2020)\") "
+            "- never invent an author or year. If a source's listing says its author or year "
+            "was not provided, do not invent one to fill the gap: refer to it by its title "
+            "instead (e.g. \"the uploaded document on X states...\"), or say plainly that a "
+            "proper citation isn't available for it. This holds even if the user's own message "
+            "directly asks for citations - only cite what RESEARCH EVIDENCE actually supports."
         )
     else:
         text = (
@@ -469,6 +492,53 @@ def detect_likely_citations(text: str) -> bool:
     attached before the user sees it.
     """
     return any(pattern.search(text) for pattern in _CITATION_PATTERNS)
+
+
+# A single consolidated pattern, separate from _CITATION_PATTERNS above: named groups let
+# find_unverified_citations below actually extract the author/year pair, not just detect that
+# "some citation-shaped text" exists. Matches both "Name (Year" (narrative) and "Name, Year"
+# (the inside of a parenthetical, once finditer has stepped past the opening "(") - covering
+# both styles with one pattern, including a run of several "Name, Year; Name, Year" citations
+# sharing one set of parens, since finditer naturally finds each one in turn.
+_SINGLE_CITATION = re.compile(rf"(?P<names>{_NAME_LIST})\s*[\(,]\s*(?P<year>{_YEAR})\)?")
+
+
+def find_unverified_citations(text: str, evidence: tuple[ContextEvidence, ...]) -> list[str]:
+    """Returns the distinct citation-like substrings in `text` (e.g. "Uadiale (2012)") whose
+    year and author don't both match some real source actually supplied in `evidence` - either
+    fabricated outright, or citing something outside what RESEARCH EVIDENCE actually contains.
+
+    Matching is deliberately lenient (lowercased whole-word token overlap, not exact string
+    equality - author names appear in many orders/formats, "Smith, J." vs "J. Smith") and
+    doesn't require the author and year to come from the exact same evidence source (a stricter
+    check would need per-source pairing, more complexity than a defense-in-depth backstop
+    warrants - see GenerateConversationReplyUseCase, which uses this to flag a reply as worth
+    double-checking, not to block it).
+    """
+    known_years: set[str] = set()
+    known_author_tokens: set[str] = set()
+    for item in evidence:
+        for source in item.sources:
+            if source.publication_year is not None:
+                known_years.add(str(source.publication_year))
+            if source.author:
+                known_author_tokens.update(token.lower() for token in re.findall(r"[A-Za-z]+", source.author))
+
+    unverified: list[str] = []
+    seen: set[str] = set()
+    for match in _SINGLE_CITATION.finditer(text):
+        citation_text = match.group(0)
+        if citation_text in seen:
+            continue
+        name_tokens = {
+            token.lower() for token in re.findall(r"[A-Za-z]+", match.group("names")) if token.lower() != "al"
+        }
+        year_known = match.group("year") in known_years
+        author_known = bool(name_tokens & known_author_tokens)
+        if not (year_known and author_known):
+            unverified.append(citation_text)
+            seen.add(citation_text)
+    return unverified
 
 
 def _fit_sections(sections: list[tuple[str, str]], max_characters: int) -> str:

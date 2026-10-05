@@ -26,6 +26,7 @@ from app.modules.writing.domain.context_assembly import (
     ContextStyleSignal,
     assemble_context,
     detect_likely_citations,
+    find_unverified_citations,
 )
 from app.modules.writing.domain.conversation_context import (
     CONVERSATION_SUMMARY_ORIGIN,
@@ -281,7 +282,11 @@ class SendChatMessageUseCase:
                 score=result.score,
                 sources=tuple(
                     ContextEvidenceSource(
-                        document_id=source.document_id, document_title=source.document_title)
+                        document_id=source.document_id,
+                        document_title=source.document_title,
+                        author=source.author,
+                        publication_year=source.publication_year,
+                    )
                     for source in result.evidence
                 ),
             )
@@ -466,6 +471,19 @@ GROUNDING RULES prompt instruction alone does not reliably stop fabrication when
 message directly asks for citations - this is a defense-in-depth backstop, not a replacement for
 the prompt rule, mirroring the verbatim-leak guard built for writing-style extraction."""
 
+UNVERIFIED_CITATION_WARNING = (
+    "\n\n[ScholarOS notice: this reply cites {citations} - which does not match the author/year "
+    "of any of your uploaded source documents for this request. It may be fabricated, or may "
+    "reference something outside what you actually provided. Verify it independently before "
+    "using it.]"
+)
+"""Appended when real research evidence was supplied but `find_unverified_citations` finds a
+citation in the reply that doesn't match any of it (2026-10-06) - closes the gap
+CITATION_FABRICATION_WARNING above leaves open: that one only ever fires on the *zero-evidence*
+path, but a citation can be fabricated just as easily when evidence exists and the model simply
+doesn't have real author/year metadata for it (ContextEvidenceSource.author/publication_year are
+both optional - a document can be fully processed and still have neither)."""
+
 
 class GenerateConversationReplyUseCase:
     """Worker-side counterpart of `SendChatMessageUseCase` - assembles the final prompt,
@@ -536,8 +554,13 @@ class GenerateConversationReplyUseCase:
             raise EmptyGeneratedContentError()
 
         content = generated_content.strip()
-        if not assembled.evidence and detect_likely_citations(content):
-            content += CITATION_FABRICATION_WARNING
+        if not assembled.evidence:
+            if detect_likely_citations(content):
+                content += CITATION_FABRICATION_WARNING
+        else:
+            unverified = find_unverified_citations(content, assembled.evidence)
+            if unverified:
+                content += UNVERIFIED_CITATION_WARNING.format(citations=", ".join(unverified))
 
         self._conversations.lock_for_message_sequence(conversation_id)
         sequence = self._messages.count_by_conversation_id(conversation_id) + 1

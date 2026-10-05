@@ -77,6 +77,7 @@ class UploadResearchDocumentUseCase:
         content: bytes,
         author: str | None = None,
         source: str | None = None,
+        publication_year: int | None = None,
         extension: str = "",
     ) -> ResearchDocument:
         project = self._projects.get_by_id(project_id)
@@ -111,6 +112,7 @@ class UploadResearchDocumentUseCase:
                 content_reference=content_reference,
                 author=author,
                 source=source,
+                publication_year=publication_year,
                 purpose=DocumentPurpose.RESEARCH,
             )
             document = self._documents.add(document)

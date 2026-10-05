@@ -61,6 +61,41 @@ def test_upload_document_returns_201_with_expected_schema(client, auth_headers):
     assert "content_reference" not in body
 
 
+def test_upload_document_with_author_and_year_returns_both(client, auth_headers):
+    """2026-10-06: citation grounding needs real author/year metadata to flow all the way
+    through the API, not just exist in the domain model - see context_assembly.py's
+    _format_citation_label, which is what actually turns this into a citable "(Author, Year)".
+    """
+    workspace = _create_workspace(client, auth_headers)
+    project_id = workspace["project"]["project_id"]
+
+    response = client.post(
+        f"/projects/{project_id}/documents",
+        files={"file": ("source.pdf", io.BytesIO(b"pdf bytes"), "application/pdf")},
+        data={"title": "Baseline survey", "format": "pdf", "author": "Uadiale, O.", "publication_year": "2012"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["author"] == "Uadiale, O."
+    assert body["publication_year"] == 2012
+
+
+def test_upload_document_with_an_out_of_range_year_is_rejected(client, auth_headers):
+    workspace = _create_workspace(client, auth_headers)
+    project_id = workspace["project"]["project_id"]
+
+    response = client.post(
+        f"/projects/{project_id}/documents",
+        files={"file": ("source.pdf", io.BytesIO(b"pdf bytes"), "application/pdf")},
+        data={"title": "Baseline survey", "format": "pdf", "publication_year": "31415"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 422
+
+
 def test_upload_document_persists_content_and_database_row(client, db_engine, tmp_path, auth_headers):
     workspace = _create_workspace(client, auth_headers)
     project_id = workspace["project"]["project_id"]

@@ -11,6 +11,7 @@ from app.modules.writing.domain.context_assembly import (
     ContextStyleSignal,
     assemble_context,
     detect_likely_citations,
+    find_unverified_citations,
 )
 from app.modules.writing.domain.enums import MemoryRecordType, MessageDirection, ProfileCharacteristicType
 from app.modules.writing.domain.exceptions import InvalidContextAssemblyInputError
@@ -565,3 +566,132 @@ def test_detect_likely_citations_flags_author_year_patterns(text):
 )
 def test_detect_likely_citations_does_not_flag_ordinary_text(text):
     assert detect_likely_citations(text) is False
+
+
+# --- Real citation grounding: source citation labels and find_unverified_citations ---------
+
+
+def test_evidence_source_with_author_and_year_renders_a_real_citation_label():
+    context = ContextAssemblyInput(
+        topic="Topic",
+        instructions="Instructions",
+        evidence=(
+            ContextEvidence(
+                chunk_id=1, content="Evidence.", summary=None, score=1.0,
+                sources=(ContextEvidenceSource(
+                    document_id=1, document_title="Governance in Nigeria",
+                    author="Uadiale, O.", publication_year=2012,
+                ),),
+            ),
+        ),
+    )
+
+    assembled = assemble_context(context)
+
+    assert 'Uadiale, O. (2012) - "Governance in Nigeria"' in assembled.prompt
+
+
+@pytest.mark.parametrize(
+    "author,year,expected_fragment",
+    [
+        (None, None, '"Governance in Nigeria" (author/year not provided)'),
+        ("Uadiale, O.", None, 'Uadiale, O. (year not provided) - "Governance in Nigeria"'),
+        (None, 2012, '"Governance in Nigeria" (2012, author not provided)'),
+    ],
+)
+def test_evidence_source_missing_metadata_says_so_explicitly_instead_of_hiding_the_gap(
+    author, year, expected_fragment
+):
+    context = ContextAssemblyInput(
+        topic="Topic",
+        instructions="Instructions",
+        evidence=(
+            ContextEvidence(
+                chunk_id=1, content="Evidence.", summary=None, score=1.0,
+                sources=(ContextEvidenceSource(
+                    document_id=1, document_title="Governance in Nigeria",
+                    author=author, publication_year=year,
+                ),),
+            ),
+        ),
+    )
+
+    assembled = assemble_context(context)
+
+    assert expected_fragment in assembled.prompt
+
+
+def test_grounding_rules_with_evidence_forbid_inventing_a_missing_author_or_year():
+    context = ContextAssemblyInput(
+        topic="Topic", instructions="Instructions",
+        evidence=(ContextEvidence(chunk_id=1, content="Evidence.", summary=None, score=1.0),),
+    )
+
+    assembled = assemble_context(context)
+
+    assert "never invent an author or year" in assembled.prompt
+
+
+def test_find_unverified_citations_accepts_a_citation_matching_real_evidence():
+    evidence = (
+        ContextEvidence(
+            chunk_id=1, content="c", summary=None, score=1.0,
+            sources=(ContextEvidenceSource(
+                document_id=1, document_title="Governance in Nigeria",
+                author="Uadiale, O.", publication_year=2012,
+            ),),
+        ),
+    )
+
+    unverified = find_unverified_citations("Uadiale (2012) suggests board independence matters.", evidence)
+
+    assert unverified == []
+
+
+def test_find_unverified_citations_flags_a_citation_matching_no_real_source():
+    evidence = (
+        ContextEvidence(
+            chunk_id=1, content="c", summary=None, score=1.0,
+            sources=(ContextEvidenceSource(
+                document_id=1, document_title="Governance in Nigeria",
+                author="Uadiale, O.", publication_year=2012,
+            ),),
+        ),
+    )
+
+    unverified = find_unverified_citations("Smith and Jones (2019) found no such effect.", evidence)
+
+    assert unverified == ["Smith and Jones (2019)"]
+
+
+def test_find_unverified_citations_flags_a_real_authors_name_with_the_wrong_year():
+    evidence = (
+        ContextEvidence(
+            chunk_id=1, content="c", summary=None, score=1.0,
+            sources=(ContextEvidenceSource(
+                document_id=1, document_title="Governance in Nigeria",
+                author="Uadiale, O.", publication_year=2012,
+            ),),
+        ),
+    )
+
+    unverified = find_unverified_citations("Uadiale (2005) found something different.", evidence)
+
+    assert unverified == ["Uadiale (2005)"]
+
+
+def test_find_unverified_citations_with_no_evidence_flags_everything():
+    unverified = find_unverified_citations("Smith (2019) claims this.", ())
+
+    assert unverified == ["Smith (2019)"]
+
+
+def test_find_unverified_citations_returns_nothing_for_text_with_no_citations():
+    evidence = (
+        ContextEvidence(
+            chunk_id=1, content="c", summary=None, score=1.0,
+            sources=(ContextEvidenceSource(document_id=1, document_title="Doc", author="Smith", publication_year=2020),),
+        ),
+    )
+
+    assert find_unverified_citations("A plain sentence with no citations at all.", evidence) == []

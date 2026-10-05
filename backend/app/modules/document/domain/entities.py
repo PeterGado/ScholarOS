@@ -27,6 +27,12 @@ class ResearchDocument:
     document_id: int | None = None
     author: str | None = None
     source: str | None = None
+    # Added 2026-10-05 alongside author grounding real citations (see context_assembly.py's
+    # _format_evidence) - optional, free-standing from `author`, since a user may know one
+    # without the other. Deliberately an int, not a free-text string: the whole point is a
+    # value the model can be told to reproduce verbatim in an "(Author, Year)" citation, which
+    # only works if it's unambiguous.
+    publication_year: int | None = None
     processing_status: DocumentProcessingStatus = DocumentProcessingStatus.PENDING
     purpose: DocumentPurpose = DocumentPurpose.RESEARCH
     ingested_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -51,6 +57,7 @@ class ResearchDocument:
         content_reference: str,
         author: str | None = None,
         source: str | None = None,
+        publication_year: int | None = None,
         purpose: DocumentPurpose = DocumentPurpose.RESEARCH,
     ) -> "ResearchDocument":
         return cls(
@@ -60,5 +67,6 @@ class ResearchDocument:
             content_reference=content_reference,
             author=author,
             source=source,
+            publication_year=publication_year,
             purpose=purpose,
         )

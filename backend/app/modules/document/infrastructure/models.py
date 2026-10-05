@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Enum, ForeignKey, Index, String
+from sqlalchemy import Enum, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
@@ -25,6 +25,7 @@ class ResearchDocument(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     author: Mapped[str | None] = mapped_column(String(255), nullable=True)
     source: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    publication_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     format: Mapped[str] = mapped_column(String(64), nullable=False)
     content_reference: Mapped[str] = mapped_column(String(512), nullable=False)
     processing_status: Mapped[DocumentProcessingStatus] = mapped_column(
