@@ -6,3 +6,10 @@
 /scholaros.db-shm
 /scholaros.db-wal
 /node_modules/
+
+# Local Claude Code scratch space, not part of the app itself.
+/scratch/
+
+# A large third-party frontend-skills collection pulled in locally for Claude Code's own use -
+# not part of this app, unlike the rest of the already-tracked .claude/Skills/ catalog.
+/.claude/Skills/frontend/
