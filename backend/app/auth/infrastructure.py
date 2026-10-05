@@ -75,6 +75,9 @@ class SqlAlchemyUserCredentialLookup(UserCredentialLookup):
     def get_by_email(self, email: str) -> UserCredential | None:
         return self._session.query(User).filter_by(email=email).one_or_none()
 
+    def get_by_id(self, user_id: int) -> UserCredential | None:
+        return self._session.get(User, user_id)
+
 
 class SqlAlchemyUserRegistrationRepository(UserRegistrationRepository):
     """Concrete UserRegistrationRepository (app.auth.repository, ADR-011) - the write

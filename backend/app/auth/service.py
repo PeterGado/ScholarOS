@@ -62,6 +62,15 @@ class AuthService:
             raise
         return raw_token
 
+    def get_username(self, user_id: int) -> str:
+        """Looks up the display username for an already-verified session's user_id (GET
+        /auth/profile). The row is guaranteed to exist - user_id only ever reaches here via
+        verify_token's own session->user foreign key, never caller-supplied input.
+        """
+        user = self._users.get_by_id(user_id)
+        assert user is not None, f"user_id {user_id} came from a verified session but has no User row"
+        return user.username
+
     def logout(self, raw_token: str) -> None:
         session = self._require_active_session(raw_token)
         try:

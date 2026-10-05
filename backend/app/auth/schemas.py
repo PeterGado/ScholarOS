@@ -36,3 +36,12 @@ class TokenResponse(BaseModel):
 
     access_token: str
     token_type: str = "bearer"
+
+
+class ProfileResponse(BaseModel):
+    """Response body for GET /auth/profile - the one piece of account info the frontend needs
+    to display (e.g. the Settings page), kept separate from TokenResponse and the 204-only
+    GET /auth/me so neither of those deliberately-minimal contracts has to grow a body.
+    """
+
+    username: str

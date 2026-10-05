@@ -4,7 +4,7 @@ from app.api.exception_handlers import ErrorResponse
 from app.auth.dependencies import extract_bearer_token
 from app.auth.google_sign_in import GoogleSignInUseCase
 from app.auth.registration import RegisterUserUseCase
-from app.auth.schemas import GoogleSignInRequest, LoginRequest, RegisterRequest, TokenResponse
+from app.auth.schemas import GoogleSignInRequest, LoginRequest, ProfileResponse, RegisterRequest, TokenResponse
 from app.auth.service import AuthService
 from app.core.dependencies import (
     get_auth_service,
@@ -133,6 +133,25 @@ def get_current_session(
     the status code alone (204 valid, 401 not) is the only signal a caller needs.
     """
     return None
+
+
+@router.get(
+    "/profile",
+    response_model=ProfileResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Missing, malformed, unknown, or ended session."},
+    },
+)
+def get_profile(
+    user_id: int = Depends(get_current_user_id),
+    auth_service: AuthService = Depends(get_auth_service),
+) -> ProfileResponse:
+    """The one piece of account info the frontend needs to display (e.g. the Settings page) -
+    separate from the 204-only GET /auth/me so that endpoint's "status code is the only
+    signal" contract stays true, and separate from TokenResponse so login/register stay as
+    minimal as 05_Constraints_and_Integrity.md §17 documents them.
+    """
+    return ProfileResponse(username=auth_service.get_username(user_id))
 
 
 @router.post(

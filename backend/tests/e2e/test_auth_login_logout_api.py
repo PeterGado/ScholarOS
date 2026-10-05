@@ -67,6 +67,25 @@ def test_scenario_d_a_valid_token_is_accepted_when_presented(client, provisioned
     assert response.status_code == 201
 
 
+# --- Profile ------------------------------------------------------------------------
+
+
+def test_profile_returns_the_signed_in_username(client, provisioned_user):
+    login_response = client.post("/auth/login", json={"username": USERNAME, "password": PASSWORD})
+    token = login_response.json()["access_token"]
+
+    response = client.get("/auth/profile", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 200
+    assert response.json() == {"username": USERNAME}
+
+
+def test_profile_without_a_token_returns_401(client):
+    response = client.get("/auth/profile")
+
+    assert response.status_code == 401
+
+
 # --- Scenario E -------------------------------------------------------------------
 
 

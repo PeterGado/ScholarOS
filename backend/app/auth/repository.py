@@ -48,6 +48,13 @@ class UserCredentialLookup(Protocol):
 
     def get_by_email(self, email: str) -> UserCredential | None: ...
 
+    def get_by_id(self, user_id: int) -> UserCredential | None:
+        """Reverse lookup from an already-verified session's user_id (GET /auth/profile) -
+        every other method here looks up an unverified caller-supplied credential; this one
+        never takes untrusted input, only an id that came from AuthService.verify_token.
+        """
+        ...
+
 
 class UserRegistrationRepository(Protocol):
     """A separate, narrow write capability (ADR-011) - deliberately not added to

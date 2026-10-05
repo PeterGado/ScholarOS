@@ -21,9 +21,13 @@ class FakeUserCredential:
 class FakeUserCredentialLookup(UserCredentialLookup):
     def __init__(self, *users: FakeUserCredential):
         self._by_username = {u.username: u for u in users}
+        self._by_id = {u.user_id: u for u in users}
 
     def get_by_username(self, username: str) -> FakeUserCredential | None:
         return self._by_username.get(username)
+
+    def get_by_id(self, user_id: int) -> FakeUserCredential | None:
+        return self._by_id.get(user_id)
 
 
 class FakeAuthSessionRepository(AuthSessionRepository):
@@ -209,6 +213,13 @@ def test_verify_token_survives_a_transient_lock_on_the_activity_touch():
 
     assert identity.user_id == 7
     assert locked_uow.rolled_back is True
+
+
+def test_get_username_returns_the_username_for_a_verified_user_id():
+    user = FakeUserCredential(user_id=7, username="researcher", password_hash=hash_password("s3cret"))
+    service, _ = _build_service(user)
+
+    assert service.get_username(7) == "researcher"
 
 
 def test_a_session_with_a_very_stale_last_active_at_is_still_valid():
