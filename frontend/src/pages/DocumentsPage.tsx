@@ -30,6 +30,8 @@ export function DocumentsPage() {
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState("");
+  const [author, setAuthor] = useState("");
+  const [year, setYear] = useState("");
   const [selectedFileCount, setSelectedFileCount] = useState(0);
   const [query, setQuery] = useState("");
   const [searchSubmitted, setSearchSubmitted] = useState("");
@@ -87,22 +89,28 @@ export function DocumentsPage() {
       if (files.length > RESEARCH_DOCUMENT_LIMIT - documentCount) {
         throw new Error(`You can upload ${RESEARCH_DOCUMENT_LIMIT - documentCount} more document(s) in this project.`);
       }
-      // A custom title only makes sense for a single file. Multi-file uploads preserve each
-      // filename so their source remains identifiable in the knowledge base.
-      if (files.length === 1 && title.trim()) {
+      // A custom title (and author/year) only makes sense for a single file. Multi-file
+      // uploads preserve each filename so their source remains identifiable in the knowledge
+      // base, with no per-file metadata UI.
+      if (files.length === 1 && (title.trim() || author.trim() || year.trim())) {
         const file = files[0];
         const extension = file.name.split(".").pop() ?? "txt";
+        const parsedYear = year.trim() ? Number(year.trim()) : undefined;
         return [await uploadResearchDocument({
           projectId: workspace.project.project_id,
           file,
-          title: title.trim(),
+          title: title.trim() || file.name,
           format: extension,
+          author: author.trim() || undefined,
+          publicationYear: parsedYear,
         })];
       }
       return uploadResearchDocuments(workspace.project.project_id, files);
     },
     onSuccess: (documents) => {
       setTitle("");
+      setAuthor("");
+      setYear("");
       setSelectedFileCount(0);
       if (fileInputRef.current) fileInputRef.current.value = "";
       queryClient.invalidateQueries({ queryKey: ["documents", workspace.project.project_id] });
@@ -161,6 +169,27 @@ export function DocumentsPage() {
               disabled={atLimit || selectedFileCount > 1}
             />
           </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Author (optional)</label>
+            <Input
+              value={author}
+              onChange={(e) => setAuthor(e.target.value)}
+              placeholder="e.g. Uadiale, O."
+              className="max-w-40"
+              disabled={atLimit || selectedFileCount > 1}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Year (optional)</label>
+            <Input
+              type="number"
+              value={year}
+              onChange={(e) => setYear(e.target.value)}
+              placeholder="e.g. 2012"
+              className="max-w-24"
+              disabled={atLimit || selectedFileCount > 1}
+            />
+          </div>
           <Input
             ref={fileInputRef}
             type="file"
@@ -177,6 +206,12 @@ export function DocumentsPage() {
         {selectedFileCount > 1 && (
           <p className="text-sm text-muted-foreground">
             The files will upload one at a time from this single action. Each file keeps its own name in your knowledge base.
+          </p>
+        )}
+        {selectedFileCount <= 1 && (
+          <p className="text-sm text-muted-foreground">
+            Add an author and year so your AI can cite this source accurately - without them, it
+            can only refer to this document by title.
           </p>
         )}
         {atLimit && (
@@ -280,7 +315,18 @@ export function DocumentsPage() {
               <li key={doc.document_id}>
                 <Card>
                   <CardContent className="flex items-center justify-between py-3">
-                    <span className="text-sm font-medium">{doc.title}</span>
+                    <div>
+                      <span className="text-sm font-medium">{doc.title}</span>
+                      <p className="text-xs text-muted-foreground">
+                        {doc.author && doc.publication_year
+                          ? `${doc.author} (${doc.publication_year})`
+                          : doc.author
+                            ? `${doc.author} - year not set`
+                            : doc.publication_year
+                              ? `${doc.publication_year} - author not set`
+                              : "No author/year set - can only be cited by title"}
+                      </p>
+                    </div>
                     <Badge variant="secondary">processed</Badge>
                   </CardContent>
                 </Card>

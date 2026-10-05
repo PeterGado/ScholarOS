@@ -44,6 +44,7 @@ export const researchDocumentResponseSchema = z.object({
   title: z.string(),
   author: z.string().nullable(),
   source: z.string().nullable(),
+  publication_year: z.number().nullable(),
   format: z.string(),
   processing_status: z.string(),
   ingested_at: z.string(),

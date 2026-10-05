@@ -13,6 +13,7 @@ export interface UploadResearchDocumentRequest {
   format: string;
   author?: string;
   source?: string;
+  publicationYear?: number;
 }
 
 export async function uploadResearchDocument(
@@ -24,6 +25,7 @@ export async function uploadResearchDocument(
   body.append("format", request.format);
   if (request.author) body.append("author", request.author);
   if (request.source) body.append("source", request.source);
+  if (request.publicationYear) body.append("publication_year", String(request.publicationYear));
 
   const response = await apiClient.post(`/projects/${request.projectId}/documents`, body, {
     headers: { "Content-Type": "multipart/form-data" },
