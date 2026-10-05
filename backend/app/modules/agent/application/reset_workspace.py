@@ -31,6 +31,7 @@ _DELETE_STATEMENTS = [
         SELECT profile_id FROM writing_profiles WHERE agent_id = :agent_id
     )""",
     "DELETE FROM writing_profiles WHERE agent_id = :agent_id",
+    "DELETE FROM writing_segments WHERE agent_id = :agent_id",
     "DELETE FROM chunk_evidence_links WHERE chunk_id IN (SELECT chunk_id FROM knowledge_chunks WHERE agent_id = :agent_id)",
     "DELETE FROM knowledge_chunk_embeddings WHERE chunk_id IN (SELECT chunk_id FROM knowledge_chunks WHERE agent_id = :agent_id)",
     "DELETE FROM knowledge_chunks WHERE agent_id = :agent_id",

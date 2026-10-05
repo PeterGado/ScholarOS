@@ -26,6 +26,7 @@ from app.modules.knowledge.infrastructure.vector_models import KnowledgeChunkEmb
 from app.modules.project.application.use_cases import CreateProjectUseCase
 from app.modules.project.infrastructure.repositories import SqlAlchemyProjectRepository
 from app.modules.writing.application.chat import StartConversationUseCase
+from app.modules.writing.application.segments import CreateWritingSegmentUseCase
 from app.modules.writing.application.style_extraction import ExtractWritingStyleProfileUseCase
 from app.modules.writing.application.style_ingestion import UploadWritingStyleDocumentUseCase
 from app.modules.writing.domain.entities import MemoryProvenanceLink, MemoryRecord, Message, MessageContextLink
@@ -39,6 +40,7 @@ from app.modules.writing.infrastructure.repositories import (
     SqlAlchemyProfileCharacteristicRepository,
     SqlAlchemyProfileCharacteristicSourceRepository,
     SqlAlchemyWritingProfileRepository,
+    SqlAlchemyWritingSegmentRepository,
 )
 from app.storage.filesystem import FilesystemStorage
 
@@ -46,6 +48,7 @@ from app.storage.filesystem import FilesystemStorage
 # mirrors the scoping subquery chain the use case's own DELETE statements use.
 _COUNT_QUERIES = {
     "writing_profiles": "SELECT COUNT(*) FROM writing_profiles WHERE agent_id = :a",
+    "writing_segments": "SELECT COUNT(*) FROM writing_segments WHERE agent_id = :a",
     "memory_records": "SELECT COUNT(*) FROM memory_records WHERE agent_id = :a",
     "conversations": "SELECT COUNT(*) FROM conversations WHERE agent_id = :a",
     "knowledge_elements": "SELECT COUNT(*) FROM knowledge_elements WHERE agent_id = :a",
@@ -201,6 +204,11 @@ def _fully_populate_a_workspace(session, storage, *, username: str) -> tuple[int
         SqlAlchemyProfileCharacteristicSourceRepository(session), FakeTextGenerationProviderForStyle(), uow,
         AiUsageGuard(None, None, daily_token_cap=None),
     ).execute(user_id=user.user_id, document_ids=[style_upload.document.document_id])
+
+    # Writing Segment - a plain leaf table hanging directly off agent_id.
+    CreateWritingSegmentUseCase(
+        SqlAlchemyWritingSegmentRepository(session), agents, uow
+    ).execute(user_id=user.user_id, name="Background of the Study", instructions="Keep it formal.")
 
     # Message Context Link, linking the earlier message to the Memory Record it produced.
     SqlAlchemyMessageContextLinkRepository(session).add(
