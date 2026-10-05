@@ -197,7 +197,7 @@ export function DocumentsPage() {
           <EmptyState
             icon={Inbox}
             title="No documents yet"
-            description="Upload source material above so your AI can draw on it and cite it directly."
+            description="Upload source material above so your AI can draw on it when writing for you."
           />
         )}
         {documentsQuery.data && allDocuments.length > 0 && inProgressDocuments.length === 0 && (
