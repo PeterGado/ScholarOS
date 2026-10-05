@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Brain } from "lucide-react";
 import { listMemory, supersedeMemoryRecord } from "@/api/writing";
 import { ApiError } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
 
 const PROVENANCE_LABELS: Record<string, string> = {
   user_input: "from your own correction",
@@ -52,9 +54,11 @@ export function MemoryPage() {
 
       {memoryQuery.isLoading && <p className="text-sm text-muted-foreground">Loading memory...</p>}
       {memoryQuery.data && records.length === 0 && (
-        <p className="text-sm text-muted-foreground">
-          No memory yet - it accumulates automatically as you chat.
-        </p>
+        <EmptyState
+          icon={Brain}
+          title="Nothing remembered yet"
+          description="Memory builds automatically as you chat - decisions, terminology, and direction get captured here so you never have to re-explain your own research."
+        />
       )}
       <div className="space-y-3">
         {records.map((record) => (

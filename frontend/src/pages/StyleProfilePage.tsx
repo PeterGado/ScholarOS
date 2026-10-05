@@ -1,5 +1,6 @@
 import { useRef, type FormEvent } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { FileText, PenLine } from "lucide-react";
 import {
   extractWritingStyleProfile,
   getWritingProfile,
@@ -12,6 +13,7 @@ import { useWorkspaceContext } from "@/components/WorkspaceGate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 
 // Mirrors the backend's own MAX_WRITING_STYLE_SAMPLES (app/modules/writing/application/
 // style_ingestion.py, itself equal to style_extraction's MAX_SAMPLES_PER_EXTRACTION) - the
@@ -101,7 +103,11 @@ export function StyleProfilePage() {
 
         {documentsQuery.isLoading && <p className="text-sm text-muted-foreground">Loading samples...</p>}
         {documentsQuery.data && documents.length === 0 && (
-          <p className="text-sm text-muted-foreground">No samples uploaded yet.</p>
+          <EmptyState
+            icon={FileText}
+            title="No writing samples yet"
+            description="Upload something you've written above so ScholarOS can learn to match your voice."
+          />
         )}
         {documentsQuery.data && documents.length > 0 && (
           <ul className="space-y-2">
@@ -167,7 +173,11 @@ export function StyleProfilePage() {
         <h2 className="text-base font-semibold">Current Profile</h2>
         {profileQuery.isLoading && <p className="text-sm text-muted-foreground">Loading...</p>}
         {profileQuery.isError && (
-          <p className="text-sm text-muted-foreground">No writing profile yet - upload and extract samples above.</p>
+          <EmptyState
+            icon={PenLine}
+            title="No writing profile yet"
+            description="Upload and extract samples above to generate one."
+          />
         )}
         {profileQuery.data && (
           <div className="space-y-2">

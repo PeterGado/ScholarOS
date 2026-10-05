@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Inbox } from "lucide-react";
 import {
   deleteResearchDocument,
   listProjectDocuments,
@@ -15,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
 
 const DELETABLE_STATUSES = new Set(["pending", "failed"]);
 // Mirrors the backend's own MAX_RESEARCH_DOCUMENTS_PER_PROJECT (app/modules/document/
@@ -191,7 +193,14 @@ export function DocumentsPage() {
         )}
 
         {documentsQuery.isLoading && <p className="text-sm text-muted-foreground">Loading documents...</p>}
-        {documentsQuery.data && inProgressDocuments.length === 0 && (
+        {documentsQuery.data && allDocuments.length === 0 && (
+          <EmptyState
+            icon={Inbox}
+            title="No documents yet"
+            description="Upload source material above so your AI can draw on it and cite it directly."
+          />
+        )}
+        {documentsQuery.data && allDocuments.length > 0 && inProgressDocuments.length === 0 && (
           <p className="text-sm text-muted-foreground">
             Nothing pending - uploaded documents will appear here while processing.
           </p>
