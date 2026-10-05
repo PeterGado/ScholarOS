@@ -1,5 +1,5 @@
 import { apiClient } from "../lib/apiClient";
-import { tokenResponseSchema, type TokenResponse } from "./schemas";
+import { profileResponseSchema, tokenResponseSchema, type ProfileResponse, type TokenResponse } from "./schemas";
 
 export async function login(username: string, password: string): Promise<TokenResponse> {
   const response = await apiClient.post("/auth/login", { username, password });
@@ -29,4 +29,9 @@ export async function loginWithGoogle(idToken: string, inviteCode?: string): Pro
 
 export async function logout(): Promise<void> {
   await apiClient.post("/auth/logout");
+}
+
+export async function getProfile(): Promise<ProfileResponse> {
+  const response = await apiClient.get("/auth/profile");
+  return profileResponseSchema.parse(response.data);
 }

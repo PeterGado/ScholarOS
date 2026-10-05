@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { getProfile } from "@/api/auth";
 import { resetAgentWorkspace } from "@/api/agents";
 import { ApiError } from "@/lib/apiClient";
 import { useWorkspaceContext } from "@/components/WorkspaceGate";
@@ -18,6 +19,8 @@ export function SettingsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [confirmationText, setConfirmationText] = useState("");
+
+  const profileQuery = useQuery({ queryKey: ["auth-profile"], queryFn: getProfile });
 
   const resetMutation = useMutation({
     mutationFn: resetAgentWorkspace,
@@ -37,6 +40,22 @@ export function SettingsPage() {
           Signed in workspace: <span className="font-medium text-foreground">{workspace.project.title}</span>
         </p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Account</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-1">
+          <p className="text-sm text-muted-foreground">Username</p>
+          <p className="text-sm font-medium">
+            {profileQuery.isLoading
+              ? "Loading..."
+              : profileQuery.data
+                ? profileQuery.data.username
+                : "Could not load account info."}
+          </p>
+        </CardContent>
+      </Card>
 
       <Card className="border-destructive/40">
         <CardHeader>

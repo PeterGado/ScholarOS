@@ -11,6 +11,11 @@ export const tokenResponseSchema = z.object({
 });
 export type TokenResponse = z.infer<typeof tokenResponseSchema>;
 
+export const profileResponseSchema = z.object({
+  username: z.string(),
+});
+export type ProfileResponse = z.infer<typeof profileResponseSchema>;
+
 export const agentResponseSchema = z.object({
   agent_id: z.number(),
   status: z.string(),

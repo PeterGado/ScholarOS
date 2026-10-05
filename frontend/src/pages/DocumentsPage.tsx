@@ -73,6 +73,10 @@ export function DocumentsPage() {
   // Agent's knowledge base - it's no longer a "file" to manage here, only searchable below.
   // This list is an upload/status queue, not a permanent archive.
   const inProgressDocuments = allDocuments.filter((doc) => doc.processing_status !== "processed");
+  // Shown separately below (read-only - already part of the knowledge base, can't be deleted
+  // from here) so finishing processing doesn't make the page look empty with no confirmation
+  // anything ever succeeded - a real point of confusion reported by a user.
+  const processedDocuments = allDocuments.filter((doc) => doc.processing_status === "processed");
 
   const uploadMutation = useMutation({
     mutationFn: async () => {
@@ -140,9 +144,9 @@ export function DocumentsPage() {
           <h1 className="text-lg font-semibold">Research Documents</h1>
           <p className="text-sm text-muted-foreground">
             Upload source material for your AI to draw on. Supports plain text, Word (.docx), and
-            PDF files. Once a document finishes processing, it moves into your searchable
-            knowledge base below and no longer appears in this list. Up to {RESEARCH_DOCUMENT_LIMIT}
-            {" "}documents per project ({documentCount}/{RESEARCH_DOCUMENT_LIMIT} used).
+            PDF files. Once a document finishes processing, it moves out of the pending list
+            below into "Processed documents" and your searchable knowledge base. Up to
+            {" "}{RESEARCH_DOCUMENT_LIMIT} documents per project ({documentCount}/{RESEARCH_DOCUMENT_LIMIT} used).
           </p>
         </div>
         <form onSubmit={handleUpload} className="flex flex-wrap items-end gap-3">
@@ -252,6 +256,30 @@ export function DocumentsPage() {
           </p>
         )}
       </section>
+
+      {processedDocuments.length > 0 && (
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-base font-semibold">Processed documents</h2>
+            <p className="text-sm text-muted-foreground">
+              Already absorbed into your Agent's knowledge base - searchable below, not editable
+              as files here.
+            </p>
+          </div>
+          <ul className="space-y-2">
+            {processedDocuments.map((doc) => (
+              <li key={doc.document_id}>
+                <Card>
+                  <CardContent className="flex items-center justify-between py-3">
+                    <span className="text-sm font-medium">{doc.title}</span>
+                    <Badge variant="secondary">processed</Badge>
+                  </CardContent>
+                </Card>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="space-y-4">
         <h2 className="text-base font-semibold">Search Processed Knowledge</h2>
