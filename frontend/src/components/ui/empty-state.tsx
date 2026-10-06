@@ -1,5 +1,5 @@
 import type { ComponentProps, ReactNode } from "react"
-import type { LucideIcon } from "lucide-react"
+import type { Icon as PhosphorIcon } from "@phosphor-icons/react"
 import { cn } from "cn"
 
 // A bounded, deliberate-looking placeholder for a page/section with nothing in it yet -
@@ -15,7 +15,7 @@ export function EmptyState({
   className,
   ...props
 }: ComponentProps<"div"> & {
-  icon: LucideIcon
+  icon: PhosphorIcon
   title: string
   description: string
   action?: ReactNode
@@ -29,7 +29,7 @@ export function EmptyState({
       )}
       {...props}
     >
-      <div className="flex size-10 items-center justify-center rounded-full bg-muted">
+      <div className="flex size-10 items-center justify-center rounded-xl bg-muted">
         <Icon className="size-5 text-muted-foreground" />
       </div>
       <div className="space-y-1">

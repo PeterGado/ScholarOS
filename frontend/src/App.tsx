@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { WorkspaceGate } from "@/components/WorkspaceGate";
 import { AppShell } from "@/components/AppShell";
@@ -15,6 +15,9 @@ import { ChatDetailPage } from "@/pages/ChatDetailPage";
 import { MemoryPage } from "@/pages/MemoryPage";
 import { SegmentsPage } from "@/pages/SegmentsPage";
 import { SettingsPage } from "@/pages/SettingsPage";
+import { NotFoundPage } from "@/pages/NotFoundPage";
+import { PrivacyPage } from "@/pages/PrivacyPage";
+import { TermsPage } from "@/pages/TermsPage";
 
 function App() {
   return (
@@ -25,6 +28,8 @@ function App() {
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="/terms" element={<TermsPage />} />
         <Route
           path="/onboarding"
           element={
@@ -50,7 +55,7 @@ function App() {
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
         </Route>
-        <Route path="*" element={<Navigate to="/chat" replace />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </BrowserRouter>
   );

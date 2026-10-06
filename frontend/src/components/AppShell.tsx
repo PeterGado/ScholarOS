@@ -1,7 +1,17 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate, useOutletContext, useParams } from "react-router-dom";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { FileText, Layers, LogOut, Menu, MessageSquare, PenLine, Plus, Settings, X } from "lucide-react";
+import {
+  ChatIcon,
+  FileTextIcon,
+  GearIcon,
+  ListIcon,
+  PencilLineIcon,
+  PlusIcon,
+  SignOutIcon,
+  StackIcon,
+  XIcon,
+} from "@phosphor-icons/react";
 import { useAuth } from "@/lib/AuthContext";
 import { logout as logoutRequest } from "@/api/auth";
 import { deleteConversation, listConversations, startConversation } from "@/api/writing";
@@ -17,10 +27,10 @@ import type { AgentWorkspaceResponse } from "@/api/schemas";
 // removed entirely) and were confusing as standalone nav destinations. Writing Style stays -
 // it's a real upload feature you might revisit, same as Research Documents.
 const navItems = [
-  { to: "/chat", label: "Chat", icon: MessageSquare },
-  { to: "/documents", label: "Research Documents", icon: FileText },
-  { to: "/style-profile", label: "Writing Style", icon: PenLine },
-  { to: "/segments", label: "Project Segments", icon: Layers },
+  { to: "/chat", label: "Chat", icon: ChatIcon },
+  { to: "/documents", label: "Research Documents", icon: FileTextIcon },
+  { to: "/style-profile", label: "Writing Style", icon: PencilLineIcon },
+  { to: "/segments", label: "Project Segments", icon: StackIcon },
 ];
 
 // A single persistent left sidebar for the whole app (ChatGPT/Claude-style): app nav, a
@@ -41,6 +51,7 @@ export function AppShell() {
   const isChatRoute = location.pathname.startsWith("/chat");
   const { conversationId: activeConversationId } = useParams<{ conversationId: string }>();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<number | null>(null);
 
   // A route change (tapping a nav item, a conversation, or "New chat") means the user is done
   // with the sidebar on mobile - closing it automatically is what makes a phone/tablet sidebar
@@ -88,6 +99,12 @@ export function AppShell() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[60] focus:rounded-lg focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-foreground focus:ring-2 focus:ring-ring"
+      >
+        Skip to content
+      </a>
       {/* Mobile-only top bar: the sidebar has no room to stay permanently visible on a phone-
           width screen, so it becomes a slide-in drawer, opened from here. Hidden entirely on
           desktop (lg:hidden), where the sidebar is already always visible. */}
@@ -99,7 +116,7 @@ export function AppShell() {
           onClick={() => setIsSidebarOpen(true)}
           className="text-sidebar-foreground"
         >
-          <Menu className="size-5" />
+          <ListIcon className="size-5" />
         </Button>
         <span className="text-sm font-semibold">ScholarOS</span>
       </div>
@@ -130,7 +147,7 @@ export function AppShell() {
             onClick={() => setIsSidebarOpen(false)}
             className="text-sidebar-foreground lg:hidden"
           >
-            <X className="size-5" />
+            <XIcon className="size-5" />
           </Button>
         </div>
         <div className="px-3 pb-3">
@@ -140,7 +157,7 @@ export function AppShell() {
             onClick={() => newChatMutation.mutate()}
             disabled={newChatMutation.isPending}
           >
-            <Plus className="size-4" />
+            <PlusIcon className="size-4" />
             New chat
           </Button>
           {newChatMutation.isError && (
@@ -157,7 +174,7 @@ export function AppShell() {
               to={item.to}
               className={({ isActive }) =>
                 cn(
-                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm",
+                  "flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm",
                   isActive
                     ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
                     : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
@@ -196,36 +213,63 @@ export function AppShell() {
             .reverse()
             .map((conversation) => (
               <div key={conversation.conversation_id} className="group relative">
-                <NavLink
-                  to={`/chat/${conversation.conversation_id}`}
-                  className={({ isActive }) =>
-                    cn(
-                      "block truncate rounded-md py-1.5 pr-7 pl-2 text-sm",
-                      isActive
-                        ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
-                    )
-                  }
-                >
-                  {conversation.title ?? "Untitled conversation"}
-                </NavLink>
-                <button
-                  type="button"
-                  aria-label="Delete conversation"
-                  disabled={deleteChatMutation.isPending}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    if (window.confirm("Delete this conversation? This cannot be undone.")) {
-                      deleteChatMutation.mutate(conversation.conversation_id);
-                    }
-                  }}
-                  // Hover-to-reveal has no equivalent on touch - a lg:opacity-0 button would be
-                  // permanently invisible and untappable on a phone, since there's no hover
-                  // state to trigger it. Always visible below the lg breakpoint instead.
-                  className="absolute top-1/2 right-1 -translate-y-1/2 rounded p-1 text-sidebar-foreground/50 opacity-100 hover:bg-sidebar-accent hover:text-destructive lg:opacity-0 lg:group-hover:opacity-100"
-                >
-                  <X className="size-3.5" />
-                </button>
+                {confirmingDeleteId === conversation.conversation_id ? (
+                  <div className="flex items-center justify-between gap-1 rounded-lg bg-sidebar-accent/60 py-1 pr-1 pl-2">
+                    <span className="truncate text-xs text-sidebar-foreground">Delete this chat?</span>
+                    <div className="flex shrink-0 gap-1">
+                      <Button
+                        size="xs"
+                        variant="destructive"
+                        disabled={deleteChatMutation.isPending}
+                        onClick={() =>
+                          deleteChatMutation.mutate(conversation.conversation_id, {
+                            onSettled: () => setConfirmingDeleteId(null),
+                          })
+                        }
+                      >
+                        Delete
+                      </Button>
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                        onClick={() => setConfirmingDeleteId(null)}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <NavLink
+                      to={`/chat/${conversation.conversation_id}`}
+                      className={({ isActive }) =>
+                        cn(
+                          "block truncate rounded-lg py-1.5 pr-7 pl-2 text-sm",
+                          isActive
+                            ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                            : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
+                        )
+                      }
+                    >
+                      {conversation.title ?? "Untitled conversation"}
+                    </NavLink>
+                    <button
+                      type="button"
+                      aria-label="Delete conversation"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        setConfirmingDeleteId(conversation.conversation_id);
+                      }}
+                      // Hover-to-reveal has no equivalent on touch - a lg:opacity-0 button would
+                      // be permanently invisible and untappable on a phone, since there's no
+                      // hover state to trigger it. Always visible below the lg breakpoint instead.
+                      className="absolute top-1/2 right-1 -translate-y-1/2 rounded p-1 text-sidebar-foreground/50 opacity-100 hover:bg-sidebar-accent hover:text-destructive lg:opacity-0 lg:group-hover:opacity-100"
+                    >
+                      <XIcon className="size-3.5" />
+                    </button>
+                  </>
+                )}
               </div>
             ))}
           {conversationsQuery.hasNextPage && (
@@ -252,14 +296,14 @@ export function AppShell() {
             to="/settings"
             className={({ isActive }) =>
               cn(
-                "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm",
+                "flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm",
                 isActive
                   ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
                   : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
               )
             }
           >
-            <Settings className="size-4" />
+            <GearIcon className="size-4" />
             Settings
           </NavLink>
           <div className="mt-1 flex items-center justify-between">
@@ -270,7 +314,7 @@ export function AppShell() {
               onClick={handleLogout}
               className="gap-2 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
             >
-              <LogOut className="size-4" />
+              <SignOutIcon className="size-4" />
               Log out
             </Button>
           </div>
@@ -279,7 +323,7 @@ export function AppShell() {
 
       {/* pt-14 clears the fixed mobile top bar (only rendered below lg) - lg:pt-0 removes it
           again once that bar is gone and the sidebar is static instead of fixed/overlaid. */}
-      <main className="flex flex-1 flex-col overflow-hidden pt-14 lg:pt-0">
+      <main id="main-content" className="flex flex-1 flex-col overflow-hidden pt-14 lg:pt-0">
         {isChatRoute ? (
           <Outlet context={workspace} />
         ) : (
