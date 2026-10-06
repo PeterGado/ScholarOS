@@ -5,6 +5,7 @@ from dataclasses import replace
 from app.ai.providers.base import TextGenerationProvider
 from app.ai.token_estimate import estimate_tokens
 from app.ai.usage_guard import AiUsageGuard
+from app.auth.email_verification_guard import EmailVerificationGuard
 from app.ai.wikipedia import fetch_wikipedia_background
 from app.core.pagination import DEFAULT_LIST_LIMIT
 from app.core.unit_of_work import UnitOfWork
@@ -232,6 +233,7 @@ class SendChatMessageUseCase:
         content_store: ContentStore,
         unit_of_work: UnitOfWork,
         ai_usage_guard: AiUsageGuard,
+        email_verification_guard: EmailVerificationGuard,
         writing_segment_repository: WritingSegmentRepository | None = None,
     ) -> None:
         self._conversations = conversation_repository
@@ -246,6 +248,7 @@ class SendChatMessageUseCase:
         self._content_store = content_store
         self._uow = unit_of_work
         self._ai_usage_guard = ai_usage_guard
+        self._email_verification_guard = email_verification_guard
         # Optional (2026-10-02, added after construction) so every pre-existing caller/test that
         # builds this use case positionally without a segment repository keeps working unchanged;
         # a segment_id can simply never be passed without it.
@@ -264,6 +267,10 @@ class SendChatMessageUseCase:
             or conversation.deleted_at is not None
         ):
             raise ConversationNotFoundError(conversation_id=conversation_id)
+
+        # Email verification gate (2026-10-06, external security review) - right after
+        # ownership is confirmed, before any AI usage is recorded or a message is persisted.
+        self._email_verification_guard.require_verified(user_id)
 
         project = self._projects.get_by_agent_id(agent.agent_id)
         assert project is not None, f"Agent {agent.agent_id} has no Project (invariant 15 violated)"

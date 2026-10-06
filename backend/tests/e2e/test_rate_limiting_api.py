@@ -70,10 +70,14 @@ def test_login_within_the_limit_is_unaffected(client, provisioned_user):
 
 def test_register_beyond_the_per_minute_limit_returns_429(client):
     for i in range(5):
-        response = client.post("/auth/register", json={"username": f"friend-{i}", "password": "s3cret-pass"})
+        response = client.post(
+            "/auth/register", json={"email": f"friend-{i}@example.com", "password": "s3cret-password"}
+        )
         assert response.status_code == 201
 
-    response = client.post("/auth/register", json={"username": "one-too-many", "password": "s3cret-pass"})
+    response = client.post(
+        "/auth/register", json={"email": "one-too-many@example.com", "password": "s3cret-password"}
+    )
 
     assert response.status_code == 429
     assert response.json()["error_type"] == "RateLimitExceeded"

@@ -1,6 +1,7 @@
 import pytest
 
 from app.ai.usage_guard import AiUsageGuard
+from app.auth.exceptions import EmailNotVerifiedError
 from app.modules.agent.domain.entities import Agent
 from app.modules.agent.domain.repositories import AgentRepository
 from app.modules.document.application.use_cases import (
@@ -131,6 +132,15 @@ class FakeWorkItemEnqueuer:
         return None
 
 
+class FakeEmailVerificationGuard:
+    def __init__(self, *, verified: bool = True) -> None:
+        self._verified = verified
+
+    def require_verified(self, user_id: int) -> None:
+        if not self._verified:
+            raise EmailNotVerifiedError()
+
+
 class FakeWorkItemOutcomeLookup:
     def __init__(self):
         self.cancelled_payload_references: list[str] = []
@@ -149,7 +159,7 @@ class FakeWorkItemOutcomeLookup:
         return None
 
 
-def _build_use_case(project_id=1, agents: dict[int, Agent] | None = None):
+def _build_use_case(project_id=1, agents: dict[int, Agent] | None = None, *, email_verified: bool = True):
     documents = FakeDocumentRepository()
     projects = FakeProjectRepository(existing_project_id=project_id)
     agent_repository = FakeAgentRepository(agents)
@@ -157,7 +167,14 @@ def _build_use_case(project_id=1, agents: dict[int, Agent] | None = None):
     uow = FakeUnitOfWork()
     work_items = FakeWorkItemEnqueuer()
     use_case = UploadResearchDocumentUseCase(
-        documents, projects, agent_repository, content_store, uow, work_items, AiUsageGuard(None, None, daily_token_cap=None)
+        documents,
+        projects,
+        agent_repository,
+        content_store,
+        uow,
+        work_items,
+        AiUsageGuard(None, None, daily_token_cap=None),
+        FakeEmailVerificationGuard(verified=email_verified),
     )
     return use_case, documents, content_store, uow, work_items
 
@@ -183,6 +200,16 @@ def test_upload_against_missing_project_is_rejected_and_nothing_is_committed():
 
     with pytest.raises(ProjectNotFoundError):
         use_case.execute(project_id=999, user_id=OWNER_USER_ID, title="Source A", format="pdf", content=b"hello")
+
+
+def test_upload_by_an_unverified_account_is_rejected_and_nothing_is_committed():
+    use_case, documents, content_store, uow, work_items = _build_use_case(project_id=1, email_verified=False)
+
+    with pytest.raises(EmailNotVerifiedError):
+        use_case.execute(project_id=1, user_id=OWNER_USER_ID, title="Source A", format="pdf", content=b"hello")
+
+    assert content_store.saved == []
+    assert len(work_items.enqueued) == 0
 
     assert content_store.saved == []
     assert not uow.committed

@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 import app.database.session as session_module
 import app.main as main_module
 from app.auth.hashing import hash_password
-from app.core.dependencies import get_content_store
+from app.core.dependencies import get_content_store, get_password_breach_checker
 from app.core.rate_limit import limiter
 from app.database.session import build_engine, build_sessionmaker
 from app.database.shared_models import User
@@ -84,6 +84,11 @@ def client(db_engine, tmp_path, monkeypatch):
         return FilesystemStorage(tmp_path / "object-store")
 
     app.dependency_overrides[get_content_store] = override_get_content_store
+    # Never known-breached by default - individual tests exercising the rejection path override
+    # this back to a fake returning True, the same per-test-override pattern
+    # test_google_sign_in_api.py already uses for get_google_token_verifier. Without this, every
+    # e2e test that registers or resets a password would make a real network call to HIBP.
+    app.dependency_overrides[get_password_breach_checker] = lambda: (lambda password: False)
     limiter.enabled = False
     monkeypatch.setattr(main_module, "WorkItemExecutorLoop", _NoOpExecutorLoop)
     try:

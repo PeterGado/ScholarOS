@@ -2,8 +2,9 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Callable
 
-from app.auth.exceptions import InvalidResetTokenError, WeakPasswordError
+from app.auth.exceptions import InvalidResetTokenError, PasswordCompromisedError, WeakPasswordError
 from app.auth.hashing import hash_password
+from app.auth.password_strength import is_breached_password
 from app.auth.registration import MINIMUM_PASSWORD_LENGTH
 from app.auth.repository import (
     AuthSessionRepository,
@@ -102,15 +103,21 @@ class ConfirmPasswordResetUseCase:
         user_account: UserAccountRepository,
         auth_sessions: AuthSessionRepository,
         unit_of_work: UnitOfWork,
+        *,
+        is_breached: Callable[[str], bool] = is_breached_password,
     ) -> None:
         self._reset_tokens = reset_tokens
         self._user_account = user_account
         self._auth_sessions = auth_sessions
         self._uow = unit_of_work
+        self._is_breached = is_breached
 
     def execute(self, *, raw_token: str, new_password: str) -> None:
         if len(new_password) < MINIMUM_PASSWORD_LENGTH:
             raise WeakPasswordError(minimum_length=MINIMUM_PASSWORD_LENGTH)
+
+        if self._is_breached(new_password):
+            raise PasswordCompromisedError()
 
         token = self._reset_tokens.get_by_token_hash(hash_session_token(raw_token))
         if token is None or not token.is_valid(now=datetime.now(timezone.utc)):

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getProfile, updateEmail } from "@/api/auth";
+import { connectGoogleAccount, getProfile, requestEmailVerification, setPassword, updateEmail } from "@/api/auth";
 import { resetAgentWorkspace } from "@/api/agents";
 import { ApiError } from "@/lib/apiClient";
 import { useToast } from "@/lib/ToastContext";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 
 const CONFIRMATION_WORD = "RESET";
 
@@ -35,6 +36,29 @@ export function SettingsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["auth-profile"] });
       showToast("Email saved.");
+    },
+  });
+
+  const verifyMutation = useMutation({
+    mutationFn: requestEmailVerification,
+    onSuccess: () => showToast("Verification email sent - check your inbox."),
+  });
+
+  const [newPassword, setNewPassword] = useState("");
+  const setPasswordMutation = useMutation({
+    mutationFn: () => setPassword(newPassword),
+    onSuccess: () => {
+      setNewPassword("");
+      queryClient.invalidateQueries({ queryKey: ["auth-profile"] });
+      showToast("Password set. You can now sign in with your email and password.");
+    },
+  });
+
+  const connectGoogleMutation = useMutation({
+    mutationFn: connectGoogleAccount,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["auth-profile"] });
+      showToast("Google account connected.");
     },
   });
 
@@ -77,7 +101,7 @@ export function SettingsPage() {
               Email
             </Label>
             <p className="text-xs text-muted-foreground">
-              Used only for password reset links. Nothing else is sent here.
+              Used for password reset and email verification links. Nothing else is sent here.
             </p>
             <div className="flex items-end gap-3">
               <Input
@@ -100,6 +124,87 @@ export function SettingsPage() {
             {emailMutation.isError && (
               <p className="text-sm text-destructive">
                 {emailMutation.error instanceof ApiError ? emailMutation.error.message : "Could not save email."}
+              </p>
+            )}
+            {profileQuery.data?.email && !profileQuery.data.email_verified && (
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="text-warning">Not verified</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={verifyMutation.isPending}
+                  onClick={() => verifyMutation.mutate()}
+                >
+                  {verifyMutation.isPending ? "Sending..." : "Resend verification email"}
+                </Button>
+              </div>
+            )}
+            {profileQuery.data?.email_verified && <p className="text-sm text-success">Verified</p>}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Security - connected accounts</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Google</p>
+            {profileQuery.data?.google_connected ? (
+              <p className="text-sm text-success">Connected</p>
+            ) : (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  Sign in with Google too. Connecting only adds this option - your existing sign-in keeps working.
+                </p>
+                <GoogleSignInButton onCredential={(idToken) => connectGoogleMutation.mutate(idToken)} />
+              </>
+            )}
+            {connectGoogleMutation.isError && (
+              <p className="text-sm text-destructive">
+                {connectGoogleMutation.error instanceof ApiError
+                  ? connectGoogleMutation.error.message
+                  : "Could not connect Google."}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Email and password</p>
+            {profileQuery.data?.has_password ? (
+              <p className="text-sm text-success">Password set</p>
+            ) : (
+              <form
+                className="flex flex-wrap items-end gap-3"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  setPasswordMutation.mutate();
+                }}
+              >
+                <div className="space-y-1">
+                  <Label htmlFor="new-password" className="text-xs text-muted-foreground">
+                    Choose a password (at least 12 characters)
+                  </Label>
+                  <Input
+                    id="new-password"
+                    type="password"
+                    autoComplete="new-password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="max-w-xs"
+                  />
+                </div>
+                <Button type="submit" size="sm" disabled={setPasswordMutation.isPending || newPassword.length === 0}>
+                  {setPasswordMutation.isPending ? "Saving..." : "Set password"}
+                </Button>
+              </form>
+            )}
+            {setPasswordMutation.isError && (
+              <p className="text-sm text-destructive">
+                {setPasswordMutation.error instanceof ApiError
+                  ? setPasswordMutation.error.message
+                  : "Could not set password."}
               </p>
             )}
           </div>

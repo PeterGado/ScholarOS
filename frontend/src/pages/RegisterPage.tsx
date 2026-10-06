@@ -8,16 +8,21 @@ import { useAuth } from "@/lib/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-// The invite_code field is always rendered, even though it's only enforced when the backend
-// has REGISTRATION_INVITE_CODE configured (ADR-011) - the frontend never needs to know whether
-// one is required; an unconfigured backend simply ignores whatever's typed here (or nothing).
+// Google is the primary path (2026-10-06) - no password to manage or forget, and a real
+// verified email on file automatically. Email/password stays available underneath it as a
+// real alternative, not just a fallback for when Google fails to load - some researchers won't
+// use Google, and institutions may require a different identity provider. Registration collects
+// an email, not a username (external security review) - a username is still synthesized
+// server-side, but it's never user-chosen or shown as the account's real identity. Registration
+// is fully open either way - no invite code anywhere in this flow; REGISTRATION_INVITE_CODE is
+// unset in production.
 export function RegisterPage() {
   const { isAuthenticated, setToken } = useAuth();
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [googleUnavailable, setGoogleUnavailable] = useState(false);
 
   if (isAuthenticated) {
     return <Navigate to="/chat" replace />;
@@ -28,7 +33,7 @@ export function RegisterPage() {
     setError(null);
     setIsSubmitting(true);
     try {
-      const { access_token } = await register(username, password, inviteCode);
+      const { access_token } = await register(email, password);
       setToken(access_token);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Registration failed. Check the backend is running.");
@@ -40,9 +45,7 @@ export function RegisterPage() {
   async function handleGoogleCredential(idToken: string) {
     setError(null);
     try {
-      // Reuses this page's own invite-code field - a brand-new Google account is held to the
-      // same friends-only gate as a brand-new password account; a returning one ignores it.
-      const { access_token } = await loginWithGoogle(idToken, inviteCode);
+      const { access_token } = await loginWithGoogle(idToken);
       setToken(access_token);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Google sign-in failed. Check the backend is running.");
@@ -66,66 +69,72 @@ export function RegisterPage() {
           Back to home
         </Link>
       </div>
-      <form
-        id="register-form"
-        onSubmit={handleSubmit}
-        className="w-full max-w-sm space-y-4 rounded-xl border border-border p-6"
-      >
-        <h1 className="text-lg font-semibold">Create your ScholarOS account</h1>
+      <div className="w-full max-w-sm space-y-4 rounded-xl border border-border p-6">
         <div className="space-y-1">
-          <label htmlFor="username" className="text-sm font-medium">
-            Username
-          </label>
-          <Input
-            id="username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            autoComplete="username"
-            required
-          />
+          <h1 className="text-lg font-semibold">Create your ScholarOS account</h1>
+          <p className="text-sm text-muted-foreground">
+            Your research workspace for reading, writing, and thinking with AI.
+          </p>
         </div>
-        <div className="space-y-1">
-          <label htmlFor="password" className="text-sm font-medium">
-            Password
-          </label>
-          <Input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="new-password"
-            minLength={8}
-            required
-          />
+
+        <div className="flex justify-center">
+          <GoogleSignInButton onCredential={handleGoogleCredential} onUnavailable={() => setGoogleUnavailable(true)} />
         </div>
-        <div className="space-y-1">
-          <label htmlFor="invite-code" className="text-sm font-medium">
-            Invite code (if you have one)
-          </label>
-          <Input
-            id="invite-code"
-            value={inviteCode}
-            onChange={(e) => setInviteCode(e.target.value)}
-            autoComplete="off"
-          />
-        </div>
-        {error && <p className="text-sm text-destructive">{error}</p>}
-        <Button type="submit" disabled={isSubmitting} className="w-full">
-          {isSubmitting ? "Creating account..." : "Create account"}
-        </Button>
+        {googleUnavailable && (
+          <p className="text-center text-xs text-muted-foreground">
+            Google sign-in isn't loading - use the form below instead.
+          </p>
+        )}
+
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <div className="h-px flex-1 bg-border" />
           or
           <div className="h-px flex-1 bg-border" />
         </div>
-        <GoogleSignInButton onCredential={handleGoogleCredential} />
+
+        <form id="register-form" onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-1">
+            <label htmlFor="email" className="text-sm font-medium">
+              Email
+            </label>
+            <Input
+              id="email"
+              type="email"
+              size="lg"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              required
+            />
+          </div>
+          <div className="space-y-1">
+            <label htmlFor="password" className="text-sm font-medium">
+              Password
+            </label>
+            <Input
+              id="password"
+              size="lg"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="new-password"
+              minLength={8}
+              required
+            />
+          </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <Button type="submit" disabled={isSubmitting} className="w-full">
+            {isSubmitting ? "Creating account..." : "Create account"}
+          </Button>
+        </form>
+
         <p className="text-center text-sm text-muted-foreground">
           Already have an account?{" "}
           <Link to="/login" className="font-medium text-primary underline-offset-4 hover:underline">
             Sign in
           </Link>
         </p>
-      </form>
+      </div>
     </div>
   );
 }

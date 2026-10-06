@@ -9,6 +9,8 @@ import logging
 import pytest
 
 from app.ai.usage_guard import AiUsageGuard
+from app.auth.email_verification_guard import EmailVerificationGuard
+from app.auth.infrastructure import SqlAlchemyUserCredentialLookup
 from app.database.session import build_engine, build_sessionmaker, init_db
 from app.database.shared_models import User
 from app.database.unit_of_work import SqlAlchemyUnitOfWork
@@ -150,6 +152,7 @@ def _provision_document_with_knowledge(
         uow,
         WorkItemRepository(session),
         AiUsageGuard(None, None, daily_token_cap=None),
+        EmailVerificationGuard(SqlAlchemyUserCredentialLookup(session)),
     ).execute(
         project_id=workspace.project.project_id,
         user_id=workspace.agent.user_id,
@@ -185,6 +188,7 @@ def _send_and_process(session, storage, workspace, conversation_id, content, pro
         storage,
         SqlAlchemyUnitOfWork(session),
         AiUsageGuard(None, None, daily_token_cap=None),
+        EmailVerificationGuard(SqlAlchemyUserCredentialLookup(session)),
     )
     use_case.execute(user_id=workspace.agent.user_id, conversation_id=conversation_id, content=content)
     process_one_work_item(

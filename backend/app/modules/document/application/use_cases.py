@@ -5,6 +5,7 @@ from typing import Callable
 
 from app.ai.crossref import CrossrefWork, fetch_crossref_work
 from app.ai.usage_guard import AiUsageGuard
+from app.auth.email_verification_guard import EmailVerificationGuard
 from app.core.pagination import DEFAULT_LIST_LIMIT
 from app.core.unit_of_work import UnitOfWork
 from app.modules.agent.domain.repositories import AgentRepository
@@ -61,6 +62,7 @@ class UploadResearchDocumentUseCase:
         unit_of_work: UnitOfWork,
         work_item_enqueuer: WorkItemEnqueuer,
         ai_usage_guard: AiUsageGuard,
+        email_verification_guard: EmailVerificationGuard,
     ) -> None:
         self._documents = document_repository
         self._projects = project_repository
@@ -69,6 +71,7 @@ class UploadResearchDocumentUseCase:
         self._uow = unit_of_work
         self._work_items = work_item_enqueuer
         self._ai_usage_guard = ai_usage_guard
+        self._email_verification_guard = email_verification_guard
 
     def execute(
         self,
@@ -91,6 +94,10 @@ class UploadResearchDocumentUseCase:
         owning_agent = self._agents.get_by_id(project.agent_id)
         if owning_agent is None or owning_agent.user_id != user_id:
             raise ProjectNotFoundError(project_id=project_id)
+
+        # Email verification gate (2026-10-06, external security review) - right after
+        # ownership is confirmed, before any content-store write or AI usage is recorded.
+        self._email_verification_guard.require_verified(user_id)
 
         existing_count = len(self._documents.list_by_project_id(project_id, purpose=DocumentPurpose.RESEARCH))
         if existing_count >= MAX_RESEARCH_DOCUMENTS_PER_PROJECT:

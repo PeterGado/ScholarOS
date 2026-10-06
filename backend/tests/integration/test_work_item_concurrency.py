@@ -110,10 +110,19 @@ def _upload_documents(engine, storage, count: int) -> None:
 
         documents = SqlAlchemyDocumentRepository(session)
         from app.ai.usage_guard import AiUsageGuard
+        from app.auth.email_verification_guard import EmailVerificationGuard
+        from app.auth.infrastructure import SqlAlchemyUserCredentialLookup
         from app.workers.repository import WorkItemRepository as WIR
 
         upload = UploadResearchDocumentUseCase(
-            documents, projects, agents, storage, uow, WIR(session), AiUsageGuard(None, None, daily_token_cap=None)
+            documents,
+            projects,
+            agents,
+            storage,
+            uow,
+            WIR(session),
+            AiUsageGuard(None, None, daily_token_cap=None),
+            EmailVerificationGuard(SqlAlchemyUserCredentialLookup(session)),
         )
         for i in range(count):
             upload.execute(

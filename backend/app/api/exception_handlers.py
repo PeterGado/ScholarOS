@@ -7,6 +7,8 @@ from slowapi.errors import RateLimitExceeded
 from app.ai.exceptions import AiUsageQuotaExceededError, ProviderConfigurationError, ProviderRequestError
 from app.auth.exceptions import (
     EmailAlreadyInUseError,
+    EmailNotVerifiedError,
+    GoogleAccountAlreadyLinkedError,
     GoogleAccountEmailConflictError,
     GoogleSignInNotConfiguredError,
     InvalidCredentialsError,
@@ -14,7 +16,8 @@ from app.auth.exceptions import (
     InvalidInviteCodeError,
     InvalidResetTokenError,
     InvalidSessionError,
-    UsernameAlreadyTakenError,
+    InvalidVerificationTokenError,
+    PasswordCompromisedError,
     WeakPasswordError,
 )
 from app.email.exceptions import EmailSendError
@@ -82,6 +85,14 @@ async def _handle_invalid_input(request: Request, exc: Exception) -> JSONRespons
 
 async def _handle_unauthorized(request: Request, exc: Exception) -> JSONResponse:
     return _respond(status.HTTP_401_UNAUTHORIZED, type(exc).__name__, str(exc))
+
+
+async def _handle_forbidden(request: Request, exc: Exception) -> JSONResponse:
+    # First 403 in this codebase (2026-10-06, EmailNotVerifiedError) - distinct from 401
+    # (_handle_unauthorized): the caller IS authenticated, they're just not allowed to do this
+    # one thing yet, the same distinction a real auth boundary always draws between "who are
+    # you" and "are you allowed."
+    return _respond(status.HTTP_403_FORBIDDEN, type(exc).__name__, str(exc))
 
 
 async def _handle_storage_failure(request: Request, exc: Exception) -> JSONResponse:
@@ -183,12 +194,15 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(InvalidCredentialsError, _handle_unauthorized)
     app.add_exception_handler(InvalidSessionError, _handle_unauthorized)
     app.add_exception_handler(InvalidInviteCodeError, _handle_unauthorized)
-    app.add_exception_handler(UsernameAlreadyTakenError, _handle_conflict)
     app.add_exception_handler(WeakPasswordError, _handle_invalid_input)
+    app.add_exception_handler(PasswordCompromisedError, _handle_invalid_input)
     app.add_exception_handler(InvalidGoogleTokenError, _handle_unauthorized)
     app.add_exception_handler(GoogleAccountEmailConflictError, _handle_conflict)
+    app.add_exception_handler(GoogleAccountAlreadyLinkedError, _handle_conflict)
     app.add_exception_handler(GoogleSignInNotConfiguredError, _handle_service_unavailable)
     app.add_exception_handler(InvalidResetTokenError, _handle_unauthorized)
+    app.add_exception_handler(InvalidVerificationTokenError, _handle_unauthorized)
+    app.add_exception_handler(EmailNotVerifiedError, _handle_forbidden)
     app.add_exception_handler(EmailAlreadyInUseError, _handle_conflict)
     app.add_exception_handler(EmailSendError, _handle_service_unavailable)
     app.add_exception_handler(UploadTooLargeError, _handle_payload_too_large)

@@ -7,6 +7,7 @@ import { DEFAULT_LIST_LIMIT } from "@/api/pagination";
 import { ApiError } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { EmailVerificationNotice } from "@/components/EmailVerificationNotice";
 import { MarkdownMessage } from "@/components/MarkdownMessage";
 import { ThinkingIndicator } from "@/components/ThinkingIndicator";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -311,11 +312,16 @@ function ChatConversation({ conversationId }: { conversationId: number }) {
             Send
           </Button>
         </div>
-        {sendMutation.isError && (
-          <p className="mx-auto mt-2 max-w-2xl text-sm text-destructive">
-            {sendMutation.error instanceof ApiError ? sendMutation.error.message : "Could not send message."}
-          </p>
-        )}
+        {sendMutation.isError &&
+          (sendMutation.error instanceof ApiError && sendMutation.error.errorType === "EmailNotVerifiedError" ? (
+            <div className="mx-auto mt-2 max-w-2xl">
+              <EmailVerificationNotice />
+            </div>
+          ) : (
+            <p className="mx-auto mt-2 max-w-2xl text-sm text-destructive">
+              {sendMutation.error instanceof ApiError ? sendMutation.error.message : "Could not send message."}
+            </p>
+          ))}
       </div>
     </div>
   );

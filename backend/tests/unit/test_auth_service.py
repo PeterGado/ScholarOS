@@ -23,9 +23,13 @@ class FakeUserCredentialLookup(UserCredentialLookup):
     def __init__(self, *users: FakeUserCredential):
         self._by_username = {u.username: u for u in users}
         self._by_id = {u.user_id: u for u in users}
+        self._by_email = {u.email: u for u in users if u.email}
 
     def get_by_username(self, username: str) -> FakeUserCredential | None:
         return self._by_username.get(username)
+
+    def get_by_email(self, email: str) -> FakeUserCredential | None:
+        return self._by_email.get(email)
 
     def get_by_id(self, user_id: int) -> FakeUserCredential | None:
         return self._by_id.get(user_id)
@@ -142,6 +146,19 @@ def test_login_with_unknown_username_raises_invalid_credentials():
     service, _ = _build_service()
     with pytest.raises(InvalidCredentialsError):
         service.login(username="nobody", password="whatever")
+
+
+def test_login_with_email_falls_back_when_username_lookup_misses():
+    user = FakeUserCredential(
+        user_id=7, username="r4nd0m-handle", password_hash=hash_password("s3cret"), email="researcher@example.com"
+    )
+    service, _ = _build_service(user)
+
+    token = service.login(username="researcher@example.com", password="s3cret")
+
+    assert isinstance(token, str)
+    identity = service.verify_token(token)
+    assert identity.user_id == 7
 
 
 def test_login_with_wrong_password_raises_invalid_credentials():

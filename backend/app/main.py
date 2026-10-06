@@ -133,4 +133,11 @@ async def add_security_headers(request: Request, call_next):
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+    # 2026-10-06: fly.toml's force_https redirects at the edge, but that's a one-time redirect
+    # per request, not a standing instruction to the browser - without HSTS, a single
+    # intercepted plain-HTTP request (e.g. a stale bookmark, a downgrade attempt) still reaches
+    # the edge before being redirected. max-age=1yr + includeSubDomains is the standard
+    # production baseline; preload is left off since that requires a one-time submission to
+    # browsers' hardcoded preload lists and is hard to reverse if ever needed.
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response

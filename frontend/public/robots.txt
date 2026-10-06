@@ -1,0 +1,17 @@
+User-agent: *
+Allow: /
+Allow: /login
+Allow: /register
+Allow: /forgot-password
+Allow: /privacy
+Allow: /terms
+Disallow: /reset-password
+Disallow: /onboarding
+Disallow: /chat
+Disallow: /documents
+Disallow: /style-profile
+Disallow: /segments
+Disallow: /memory
+Disallow: /settings
+
+Sitemap: https://scholaros-frontend-nine.vercel.app/sitemap.xml

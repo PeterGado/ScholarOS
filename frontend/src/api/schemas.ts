@@ -14,6 +14,9 @@ export type TokenResponse = z.infer<typeof tokenResponseSchema>;
 export const profileResponseSchema = z.object({
   username: z.string(),
   email: z.string().nullable(),
+  email_verified: z.boolean(),
+  google_connected: z.boolean(),
+  has_password: z.boolean(),
 });
 export type ProfileResponse = z.infer<typeof profileResponseSchema>;
 

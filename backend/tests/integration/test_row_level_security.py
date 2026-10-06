@@ -349,11 +349,11 @@ def test_a_real_authenticated_write_succeeds_end_to_end_through_the_real_app_as_
     first's agent through the same real API - both the write path and cross-user isolation,
     exercised the way the deployed app is actually driven, not a shortcut.
     """
-    r = rls_client.post("/auth/register", json={"username": "rls-e2e-user-a", "password": "s3cret-pass"})
+    r = rls_client.post("/auth/register", json={"email": "rls-e2e-user-a@example.com", "password": "s3cret-password"})
     assert r.status_code == 201, r.text
     headers_a = {"Authorization": f"Bearer {r.json()['access_token']}"}
 
-    r = rls_client.post("/auth/register", json={"username": "rls-e2e-user-b", "password": "s3cret-pass"})
+    r = rls_client.post("/auth/register", json={"email": "rls-e2e-user-b@example.com", "password": "s3cret-password"})
     assert r.status_code == 201, r.text
     headers_b = {"Authorization": f"Bearer {r.json()['access_token']}"}
 

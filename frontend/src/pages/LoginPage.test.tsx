@@ -45,7 +45,7 @@ describe("LoginPage", () => {
     const user = userEvent.setup();
     renderLoginPage();
 
-    await user.type(screen.getByLabelText("Username"), "researcher");
+    await user.type(screen.getByLabelText("Email or username"), "researcher");
     await user.type(screen.getByLabelText("Password"), "secret");
     await user.click(screen.getByRole("button", { name: "Sign in" }));
 
@@ -57,7 +57,7 @@ describe("LoginPage", () => {
     const user = userEvent.setup();
     renderLoginPage();
 
-    await user.type(screen.getByLabelText("Username"), "researcher");
+    await user.type(screen.getByLabelText("Email or username"), "researcher");
     await user.type(screen.getByLabelText("Password"), "wrong");
     await user.click(screen.getByRole("button", { name: "Sign in" }));
 

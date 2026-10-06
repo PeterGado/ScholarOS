@@ -9,11 +9,19 @@ import * as authApi from "@/api/auth";
 
 vi.mock("@/api/auth");
 // GoogleSignInButton's real behavior is covered by its own test file - stubbed here so
-// RegisterPage's own onCredential handling (passing along the typed invite code) can be tested
-// in isolation.
+// RegisterPage's own onCredential/onUnavailable handling can be tested in isolation.
 vi.mock("@/components/GoogleSignInButton", () => ({
-  GoogleSignInButton: ({ onCredential }: { onCredential: (idToken: string) => void }) => (
-    <button onClick={() => onCredential("fake-google-id-token")}>Sign in with Google</button>
+  GoogleSignInButton: ({
+    onCredential,
+    onUnavailable,
+  }: {
+    onCredential: (idToken: string) => void;
+    onUnavailable?: () => void;
+  }) => (
+    <div>
+      <button onClick={() => onCredential("fake-google-id-token")}>Sign in with Google</button>
+      <button onClick={() => onUnavailable?.()}>Simulate Google unavailable</button>
+    </div>
   ),
 }));
 
@@ -40,39 +48,63 @@ describe("RegisterPage", () => {
     expect(screen.getByRole("link", { name: /back to home/i })).toHaveAttribute("href", "/");
   });
 
-  it("submits the entered username, password, and invite code to the register API", async () => {
+  it("signs up via Google with no invite code - registration is fully open", async () => {
+    vi.mocked(authApi.loginWithGoogle).mockResolvedValue({ access_token: "token-456", token_type: "bearer" });
+    const user = userEvent.setup();
+    renderRegisterPage();
+
+    await user.click(screen.getByRole("button", { name: "Sign in with Google" }));
+
+    await waitFor(() => expect(authApi.loginWithGoogle).toHaveBeenCalledWith("fake-google-id-token"));
+  });
+
+  it("shows an error message when Google sign-in fails", async () => {
+    vi.mocked(authApi.loginWithGoogle).mockRejectedValue(new Error("Something went wrong."));
+    const user = userEvent.setup();
+    renderRegisterPage();
+
+    await user.click(screen.getByRole("button", { name: "Sign in with Google" }));
+
+    expect(await screen.findByText(/google sign-in failed/i)).toBeInTheDocument();
+  });
+
+  it("shows a fallback message and the password form still works when Google is unavailable", async () => {
     vi.mocked(authApi.register).mockResolvedValue({ access_token: "token-123", token_type: "bearer" });
     const user = userEvent.setup();
     renderRegisterPage();
 
-    await user.type(screen.getByLabelText("Username"), "new-researcher");
+    await user.click(screen.getByRole("button", { name: "Simulate Google unavailable" }));
+    expect(await screen.findByText(/google sign-in isn't loading/i)).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Email"), "new-researcher@example.com");
     await user.type(screen.getByLabelText("Password"), "a-real-password");
-    await user.type(screen.getByLabelText(/invite code/i), "friends-2026");
     await user.click(screen.getByRole("button", { name: "Create account" }));
 
     await waitFor(() =>
-      expect(authApi.register).toHaveBeenCalledWith("new-researcher", "a-real-password", "friends-2026"),
+      expect(authApi.register).toHaveBeenCalledWith("new-researcher@example.com", "a-real-password"),
     );
   });
 
-  it("submits successfully with no invite code entered", async () => {
+  it("submits the entered email and password to the register API", async () => {
     vi.mocked(authApi.register).mockResolvedValue({ access_token: "token-123", token_type: "bearer" });
     const user = userEvent.setup();
     renderRegisterPage();
 
-    await user.type(screen.getByLabelText("Username"), "new-researcher");
+    await user.type(screen.getByLabelText("Email"), "new-researcher@example.com");
     await user.type(screen.getByLabelText("Password"), "a-real-password");
     await user.click(screen.getByRole("button", { name: "Create account" }));
 
-    await waitFor(() => expect(authApi.register).toHaveBeenCalledWith("new-researcher", "a-real-password", ""));
+    await waitFor(() =>
+      expect(authApi.register).toHaveBeenCalledWith("new-researcher@example.com", "a-real-password"),
+    );
   });
 
   it("shows an error message when registration fails", async () => {
-    vi.mocked(authApi.register).mockRejectedValue(new Error("That username is already taken."));
+    vi.mocked(authApi.register).mockRejectedValue(new Error("That email is already associated with another account."));
     const user = userEvent.setup();
     renderRegisterPage();
 
-    await user.type(screen.getByLabelText("Username"), "taken-name");
+    await user.type(screen.getByLabelText("Email"), "taken@example.com");
     await user.type(screen.getByLabelText("Password"), "a-real-password");
     await user.click(screen.getByRole("button", { name: "Create account" }));
 
@@ -81,28 +113,9 @@ describe("RegisterPage", () => {
     expect(await screen.findByText(/registration failed/i)).toBeInTheDocument();
   });
 
-  it("signs in via Google, passing along the typed invite code", async () => {
-    vi.mocked(authApi.loginWithGoogle).mockResolvedValue({ access_token: "token-456", token_type: "bearer" });
-    const user = userEvent.setup();
+  it("has a link to sign in for an existing account", () => {
     renderRegisterPage();
 
-    await user.type(screen.getByLabelText(/invite code/i), "friends-2026");
-    await user.click(screen.getByRole("button", { name: "Sign in with Google" }));
-
-    await waitFor(() =>
-      expect(authApi.loginWithGoogle).toHaveBeenCalledWith("fake-google-id-token", "friends-2026"),
-    );
-  });
-
-  it("shows an error message when Google sign-in fails", async () => {
-    // A plain Error, not an ApiError instance - falls back to the generic message, mirroring
-    // the equivalent password-registration test above.
-    vi.mocked(authApi.loginWithGoogle).mockRejectedValue(new Error("Invalid invite code."));
-    const user = userEvent.setup();
-    renderRegisterPage();
-
-    await user.click(screen.getByRole("button", { name: "Sign in with Google" }));
-
-    expect(await screen.findByText(/google sign-in failed/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /sign in/i })).toHaveAttribute("href", "/login");
   });
 });

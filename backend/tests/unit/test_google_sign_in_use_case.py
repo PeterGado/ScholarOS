@@ -25,6 +25,7 @@ class FakeUserCredential:
     password_hash: str = ""
     email: str | None = None
     google_subject: str | None = None
+    email_verified: bool = True
 
 
 class FakeUserCredentialLookup(UserCredentialLookup):
@@ -52,11 +53,23 @@ class FakeUserRegistrationRepository(UserRegistrationRepository):
         raise NotImplementedError("not exercised by these tests")
 
     def create_from_google(
-        self, *, username: str, email: str | None, google_subject: str, display_name: str | None
+        self,
+        *,
+        username: str,
+        email: str | None,
+        google_subject: str,
+        display_name: str | None,
+        email_verified: bool = True,
     ) -> FakeUserCredential:
         if self._raise_integrity_error:
             raise IntegrityError("INSERT INTO users", (), Exception("UNIQUE constraint failed"))
-        user = FakeUserCredential(user_id=self._next_id, username=username, email=email, google_subject=google_subject)
+        user = FakeUserCredential(
+            user_id=self._next_id,
+            username=username,
+            email=email,
+            google_subject=google_subject,
+            email_verified=email_verified,
+        )
         self._next_id += 1
         self._lookup._users.append(user)
         self.created.append(user)
@@ -162,6 +175,26 @@ def test_a_username_collision_gets_a_numeric_suffix():
     use_case.execute(id_token="raw-token", invite_code=None)
 
     assert lookup.get_by_username("alice2") is not None
+
+
+def test_a_new_google_account_is_verified_when_googles_claim_confirms_it():
+    use_case, lookup, _ = _build_use_case(verifier=_verifier({
+        "sub": "google-subject-1", "email": "alice@example.com", "email_verified": True, "name": "Alice"
+    }))
+
+    use_case.execute(id_token="raw-token", invite_code=None)
+
+    assert lookup.get_by_google_subject("google-subject-1").email_verified is True
+
+
+def test_a_new_google_account_is_not_verified_when_googles_claim_does_not_confirm_it():
+    use_case, lookup, _ = _build_use_case(verifier=_verifier({
+        "sub": "google-subject-1", "email": "alice@example.com", "email_verified": False, "name": "Alice"
+    }))
+
+    use_case.execute(id_token="raw-token", invite_code=None)
+
+    assert lookup.get_by_google_subject("google-subject-1").email_verified is False
 
 
 def test_falls_back_to_the_google_subject_when_there_is_no_email():

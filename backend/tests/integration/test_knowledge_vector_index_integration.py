@@ -1,6 +1,8 @@
 import pytest
 
 from app.ai.usage_guard import AiUsageGuard
+from app.auth.email_verification_guard import EmailVerificationGuard
+from app.auth.infrastructure import SqlAlchemyUserCredentialLookup
 from app.database.session import build_engine, build_sessionmaker, init_db
 from app.database.shared_models import User
 from app.database.unit_of_work import SqlAlchemyUnitOfWork
@@ -77,7 +79,14 @@ def _upload_and_process(session, storage, content: bytes, embedding_provider) ->
 
     documents = SqlAlchemyDocumentRepository(session)
     document = UploadResearchDocumentUseCase(
-        documents, projects, agents, storage, uow, WorkItemRepository(session), AiUsageGuard(None, None, daily_token_cap=None)
+        documents,
+        projects,
+        agents,
+        storage,
+        uow,
+        WorkItemRepository(session),
+        AiUsageGuard(None, None, daily_token_cap=None),
+        EmailVerificationGuard(SqlAlchemyUserCredentialLookup(session)),
     ).execute(project_id=workspace.project.project_id, user_id=user.user_id, title="Doc", format="txt", content=content)
 
     process_document = ProcessDocumentUseCase(documents, storage, PlainTextExtractor())
@@ -139,7 +148,14 @@ def test_similarity_ranking_across_an_agents_own_multiple_chunks(session, storag
     uow = SqlAlchemyUnitOfWork(session)
     existing_doc = documents.get_by_id(doc_a_id)
     doc_b = UploadResearchDocumentUseCase(
-        documents, projects, agents, storage, uow, WorkItemRepository(session), AiUsageGuard(None, None, daily_token_cap=None)
+        documents,
+        projects,
+        agents,
+        storage,
+        uow,
+        WorkItemRepository(session),
+        AiUsageGuard(None, None, daily_token_cap=None),
+        EmailVerificationGuard(SqlAlchemyUserCredentialLookup(session)),
     ).execute(
         project_id=existing_doc.project_id,
         user_id=agents.get_by_id(agent_id).user_id,

@@ -30,18 +30,6 @@ class InvalidAuthConfigurationError(AuthDomainError):
     """
 
 
-class UsernameAlreadyTakenError(AuthDomainError):
-    """Raised by registration (ADR-011) when the requested username already belongs to
-    another account. Unlike InvalidCredentialsError, this is deliberately NOT non-enumerating
-    - a registration form telling you "that username is taken" is standard, expected UX and
-    reveals nothing an attacker couldn't already learn by attempting to log in as that name
-    with a wrong password (which InvalidCredentialsError already declines to distinguish).
-    """
-
-    def __init__(self) -> None:
-        super().__init__("That username is already taken.")
-
-
 class WeakPasswordError(AuthDomainError):
     """Raised by registration (ADR-011) when the supplied password is shorter than the
     minimum length. Never includes the offending password in the message.
@@ -50,6 +38,17 @@ class WeakPasswordError(AuthDomainError):
     def __init__(self, *, minimum_length: int) -> None:
         super().__init__(f"Password must be at least {minimum_length} characters.")
         self.minimum_length = minimum_length
+
+
+class PasswordCompromisedError(AuthDomainError):
+    """Raised by registration and password reset (2026-10-06, external security review) when
+    the supplied password appears in a known data breach corpus - checked via HIBP's
+    k-anonymity Pwned Passwords API (app.auth.password_strength). Never includes the offending
+    password in the message.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("This password has appeared in a known data breach. Choose a different one.")
 
 
 class InvalidInviteCodeError(AuthDomainError):
@@ -81,7 +80,10 @@ class GoogleAccountEmailConflictError(AuthDomainError):
     """
 
     def __init__(self) -> None:
-        super().__init__("An account with this email already exists. Sign in with your password instead.")
+        super().__init__(
+            "An account with this email already exists. Sign in with your password, then connect "
+            "your Google account from Settings -> Security to use it next time."
+        )
 
 
 class GoogleSignInNotConfiguredError(AuthDomainError):
@@ -105,10 +107,41 @@ class InvalidResetTokenError(AuthDomainError):
         super().__init__("This password reset link is invalid or has expired.")
 
 
+class EmailNotVerifiedError(AuthDomainError):
+    """Raised when an unverified password account attempts a feature gated on a confirmed
+    email - currently uploading a research document and sending a chat message (2026-10-06,
+    external security review). Google accounts never see this: Google's own OIDC claim already
+    verifies the email at account creation (GoogleSignInUseCase), and every account that existed
+    before this gate shipped was grandfathered verified by the introducing migration.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("Verify your email to use this feature.")
+
+
+class InvalidVerificationTokenError(AuthDomainError):
+    """Raised for a missing, unknown, expired, or already-used email verification token
+    (2026-10-06) - the same non-distinguishing style InvalidResetTokenError already uses.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("This verification link is invalid or has expired.")
+
+
+class GoogleAccountAlreadyLinkedError(AuthDomainError):
+    """Raised by ConnectGoogleAccountUseCase (2026-10-06, Settings -> Security -> Connected
+    accounts) when the Google identity being connected is already linked to a *different*
+    ScholarOS account - each Google identity can only ever be linked to one account.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("This Google account is already connected to a different ScholarOS account.")
+
+
 class EmailAlreadyInUseError(AuthDomainError):
-    """Raised when updating an account's email (Settings) to one already registered to a
-    different account - the `users.email` UNIQUE constraint's domain-level translation, the
-    same shape UsernameAlreadyTakenError already gives registration.
+    """Raised when registering, or when updating an account's email (Settings), with an email
+    already registered to a different account - the `users.email` UNIQUE constraint's
+    domain-level translation.
     """
 
     def __init__(self) -> None:

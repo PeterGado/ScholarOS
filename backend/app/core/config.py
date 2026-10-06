@@ -185,6 +185,11 @@ class Settings(BaseSettings):
     # an email, short enough that a stale, unused link in an old inbox isn't a standing risk
     # forever.
     password_reset_token_ttl_minutes: int = 60
+    # Email verification (2026-10-06, external security review) - longer than the password
+    # reset TTL above: an unverified account can still log in and browse, it just can't upload
+    # documents or use AI yet, so there's no urgency pressure that calls for a short window the
+    # way "someone is mid-account-recovery right now" does for password reset.
+    email_verification_token_ttl_minutes: int = 1440
     # The reset link emailed to a user points at the frontend's own confirm-reset page (which
     # then calls this API with the token from the URL), not at this API directly - the backend
     # has no reason to otherwise know where its frontend is deployed, so this must be set

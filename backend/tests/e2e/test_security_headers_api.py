@@ -5,6 +5,7 @@ def test_security_headers_are_present_on_a_normal_response(client):
     assert response.headers["referrer-policy"] == "strict-origin-when-cross-origin"
     assert response.headers["x-frame-options"] == "DENY"
     assert response.headers["content-security-policy"] == "default-src 'none'; frame-ancestors 'none'"
+    assert response.headers["strict-transport-security"] == "max-age=31536000; includeSubDomains"
 
 
 def test_security_headers_are_present_on_an_error_response(client):
@@ -15,3 +16,4 @@ def test_security_headers_are_present_on_an_error_response(client):
     assert response.status_code == 401
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["content-security-policy"] == "default-src 'none'; frame-ancestors 'none'"
+    assert response.headers["strict-transport-security"] == "max-age=31536000; includeSubDomains"

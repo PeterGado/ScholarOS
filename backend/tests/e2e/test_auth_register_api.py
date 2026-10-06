@@ -6,7 +6,7 @@ from app.core.config import get_settings
 
 def test_registering_a_new_account_returns_a_usable_bearer_token(client):
     response = client.post(
-        "/auth/register", json={"username": "new-researcher", "password": "a-real-password"}
+        "/auth/register", json={"email": "new-researcher@example.com", "password": "a-real-password"}
     )
 
     assert response.status_code == 201
@@ -19,7 +19,7 @@ def test_registering_a_new_account_returns_a_usable_bearer_token(client):
 
 def test_a_freshly_registered_account_can_use_its_token_on_a_real_business_route(client):
     register_response = client.post(
-        "/auth/register", json={"username": "new-researcher", "password": "a-real-password"}
+        "/auth/register", json={"email": "new-researcher@example.com", "password": "a-real-password"}
     )
     token = register_response.json()["access_token"]
 
@@ -32,25 +32,36 @@ def test_a_freshly_registered_account_can_use_its_token_on_a_real_business_route
     assert response.status_code == 201
 
 
-def test_registering_the_same_username_twice_returns_409(client):
-    client.post("/auth/register", json={"username": "duplicate-name", "password": "a-real-password"})
+def test_registering_the_same_email_twice_returns_409(client):
+    client.post("/auth/register", json={"email": "duplicate@example.com", "password": "a-real-password"})
 
-    response = client.post("/auth/register", json={"username": "duplicate-name", "password": "another-password"})
+    response = client.post("/auth/register", json={"email": "duplicate@example.com", "password": "another-password"})
 
     assert response.status_code == 409
-    assert response.json()["error_type"] == "UsernameAlreadyTakenError"
+    assert response.json()["error_type"] == "EmailAlreadyInUseError"
 
 
 def test_a_password_shorter_than_the_minimum_returns_422(client):
-    response = client.post("/auth/register", json={"username": "new-researcher", "password": "short"})
+    response = client.post("/auth/register", json={"email": "new-researcher@example.com", "password": "short"})
 
     assert response.status_code == 422
     assert response.json()["error_type"] == "WeakPasswordError"
 
 
 def test_registration_with_missing_fields_returns_422(client):
-    response = client.post("/auth/register", json={"username": "new-researcher"})
+    response = client.post("/auth/register", json={"email": "new-researcher@example.com"})
     assert response.status_code == 422
+
+
+def test_a_new_account_can_log_in_with_its_registered_email(client):
+    client.post("/auth/register", json={"email": "new-researcher@example.com", "password": "a-real-password"})
+
+    response = client.post(
+        "/auth/login", json={"username": "new-researcher@example.com", "password": "a-real-password"}
+    )
+
+    assert response.status_code == 200
+    assert isinstance(response.json()["access_token"], str)
 
 
 def test_two_freshly_registered_accounts_never_see_each_others_workspace(client):
@@ -59,10 +70,10 @@ def test_two_freshly_registered_accounts_never_see_each_others_workspace(client)
     real accounts, not just the one pre-provisioned one.
     """
     token_a = client.post(
-        "/auth/register", json={"username": "researcher-a", "password": "a-real-password"}
+        "/auth/register", json={"email": "researcher-a@example.com", "password": "a-real-password"}
     ).json()["access_token"]
     token_b = client.post(
-        "/auth/register", json={"username": "researcher-b", "password": "a-real-password"}
+        "/auth/register", json={"email": "researcher-b@example.com", "password": "a-real-password"}
     ).json()["access_token"]
 
     client.post(
@@ -82,7 +93,8 @@ def test_two_freshly_registered_accounts_never_see_each_others_workspace(client)
 
 def test_registration_is_open_when_no_invite_code_is_configured(client):
     response = client.post(
-        "/auth/register", json={"username": "new-researcher", "password": "a-real-password", "invite_code": None}
+        "/auth/register",
+        json={"email": "new-researcher@example.com", "password": "a-real-password", "invite_code": None},
     )
     assert response.status_code == 201
 
@@ -93,14 +105,18 @@ def test_registration_requires_the_configured_invite_code(client, monkeypatch):
     try:
         wrong_code = client.post(
             "/auth/register",
-            json={"username": "new-researcher", "password": "a-real-password", "invite_code": "wrong"},
+            json={"email": "new-researcher@example.com", "password": "a-real-password", "invite_code": "wrong"},
         )
         missing_code = client.post(
-            "/auth/register", json={"username": "new-researcher", "password": "a-real-password"}
+            "/auth/register", json={"email": "new-researcher@example.com", "password": "a-real-password"}
         )
         correct_code = client.post(
             "/auth/register",
-            json={"username": "new-researcher", "password": "a-real-password", "invite_code": "friends-2026"},
+            json={
+                "email": "new-researcher@example.com",
+                "password": "a-real-password",
+                "invite_code": "friends-2026",
+            },
         )
     finally:
         monkeypatch.delenv("REGISTRATION_INVITE_CODE", raising=False)

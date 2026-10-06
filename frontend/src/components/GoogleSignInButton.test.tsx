@@ -66,4 +66,36 @@ describe("GoogleSignInButton", () => {
     const scripts = document.head.querySelectorAll('script[src="https://accounts.google.com/gsi/client"]');
     expect(scripts.length).toBe(0);
   });
+
+  it("calls onUnavailable immediately when no client ID is configured", () => {
+    vi.stubEnv("VITE_GOOGLE_CLIENT_ID", "");
+    const onUnavailable = vi.fn();
+
+    render(<GoogleSignInButton onCredential={vi.fn()} onUnavailable={onUnavailable} />);
+
+    expect(onUnavailable).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls onUnavailable when the identity script fails to load", async () => {
+    const onUnavailable = vi.fn();
+    render(<GoogleSignInButton onCredential={vi.fn()} onUnavailable={onUnavailable} />);
+
+    const script = document.head.querySelector<HTMLScriptElement>('script[src="https://accounts.google.com/gsi/client"]');
+    script?.dispatchEvent(new Event("error"));
+
+    await waitFor(() => expect(onUnavailable).toHaveBeenCalledTimes(1));
+  });
+
+  it("calls onUnavailable if the script never finishes loading in time", async () => {
+    vi.useFakeTimers();
+    const onUnavailable = vi.fn();
+    render(<GoogleSignInButton onCredential={vi.fn()} onUnavailable={onUnavailable} />);
+
+    // The script tag is appended but never dispatches load or error - simulates a silently
+    // hung request (some network filters drop the connection instead of erroring it).
+    await vi.advanceTimersByTimeAsync(6000);
+
+    expect(onUnavailable).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
 });

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from app.auth.entities import AuthSession, PasswordResetToken
-from app.auth.exceptions import InvalidResetTokenError, WeakPasswordError
+from app.auth.exceptions import InvalidResetTokenError, PasswordCompromisedError, WeakPasswordError
 from app.auth.hashing import hash_password, verify_password
 from app.auth.password_reset import ConfirmPasswordResetUseCase, RequestPasswordResetUseCase
 from app.auth.repository import AuthSessionRepository, PasswordResetTokenRepository, UserAccountRepository, UserCredentialLookup
@@ -161,12 +161,12 @@ def test_an_email_send_failure_is_swallowed_not_raised():
 # --- ConfirmPasswordResetUseCase -------------------------------------------------------------
 
 
-def _build_confirm_use_case():
+def _build_confirm_use_case(*, is_breached=lambda password: False):
     reset_tokens = FakePasswordResetTokenRepository()
     user_account = FakeUserAccountRepository()
     sessions = FakeAuthSessionRepository()
     uow = FakeUnitOfWork()
-    use_case = ConfirmPasswordResetUseCase(reset_tokens, user_account, sessions, uow)
+    use_case = ConfirmPasswordResetUseCase(reset_tokens, user_account, sessions, uow, is_breached=is_breached)
     return use_case, reset_tokens, user_account, sessions, uow
 
 
@@ -224,3 +224,14 @@ def test_a_weak_new_password_is_rejected():
 
     with pytest.raises(WeakPasswordError):
         use_case.execute(raw_token="raw-token", new_password="short")
+
+
+def test_a_breached_new_password_is_rejected():
+    use_case, reset_tokens, *_ = _build_confirm_use_case(is_breached=lambda password: True)
+    reset_tokens.create(
+        user_id=7, token_hash=hash_session_token("raw-token"),
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+    )
+
+    with pytest.raises(PasswordCompromisedError):
+        use_case.execute(raw_token="raw-token", new_password="a-new-strong-password")

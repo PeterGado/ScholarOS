@@ -7,15 +7,20 @@ from app.ai.providers.factory import create_provider
 from app.ai.usage_guard import AiUsageGuard
 from app.ai.usage_infrastructure import SqlAlchemyAiUsageRepository
 from app.auth.account import UpdateEmailUseCase
+from app.auth.account_linking import ConnectGoogleAccountUseCase, SetPasswordUseCase
 from app.auth.dependencies import extract_bearer_token
+from app.auth.email_verification import ConfirmEmailVerificationUseCase, RequestEmailVerificationUseCase
+from app.auth.email_verification_guard import EmailVerificationGuard
 from app.auth.infrastructure import (
     SqlAlchemyAuthSessionRepository,
+    SqlAlchemyEmailVerificationTokenRepository,
     SqlAlchemyPasswordResetTokenRepository,
     SqlAlchemyUserAccountRepository,
     SqlAlchemyUserCredentialLookup,
     SqlAlchemyUserRegistrationRepository,
 )
 from app.auth.google_oauth import verify_google_id_token
+from app.auth.password_strength import is_breached_password
 from app.auth.google_sign_in import GoogleSignInUseCase
 from app.auth.password_reset import ConfirmPasswordResetUseCase, RequestPasswordResetUseCase
 from app.auth.registration import RegisterUserUseCase
@@ -161,6 +166,16 @@ def get_work_item_repository(db: Session = Depends(get_db)) -> WorkItemRepositor
     return WorkItemRepository(db)
 
 
+def get_user_credential_lookup(db: Session = Depends(get_db)) -> SqlAlchemyUserCredentialLookup:
+    return SqlAlchemyUserCredentialLookup(db)
+
+
+def get_email_verification_guard(
+    user_lookup: SqlAlchemyUserCredentialLookup = Depends(get_user_credential_lookup),
+) -> EmailVerificationGuard:
+    return EmailVerificationGuard(user_lookup)
+
+
 def get_upload_research_document_use_case(
     document_repository: SqlAlchemyDocumentRepository = Depends(get_document_repository),
     project_repository: SqlAlchemyProjectRepository = Depends(get_project_repository),
@@ -169,6 +184,7 @@ def get_upload_research_document_use_case(
     unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
     work_item_repository: WorkItemRepository = Depends(get_work_item_repository),
     ai_usage_guard: AiUsageGuard = Depends(get_ai_usage_guard),
+    email_verification_guard: EmailVerificationGuard = Depends(get_email_verification_guard),
 ) -> UploadResearchDocumentUseCase:
     return UploadResearchDocumentUseCase(
         document_repository,
@@ -178,6 +194,7 @@ def get_upload_research_document_use_case(
         unit_of_work,
         work_item_repository,
         ai_usage_guard,
+        email_verification_guard,
     )
 
 
@@ -218,10 +235,6 @@ def get_auth_session_repository(db: Session = Depends(get_db)) -> SqlAlchemyAuth
     return SqlAlchemyAuthSessionRepository(db)
 
 
-def get_user_credential_lookup(db: Session = Depends(get_db)) -> SqlAlchemyUserCredentialLookup:
-    return SqlAlchemyUserCredentialLookup(db)
-
-
 def get_auth_service(
     session_repository: SqlAlchemyAuthSessionRepository = Depends(get_auth_session_repository),
     user_lookup: SqlAlchemyUserCredentialLookup = Depends(get_user_credential_lookup),
@@ -234,11 +247,47 @@ def get_user_registration_repository(db: Session = Depends(get_db)) -> SqlAlchem
     return SqlAlchemyUserRegistrationRepository(db)
 
 
+def get_password_breach_checker():
+    """A dependency-injected seam around the one function that actually calls HIBP's network
+    (app.auth.password_strength.is_breached_password) - overridden in e2e tests with a fake,
+    the same pattern get_google_token_verifier already uses, so no test ever needs a real
+    network call to Pwned Passwords.
+    """
+    return is_breached_password
+
+
+def get_email_verification_token_repository(
+    db: Session = Depends(get_db),
+) -> SqlAlchemyEmailVerificationTokenRepository:
+    return SqlAlchemyEmailVerificationTokenRepository(db)
+
+
+def get_request_email_verification_use_case(
+    user_lookup: SqlAlchemyUserCredentialLookup = Depends(get_user_credential_lookup),
+    verification_tokens: SqlAlchemyEmailVerificationTokenRepository = Depends(
+        get_email_verification_token_repository
+    ),
+    unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
+) -> RequestEmailVerificationUseCase:
+    settings = get_settings()
+    return RequestEmailVerificationUseCase(
+        user_lookup,
+        verification_tokens,
+        unit_of_work,
+        token_ttl_minutes=settings.email_verification_token_ttl_minutes,
+        frontend_base_url=settings.frontend_base_url,
+        resend_api_key=settings.resend_api_key,
+        from_address=settings.password_reset_from_address,
+    )
+
+
 def get_register_user_use_case(
     user_lookup: SqlAlchemyUserCredentialLookup = Depends(get_user_credential_lookup),
     user_registration: SqlAlchemyUserRegistrationRepository = Depends(get_user_registration_repository),
     auth_service: AuthService = Depends(get_auth_service),
     unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
+    is_breached=Depends(get_password_breach_checker),
+    email_verification: RequestEmailVerificationUseCase = Depends(get_request_email_verification_use_case),
 ) -> RegisterUserUseCase:
     return RegisterUserUseCase(
         user_lookup,
@@ -246,6 +295,8 @@ def get_register_user_use_case(
         auth_service,
         unit_of_work,
         required_invite_code=get_settings().registration_invite_code,
+        is_breached=is_breached,
+        email_verification=email_verification,
     )
 
 
@@ -280,6 +331,16 @@ def get_user_account_repository(db: Session = Depends(get_db)) -> SqlAlchemyUser
     return SqlAlchemyUserAccountRepository(db)
 
 
+def get_confirm_email_verification_use_case(
+    verification_tokens: SqlAlchemyEmailVerificationTokenRepository = Depends(
+        get_email_verification_token_repository
+    ),
+    user_account: SqlAlchemyUserAccountRepository = Depends(get_user_account_repository),
+    unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
+) -> ConfirmEmailVerificationUseCase:
+    return ConfirmEmailVerificationUseCase(verification_tokens, user_account, unit_of_work)
+
+
 def get_password_reset_token_repository(db: Session = Depends(get_db)) -> SqlAlchemyPasswordResetTokenRepository:
     return SqlAlchemyPasswordResetTokenRepository(db)
 
@@ -290,6 +351,29 @@ def get_update_email_use_case(
     unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
 ) -> UpdateEmailUseCase:
     return UpdateEmailUseCase(user_lookup, user_account, unit_of_work)
+
+
+def get_connect_google_account_use_case(
+    user_lookup: SqlAlchemyUserCredentialLookup = Depends(get_user_credential_lookup),
+    user_account: SqlAlchemyUserAccountRepository = Depends(get_user_account_repository),
+    unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
+    verify_id_token=Depends(get_google_token_verifier),
+) -> ConnectGoogleAccountUseCase:
+    return ConnectGoogleAccountUseCase(
+        user_lookup,
+        user_account,
+        unit_of_work,
+        verify_id_token,
+        google_client_id=get_settings().google_oauth_client_id,
+    )
+
+
+def get_set_password_use_case(
+    user_account: SqlAlchemyUserAccountRepository = Depends(get_user_account_repository),
+    unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
+    is_breached=Depends(get_password_breach_checker),
+) -> SetPasswordUseCase:
+    return SetPasswordUseCase(user_account, unit_of_work, is_breached=is_breached)
 
 
 def get_request_password_reset_use_case(
@@ -314,8 +398,11 @@ def get_confirm_password_reset_use_case(
     user_account: SqlAlchemyUserAccountRepository = Depends(get_user_account_repository),
     session_repository: SqlAlchemyAuthSessionRepository = Depends(get_auth_session_repository),
     unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
+    is_breached=Depends(get_password_breach_checker),
 ) -> ConfirmPasswordResetUseCase:
-    return ConfirmPasswordResetUseCase(reset_tokens, user_account, session_repository, unit_of_work)
+    return ConfirmPasswordResetUseCase(
+        reset_tokens, user_account, session_repository, unit_of_work, is_breached=is_breached
+    )
 
 
 async def get_current_user_id(
@@ -589,6 +676,7 @@ def get_send_chat_message_use_case(
     content_store: ContentStore = Depends(get_content_store),
     unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
     ai_usage_guard: AiUsageGuard = Depends(get_ai_usage_guard),
+    email_verification_guard: EmailVerificationGuard = Depends(get_email_verification_guard),
     writing_segment_repository: SqlAlchemyWritingSegmentRepository = Depends(get_writing_segment_repository),
 ) -> SendChatMessageUseCase:
     return SendChatMessageUseCase(
@@ -604,6 +692,7 @@ def get_send_chat_message_use_case(
         content_store,
         unit_of_work,
         ai_usage_guard,
+        email_verification_guard,
         writing_segment_repository=writing_segment_repository,
     )
 

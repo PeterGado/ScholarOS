@@ -2,11 +2,13 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from app.auth.entities import AuthSession, PasswordResetToken
+from app.auth.entities import AuthSession, EmailVerificationToken, PasswordResetToken
 from app.auth.models import AuthSession as AuthSessionModel
+from app.auth.models import EmailVerificationToken as EmailVerificationTokenModel
 from app.auth.models import PasswordResetToken as PasswordResetTokenModel
 from app.auth.repository import (
     AuthSessionRepository,
+    EmailVerificationTokenRepository,
     PasswordResetTokenRepository,
     UserAccountRepository,
     UserCredential,
@@ -113,16 +115,30 @@ class SqlAlchemyUserRegistrationRepository(UserRegistrationRepository):
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def create(self, *, username: str, password_hash: str) -> UserCredential:
-        row = User(username=username, password_hash=password_hash)
+    def create(
+        self, *, username: str, password_hash: str, email: str | None = None, email_verified: bool = True
+    ) -> UserCredential:
+        row = User(username=username, password_hash=password_hash, email=email, email_verified=email_verified)
         self._session.add(row)
         self._session.flush()
         return row
 
     def create_from_google(
-        self, *, username: str, email: str | None, google_subject: str, display_name: str | None
+        self,
+        *,
+        username: str,
+        email: str | None,
+        google_subject: str,
+        display_name: str | None,
+        email_verified: bool = True,
     ) -> UserCredential:
-        row = User(username=username, email=email, google_subject=google_subject, display_name=display_name)
+        row = User(
+            username=username,
+            email=email,
+            google_subject=google_subject,
+            display_name=display_name,
+            email_verified=email_verified,
+        )
         self._session.add(row)
         self._session.flush()
         return row
@@ -145,6 +161,16 @@ class SqlAlchemyUserAccountRepository(UserAccountRepository):
     def update_email(self, user_id: int, email: str | None) -> None:
         row = self._session.get(User, user_id)
         row.email = email
+        self._session.flush()
+
+    def mark_email_verified(self, user_id: int) -> None:
+        row = self._session.get(User, user_id)
+        row.email_verified = True
+        self._session.flush()
+
+    def set_google_subject(self, user_id: int, google_subject: str) -> None:
+        row = self._session.get(User, user_id)
+        row.google_subject = google_subject
         self._session.flush()
 
 
@@ -173,6 +199,42 @@ class SqlAlchemyPasswordResetTokenRepository(PasswordResetTokenRepository):
     @staticmethod
     def _to_domain(row: PasswordResetTokenModel) -> PasswordResetToken:
         return PasswordResetToken(
+            token_id=row.token_id,
+            user_id=row.user_id,
+            token_hash=row.token_hash,
+            created_at=_as_utc(row.created_at),
+            expires_at=_as_utc(row.expires_at),
+            used_at=_as_utc(row.used_at),
+        )
+
+
+class SqlAlchemyEmailVerificationTokenRepository(EmailVerificationTokenRepository):
+    """Concrete EmailVerificationTokenRepository (app.auth.repository, 2026-10-06) - same shape
+    as SqlAlchemyPasswordResetTokenRepository.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def create(self, *, user_id: int, token_hash: str, expires_at: datetime) -> EmailVerificationToken:
+        row = EmailVerificationTokenModel(user_id=user_id, token_hash=token_hash, expires_at=expires_at)
+        self._session.add(row)
+        self._session.flush()
+        return self._to_domain(row)
+
+    def get_by_token_hash(self, token_hash: str) -> EmailVerificationToken | None:
+        row = self._session.query(EmailVerificationTokenModel).filter_by(token_hash=token_hash).one_or_none()
+        return self._to_domain(row) if row is not None else None
+
+    def mark_used(self, token: EmailVerificationToken) -> None:
+        row = self._session.get(EmailVerificationTokenModel, token.token_id)
+        row.used_at = datetime.now(timezone.utc)
+        self._session.flush()
+        token.used_at = row.used_at
+
+    @staticmethod
+    def _to_domain(row: EmailVerificationTokenModel) -> EmailVerificationToken:
+        return EmailVerificationToken(
             token_id=row.token_id,
             user_id=row.user_id,
             token_hash=row.token_hash,

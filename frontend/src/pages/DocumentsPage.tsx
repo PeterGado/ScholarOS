@@ -11,6 +11,7 @@ import {
 import { searchKnowledge } from "@/api/knowledge";
 import { ApiError } from "@/lib/apiClient";
 import { useToast } from "@/lib/ToastContext";
+import { EmailVerificationNotice } from "@/components/EmailVerificationNotice";
 import { useWorkspaceContext } from "@/components/WorkspaceGate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -239,11 +240,14 @@ export function DocumentsPage() {
             removed, since its knowledge is already part of your Agent's knowledge base.
           </p>
         )}
-        {uploadMutation.isError && (
-          <p className="text-sm text-destructive">
-            {uploadMutation.error instanceof ApiError ? uploadMutation.error.message : "Upload failed."}
-          </p>
-        )}
+        {uploadMutation.isError &&
+          (uploadMutation.error instanceof ApiError && uploadMutation.error.errorType === "EmailNotVerifiedError" ? (
+            <EmailVerificationNotice />
+          ) : (
+            <p className="text-sm text-destructive">
+              {uploadMutation.error instanceof ApiError ? uploadMutation.error.message : "Upload failed."}
+            </p>
+          ))}
 
         {documentsQuery.isLoading && (
           <div className="space-y-2" aria-label="Loading documents">

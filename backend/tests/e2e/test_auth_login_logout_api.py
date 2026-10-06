@@ -77,7 +77,7 @@ def test_profile_returns_the_signed_in_username(client, provisioned_user):
     response = client.get("/auth/profile", headers={"Authorization": f"Bearer {token}"})
 
     assert response.status_code == 200
-    assert response.json() == {"username": USERNAME, "email": None}
+    assert response.json() == {"username": USERNAME, "email": None, "email_verified": True, "google_connected": False, "has_password": True}
 
 
 def test_profile_without_a_token_returns_401(client):
@@ -98,7 +98,7 @@ def test_updating_email_is_reflected_in_profile(client, provisioned_user):
     assert update_response.status_code == 204
 
     profile_response = client.get("/auth/profile", headers=headers)
-    assert profile_response.json() == {"username": USERNAME, "email": "researcher@example.com"}
+    assert profile_response.json() == {"username": USERNAME, "email": "researcher@example.com", "email_verified": True, "google_connected": False, "has_password": True}
 
 
 def test_updating_email_to_an_invalid_address_returns_422(client, provisioned_user):

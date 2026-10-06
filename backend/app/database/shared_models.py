@@ -35,6 +35,14 @@ class User(Base):
     # password_hash comment above). google_subject, not email, is the real identity key (Google's
     # stable `sub` claim); email is stored for display/collision-detection only.
     email: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
+    # Defaults True (2026-10-06, external security review) - the safe default for every row not
+    # deliberately created unverified: Google accounts (Google's own OIDC claim is already
+    # authoritative - see GoogleSignInUseCase), the pre-provisioned admin account, and every test
+    # fixture that constructs a User directly without naming this column. RegisterUserUseCase is
+    # the one place that explicitly passes False, for a brand-new password account pending a
+    # verification email. A real migration backfills every row that existed before this column
+    # was added to True, so no currently-live account is affected.
+    email_verified: Mapped[bool] = mapped_column(nullable=False, default=True)
     google_subject: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
     status: Mapped[UserStatus] = mapped_column(
         Enum(UserStatus, native_enum=False, length=16), nullable=False, default=UserStatus.ACTIVE

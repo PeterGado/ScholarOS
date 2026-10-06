@@ -38,8 +38,14 @@ class AuthService:
     def login(self, *, username: str, password: str) -> str:
         """Verify credentials and create a session. Returns the raw token - the only moment
         it exists in plaintext; only its hash is ever persisted (tokens.py).
+
+        `username` is looked up first, then (2026-10-06, external security review: registration
+        now collects an email, not a username) by email if that misses - additive, so every
+        account created before this change keeps logging in exactly as it always has, while an
+        account that registered with an email can log in with it too, with zero schema change
+        to LoginRequest itself.
         """
-        user = self._users.get_by_username(username)
+        user = self._users.get_by_username(username) or self._users.get_by_email(username)
         if user is None or not verify_password(password, user.password_hash):
             raise InvalidCredentialsError()
         return self._create_session(user.user_id)
@@ -80,6 +86,23 @@ class AuthService:
         user = self._users.get_by_id(user_id)
         assert user is not None, f"user_id {user_id} came from a verified session but has no User row"
         return user.email
+
+    def get_email_verified(self, user_id: int) -> bool:
+        """Sibling to get_email (2026-10-06, GET /auth/profile - Settings' Connected accounts
+        card) - whether the account's email has been confirmed (Google accounts: immediately,
+        via Google's own OIDC claim; password accounts: via the emailed verification link).
+        """
+        user = self._users.get_by_id(user_id)
+        assert user is not None, f"user_id {user_id} came from a verified session but has no User row"
+        return user.email_verified
+
+    def get_sign_in_methods(self, user_id: int) -> tuple[bool, bool]:
+        """(google_connected, has_password) for GET /auth/profile's Connected accounts card
+        (2026-10-06). Never returns the hash itself - only whether one is set.
+        """
+        user = self._users.get_by_id(user_id)
+        assert user is not None, f"user_id {user_id} came from a verified session but has no User row"
+        return user.google_subject is not None, bool(user.password_hash)
 
     def logout(self, raw_token: str) -> None:
         session = self._require_active_session(raw_token)

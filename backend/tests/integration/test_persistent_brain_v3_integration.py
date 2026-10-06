@@ -9,6 +9,8 @@ import pytest
 
 from app.ai.exceptions import ProviderContentBlockedError
 from app.ai.usage_guard import AiUsageGuard
+from app.auth.email_verification_guard import EmailVerificationGuard
+from app.auth.infrastructure import SqlAlchemyUserCredentialLookup
 from app.database.session import build_engine, build_sessionmaker, init_db
 from app.database.shared_models import User
 from app.database.unit_of_work import SqlAlchemyUnitOfWork
@@ -149,6 +151,7 @@ def test_only_the_most_recent_memories_reach_a_real_chat_prompt(session, storage
         storage,
         SqlAlchemyUnitOfWork(session),
         AiUsageGuard(None, None, daily_token_cap=None),
+        EmailVerificationGuard(SqlAlchemyUserCredentialLookup(session)),
     )
     send_message.execute(user_id=workspace.agent.user_id, conversation_id=conversation.conversation_id, content="Hello.")
 
@@ -210,6 +213,7 @@ def test_background_knowledge_provider_result_reaches_a_real_chat_prompt(session
         storage,
         SqlAlchemyUnitOfWork(session),
         AiUsageGuard(None, None, daily_token_cap=None),
+        EmailVerificationGuard(SqlAlchemyUserCredentialLookup(session)),
     )
     send_message.execute(user_id=workspace.agent.user_id, conversation_id=conversation.conversation_id, content="Hello.")
 
@@ -272,6 +276,7 @@ def test_a_content_blocked_message_does_not_poison_a_later_reply_in_the_same_con
         storage,
         SqlAlchemyUnitOfWork(session),
         AiUsageGuard(None, None, daily_token_cap=None),
+        EmailVerificationGuard(SqlAlchemyUserCredentialLookup(session)),
     )
 
     class BlockingOnceThenSucceedingProvider:

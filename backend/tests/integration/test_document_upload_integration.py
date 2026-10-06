@@ -1,6 +1,8 @@
 import pytest
 
 from app.ai.usage_guard import AiUsageGuard
+from app.auth.email_verification_guard import EmailVerificationGuard
+from app.auth.infrastructure import SqlAlchemyUserCredentialLookup
 from app.database.session import build_engine, build_sessionmaker, init_db
 from app.database.shared_models import User
 from app.database.unit_of_work import SqlAlchemyUnitOfWork
@@ -55,7 +57,14 @@ def test_upload_persists_document_and_writes_content_to_storage(session, storage
     agents = SqlAlchemyAgentRepository(session)
     uow = SqlAlchemyUnitOfWork(session)
     use_case = UploadResearchDocumentUseCase(
-        documents, projects, agents, storage, uow, WorkItemRepository(session), AiUsageGuard(None, None, daily_token_cap=None)
+        documents,
+        projects,
+        agents,
+        storage,
+        uow,
+        WorkItemRepository(session),
+        AiUsageGuard(None, None, daily_token_cap=None),
+        EmailVerificationGuard(SqlAlchemyUserCredentialLookup(session)),
     )
 
     document = use_case.execute(
@@ -82,7 +91,14 @@ def test_upload_against_a_nonexistent_project_writes_nothing(session, storage, t
     agents = SqlAlchemyAgentRepository(session)
     uow = SqlAlchemyUnitOfWork(session)
     use_case = UploadResearchDocumentUseCase(
-        documents, projects, agents, storage, uow, WorkItemRepository(session), AiUsageGuard(None, None, daily_token_cap=None)
+        documents,
+        projects,
+        agents,
+        storage,
+        uow,
+        WorkItemRepository(session),
+        AiUsageGuard(None, None, daily_token_cap=None),
+        EmailVerificationGuard(SqlAlchemyUserCredentialLookup(session)),
     )
 
     with pytest.raises(ProjectNotFoundError):
@@ -99,7 +115,14 @@ def test_multiple_documents_can_be_uploaded_to_the_same_project(session, storage
     agents = SqlAlchemyAgentRepository(session)
     uow = SqlAlchemyUnitOfWork(session)
     use_case = UploadResearchDocumentUseCase(
-        documents, projects, agents, storage, uow, WorkItemRepository(session), AiUsageGuard(None, None, daily_token_cap=None)
+        documents,
+        projects,
+        agents,
+        storage,
+        uow,
+        WorkItemRepository(session),
+        AiUsageGuard(None, None, daily_token_cap=None),
+        EmailVerificationGuard(SqlAlchemyUserCredentialLookup(session)),
     )
 
     use_case.execute(
@@ -128,7 +151,14 @@ def test_upload_by_a_different_user_against_someone_elses_project_is_rejected(se
     agents = SqlAlchemyAgentRepository(session)
     uow = SqlAlchemyUnitOfWork(session)
     use_case = UploadResearchDocumentUseCase(
-        documents, projects, agents, storage, uow, WorkItemRepository(session), AiUsageGuard(None, None, daily_token_cap=None)
+        documents,
+        projects,
+        agents,
+        storage,
+        uow,
+        WorkItemRepository(session),
+        AiUsageGuard(None, None, daily_token_cap=None),
+        EmailVerificationGuard(SqlAlchemyUserCredentialLookup(session)),
     )
 
     with pytest.raises(ProjectNotFoundError):

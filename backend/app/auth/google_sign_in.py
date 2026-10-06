@@ -10,6 +10,7 @@ from app.auth.exceptions import (
 )
 from app.auth.repository import UserCredentialLookup, UserRegistrationRepository
 from app.auth.service import AuthService
+from app.auth.username import derive_unique_username
 from app.core.unit_of_work import UnitOfWork
 
 TokenVerifier = Callable[..., dict[str, Any]]
@@ -68,13 +69,16 @@ class GoogleSignInUseCase:
         if email and claims.get("email_verified") and self._users.get_by_email(email) is not None:
             raise GoogleAccountEmailConflictError()
 
-        username = self._derive_unique_username(email or google_subject)
+        username = derive_unique_username(email or google_subject, users=self._users)
         try:
             user = self._registration.create_from_google(
                 username=username,
                 email=email,
                 google_subject=google_subject,
                 display_name=claims.get("name"),
+                # Google's own OIDC claim is authoritative (2026-10-06, external security
+                # review) - no second verification email needed for a Google-origin account.
+                email_verified=bool(claims.get("email_verified")),
             )
             self._uow.commit()
         except IntegrityError:
@@ -92,11 +96,3 @@ class GoogleSignInUseCase:
             self._uow.rollback()
             raise
         return self._auth_service.create_session_for_verified_identity(user_id=user.user_id)
-
-    def _derive_unique_username(self, seed: str) -> str:
-        base = seed.split("@")[0] or "user"
-        candidate, suffix = base, 1
-        while self._users.get_by_username(candidate) is not None:
-            suffix += 1
-            candidate = f"{base}{suffix}"
-        return candidate

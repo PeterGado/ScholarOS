@@ -2,28 +2,37 @@ from fastapi import APIRouter, Depends, Request, status
 
 from app.api.exception_handlers import ErrorResponse
 from app.auth.account import UpdateEmailUseCase
+from app.auth.account_linking import ConnectGoogleAccountUseCase, SetPasswordUseCase
 from app.auth.dependencies import extract_bearer_token
+from app.auth.email_verification import ConfirmEmailVerificationUseCase, RequestEmailVerificationUseCase
 from app.auth.google_sign_in import GoogleSignInUseCase
 from app.auth.password_reset import ConfirmPasswordResetUseCase, RequestPasswordResetUseCase
 from app.auth.registration import RegisterUserUseCase
 from app.auth.schemas import (
+    ConfirmEmailVerificationRequest,
     ConfirmPasswordResetRequest,
+    ConnectGoogleRequest,
     GoogleSignInRequest,
     LoginRequest,
     ProfileResponse,
     RegisterRequest,
     RequestPasswordResetRequest,
+    SetPasswordRequest,
     TokenResponse,
     UpdateEmailRequest,
 )
 from app.auth.service import AuthService
 from app.core.dependencies import (
     get_auth_service,
+    get_confirm_email_verification_use_case,
     get_confirm_password_reset_use_case,
+    get_connect_google_account_use_case,
     get_current_user_id,
     get_google_sign_in_use_case,
     get_register_user_use_case,
+    get_request_email_verification_use_case,
     get_request_password_reset_use_case,
+    get_set_password_use_case,
     get_update_email_use_case,
 )
 from app.core.rate_limit import limiter
@@ -37,8 +46,8 @@ router = APIRouter(prefix="/auth", tags=["auth"])
     status_code=status.HTTP_201_CREATED,
     responses={
         401: {"model": ErrorResponse, "description": "Missing or incorrect invite code (only when one is configured)."},
-        409: {"model": ErrorResponse, "description": "That username is already taken."},
-        422: {"model": ErrorResponse, "description": "Malformed request body, or password shorter than the minimum."},
+        409: {"model": ErrorResponse, "description": "That email is already associated with another account."},
+        422: {"model": ErrorResponse, "description": "Malformed request body, or password shorter than the minimum, or appears in a known data breach."},
         429: {"model": ErrorResponse, "description": "Too many registration attempts from this client."},
     },
 )
@@ -55,11 +64,11 @@ def register(
     caller is registered and logged in in one step, mirroring /auth/login's own response shape
     exactly. 201, not 200: a real resource (the account) was created, unlike login.
 
-    No business logic lives here: username/password validation, the optional invite-code
-    check, and account creation all happen in RegisterUserUseCase; exceptions are translated
-    to HTTP responses by the handlers registered in app.api.exception_handlers.
+    No business logic lives here: email/password validation, the optional invite-code check,
+    and account creation all happen in RegisterUserUseCase; exceptions are translated to HTTP
+    responses by the handlers registered in app.api.exception_handlers.
     """
-    token = use_case.execute(username=payload.username, password=payload.password, invite_code=payload.invite_code)
+    token = use_case.execute(email=payload.email, password=payload.password, invite_code=payload.invite_code)
     return TokenResponse(access_token=token)
 
 
@@ -165,7 +174,14 @@ def get_profile(
     signal" contract stays true, and separate from TokenResponse so login/register stay as
     minimal as 05_Constraints_and_Integrity.md §17 documents them.
     """
-    return ProfileResponse(username=auth_service.get_username(user_id), email=auth_service.get_email(user_id))
+    google_connected, has_password = auth_service.get_sign_in_methods(user_id)
+    return ProfileResponse(
+        username=auth_service.get_username(user_id),
+        email=auth_service.get_email(user_id),
+        email_verified=auth_service.get_email_verified(user_id),
+        google_connected=google_connected,
+        has_password=has_password,
+    )
 
 
 @router.put(
@@ -188,6 +204,49 @@ def update_email(
     request reachable for that account.
     """
     use_case.execute(user_id=user_id, email=payload.email)
+
+
+@router.post(
+    "/google/connect",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        401: {"model": ErrorResponse, "description": "Missing/malformed/ended session, or an invalid Google sign-in token."},
+        409: {"model": ErrorResponse, "description": "This Google account is already connected to a different ScholarOS account."},
+        503: {"model": ErrorResponse, "description": "Google sign-in is not configured."},
+    },
+)
+def connect_google_account(
+    payload: ConnectGoogleRequest,
+    user_id: int = Depends(get_current_user_id),
+    use_case: ConnectGoogleAccountUseCase = Depends(get_connect_google_account_use_case),
+) -> None:
+    """Links the authenticated user's own account to a Google identity (2026-10-06,
+    Settings -> Security -> Connected accounts) - the OWASP-recommended linking path: requires
+    an authenticated session and validates the new identity before linking it, never an
+    automatic match at sign-in time.
+    """
+    use_case.execute(user_id=user_id, id_token=payload.id_token)
+
+
+@router.post(
+    "/password/set",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        401: {"model": ErrorResponse, "description": "Missing, malformed, unknown, or ended session."},
+        422: {"model": ErrorResponse, "description": "Password shorter than the minimum, or appears in a known data breach."},
+    },
+)
+def set_password(
+    payload: SetPasswordRequest,
+    user_id: int = Depends(get_current_user_id),
+    use_case: SetPasswordUseCase = Depends(get_set_password_use_case),
+) -> None:
+    """Sets a real password on the authenticated user's own account for the first time
+    (2026-10-06, Settings -> Security -> Connected accounts) - for a Google-origin account whose
+    `password_hash` still defaults to `""` (never verifies), enabling email/password sign-in as
+    a second path into the same account.
+    """
+    use_case.execute(user_id=user_id, password=payload.password)
 
 
 @router.post(
@@ -234,6 +293,51 @@ def confirm_password_reset(
     ends every other active session for the account.
     """
     use_case.execute(raw_token=payload.token, new_password=payload.new_password)
+
+
+@router.post(
+    "/email-verification/request",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        401: {"model": ErrorResponse, "description": "Missing, malformed, unknown, or ended session."},
+        429: {"model": ErrorResponse, "description": "Too many requests from this client."},
+    },
+)
+# Same rate-limit reasoning as /auth/password-reset/request - a real email send per call.
+@limiter.limit("5/minute")
+def request_email_verification(
+    request: Request,
+    user_id: int = Depends(get_current_user_id),
+    use_case: RequestEmailVerificationUseCase = Depends(get_request_email_verification_use_case),
+) -> None:
+    """Resends the verification link to the authenticated user's own email (2026-10-06,
+    Settings' Connected accounts card) - also called once automatically right after a password
+    registration. Always 204: RequestEmailVerificationUseCase itself swallows a send failure
+    (see its own docstring), and there is no enumeration concern since the caller is already
+    authenticated as the account being verified.
+    """
+    use_case.execute(user_id=user_id)
+
+
+@router.post(
+    "/email-verification/confirm",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        401: {"model": ErrorResponse, "description": "The verification token is invalid, expired, or already used."},
+        429: {"model": ErrorResponse, "description": "Too many attempts from this client."},
+    },
+)
+# A token-guessing surface, same reasoning as /auth/password-reset/confirm's own throttle.
+@limiter.limit("10/minute")
+def confirm_email_verification(
+    request: Request,
+    payload: ConfirmEmailVerificationRequest,
+    use_case: ConfirmEmailVerificationUseCase = Depends(get_confirm_email_verification_use_case),
+) -> None:
+    """Completes email verification (2026-10-06): verifies the token and unblocks document
+    upload and chat for the account.
+    """
+    use_case.execute(raw_token=payload.token)
 
 
 @router.post(

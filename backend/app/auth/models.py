@@ -41,3 +41,19 @@ class PasswordResetToken(Base):
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(nullable=False)
     used_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+
+class EmailVerificationToken(Base):
+    """Email verification token persistence (2026-10-06, external security review). Same
+    bootstrap reasoning as PasswordResetToken: looked up by hash, excluded from Row-Level
+    Security for the same reason that table is.
+    """
+
+    __tablename__ = "email_verification_tokens"
+
+    token_id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(nullable=True)

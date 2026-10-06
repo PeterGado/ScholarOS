@@ -2,19 +2,25 @@ from pydantic import BaseModel, EmailStr, Field
 
 
 class LoginRequest(BaseModel):
-    """Request body for POST /auth/login. Not yet wired to a route (Stage 5)."""
+    """Request body for POST /auth/login. Field name stays `username` for wire compatibility,
+    but AuthService.login (2026-10-06) accepts either a legacy username or an email here - the
+    caller sends whatever identifier the user typed.
+    """
 
     username: str = Field(..., min_length=1)
     password: str = Field(..., min_length=1)
 
 
 class RegisterRequest(BaseModel):
-    """Request body for POST /auth/register (ADR-011). invite_code is always accepted, even
-    when REGISTRATION_INVITE_CODE isn't configured - the frontend never needs to know whether
-    one is required; RegisterUserUseCase simply ignores it when no code is configured.
+    """Request body for POST /auth/register (ADR-011). Collects an email, not a username
+    (2026-10-06, external security review) - a username is still synthesized server-side to
+    satisfy the `users.username` column, but it is never user-chosen or shown as the account's
+    real identity. invite_code is always accepted, even when REGISTRATION_INVITE_CODE isn't
+    configured - the frontend never needs to know whether one is required; RegisterUserUseCase
+    simply ignores it when no code is configured.
     """
 
-    username: str = Field(..., min_length=1)
+    email: EmailStr
     password: str = Field(..., min_length=1)
     invite_code: str | None = None
 
@@ -49,6 +55,9 @@ class ProfileResponse(BaseModel):
 
     username: str
     email: str | None = None
+    email_verified: bool = True
+    google_connected: bool = False
+    has_password: bool = True
 
 
 class UpdateEmailRequest(BaseModel):
@@ -72,3 +81,28 @@ class ConfirmPasswordResetRequest(BaseModel):
 
     token: str = Field(..., min_length=1)
     new_password: str = Field(..., min_length=1)
+
+
+class ConfirmEmailVerificationRequest(BaseModel):
+    """Request body for POST /auth/email-verification/confirm (2026-10-06). `token` is the raw,
+    single-use token from the emailed verification link - never the hash stored at rest.
+    """
+
+    token: str = Field(..., min_length=1)
+
+
+class ConnectGoogleRequest(BaseModel):
+    """Request body for POST /auth/google/connect (2026-10-06, Settings -> Security). Same
+    `id_token` shape as GoogleSignInRequest, minus invite_code - connecting an already-
+    authenticated account is never gated by one.
+    """
+
+    id_token: str = Field(..., min_length=1)
+
+
+class SetPasswordRequest(BaseModel):
+    """Request body for POST /auth/password/set (2026-10-06, Settings -> Security) - lets a
+    Google-origin account set a real password for the first time.
+    """
+
+    password: str = Field(..., min_length=1)

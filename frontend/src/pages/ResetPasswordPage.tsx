@@ -79,6 +79,7 @@ export function ResetPasswordPage() {
           </label>
           <Input
             id="new-password"
+            size="lg"
             type="password"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
@@ -93,6 +94,7 @@ export function ResetPasswordPage() {
           </label>
           <Input
             id="confirm-password"
+            size="lg"
             type="password"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}

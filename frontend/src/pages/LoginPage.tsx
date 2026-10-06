@@ -16,6 +16,7 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [googleUnavailable, setGoogleUnavailable] = useState(false);
 
   if (isAuthenticated) {
     return <Navigate to="/chat" replace />;
@@ -77,10 +78,11 @@ export function LoginPage() {
         )}
         <div className="space-y-1">
           <label htmlFor="username" className="text-sm font-medium">
-            Username
+            Email or username
           </label>
           <Input
             id="username"
+            size="lg"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             autoComplete="username"
@@ -98,6 +100,7 @@ export function LoginPage() {
           </div>
           <Input
             id="password"
+            size="lg"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -114,7 +117,12 @@ export function LoginPage() {
           or
           <div className="h-px flex-1 bg-border" />
         </div>
-        <GoogleSignInButton onCredential={handleGoogleCredential} />
+        <GoogleSignInButton onCredential={handleGoogleCredential} onUnavailable={() => setGoogleUnavailable(true)} />
+        {googleUnavailable && (
+          <p className="text-center text-xs text-muted-foreground">
+            Google sign-in isn't loading - sign in with your username and password above instead.
+          </p>
+        )}
         <p className="text-center text-sm text-muted-foreground">
           Don&apos;t have an account?{" "}
           <Link to="/register" className="font-medium text-primary underline-offset-4 hover:underline">

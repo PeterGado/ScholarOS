@@ -46,3 +46,21 @@ class PasswordResetToken:
 
     def is_valid(self, *, now: datetime) -> bool:
         return self.used_at is None and now < self.expires_at
+
+
+@dataclass
+class EmailVerificationToken:
+    """A single-use, time-limited email-confirmation token (2026-10-06, external security
+    review) - same shape and expiry reasoning as PasswordResetToken, just for proving control
+    of an email address rather than recovering a password.
+    """
+
+    user_id: int
+    token_hash: str
+    created_at: datetime
+    expires_at: datetime
+    token_id: int | None = None
+    used_at: datetime | None = None
+
+    def is_valid(self, *, now: datetime) -> bool:
+        return self.used_at is None and now < self.expires_at
