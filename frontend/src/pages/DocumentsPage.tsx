@@ -32,6 +32,7 @@ export function DocumentsPage() {
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
   const [year, setYear] = useState("");
+  const [doi, setDoi] = useState("");
   const [selectedFileCount, setSelectedFileCount] = useState(0);
   const [query, setQuery] = useState("");
   const [searchSubmitted, setSearchSubmitted] = useState("");
@@ -89,10 +90,10 @@ export function DocumentsPage() {
       if (files.length > RESEARCH_DOCUMENT_LIMIT - documentCount) {
         throw new Error(`You can upload ${RESEARCH_DOCUMENT_LIMIT - documentCount} more document(s) in this project.`);
       }
-      // A custom title (and author/year) only makes sense for a single file. Multi-file
+      // A custom title (and author/year/DOI) only makes sense for a single file. Multi-file
       // uploads preserve each filename so their source remains identifiable in the knowledge
       // base, with no per-file metadata UI.
-      if (files.length === 1 && (title.trim() || author.trim() || year.trim())) {
+      if (files.length === 1 && (title.trim() || author.trim() || year.trim() || doi.trim())) {
         const file = files[0];
         const extension = file.name.split(".").pop() ?? "txt";
         const parsedYear = year.trim() ? Number(year.trim()) : undefined;
@@ -103,6 +104,7 @@ export function DocumentsPage() {
           format: extension,
           author: author.trim() || undefined,
           publicationYear: parsedYear,
+          doi: doi.trim() || undefined,
         })];
       }
       return uploadResearchDocuments(workspace.project.project_id, files);
@@ -111,6 +113,7 @@ export function DocumentsPage() {
       setTitle("");
       setAuthor("");
       setYear("");
+      setDoi("");
       setSelectedFileCount(0);
       if (fileInputRef.current) fileInputRef.current.value = "";
       queryClient.invalidateQueries({ queryKey: ["documents", workspace.project.project_id] });
@@ -190,6 +193,16 @@ export function DocumentsPage() {
               disabled={atLimit || selectedFileCount > 1}
             />
           </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium">DOI (optional)</label>
+            <Input
+              value={doi}
+              onChange={(e) => setDoi(e.target.value)}
+              placeholder="e.g. 10.1038/nphys1170"
+              className="max-w-48"
+              disabled={atLimit || selectedFileCount > 1}
+            />
+          </div>
           <Input
             ref={fileInputRef}
             type="file"
@@ -211,7 +224,8 @@ export function DocumentsPage() {
         {selectedFileCount <= 1 && (
           <p className="text-sm text-muted-foreground">
             Add an author and year so your AI can cite this source accurately - without them, it
-            can only refer to this document by title.
+            can only refer to this document by title. Adding a DOI checks the author/year against
+            the real published record and fills them in automatically if left blank.
           </p>
         )}
         {atLimit && (
@@ -327,7 +341,18 @@ export function DocumentsPage() {
                               : "No author/year set - can only be cited by title"}
                       </p>
                     </div>
-                    <Badge variant="secondary">processed</Badge>
+                    <div className="flex items-center gap-2">
+                      {doc.doi_verification_status === "verified" && (
+                        <Badge variant="secondary">DOI verified</Badge>
+                      )}
+                      {doc.doi_verification_status === "mismatch" && (
+                        <Badge variant="destructive">DOI mismatch - check this</Badge>
+                      )}
+                      {doc.doi_verification_status === "not_found" && (
+                        <Badge variant="destructive">DOI not found</Badge>
+                      )}
+                      <Badge variant="secondary">processed</Badge>
+                    </div>
                   </CardContent>
                 </Card>
               </li>
