@@ -12,7 +12,10 @@ import { ApiError } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { StackIcon } from "@phosphor-icons/react";
 import type { ApplySegmentTemplateResponse, WritingSegmentResponse } from "@/api/schemas";
 
 // Mirrors the backend's own MAX_WRITING_SEGMENTS_PER_AGENT (app/modules/writing/application/
@@ -84,7 +87,7 @@ export function SegmentsPage() {
   return (
     <div className="space-y-8">
       <section className="space-y-4">
-        <h1 className="text-lg font-semibold">Project Segments</h1>
+        <h1 className="text-2xl font-semibold tracking-tight leading-snug">Project Segments</h1>
         <p className="text-sm text-muted-foreground">
           Save extra writing instructions for different parts of your project (e.g. "Background of
           the Study", "Statement of the Problem"). Pick a segment before sending a chat message to
@@ -94,30 +97,26 @@ export function SegmentsPage() {
 
       {templates.length > 0 && (
         <section className="space-y-3">
-          <h2 className="text-base font-semibold">Templates</h2>
+          <h2 className="text-base font-semibold tracking-tight leading-snug">Templates</h2>
           <p className="text-sm text-muted-foreground">
             Built-in segment sets you can apply in one click. Applying is safe to repeat - anything
             that already exists by name is left untouched, not duplicated.
           </p>
-          <ul className="space-y-2">
+          <ul className="divide-y divide-border">
             {templates.map((template) => (
-              <li key={template.template_id}>
-                <Card>
-                  <CardContent className="flex items-center justify-between gap-4 py-3">
-                    <div>
-                      <p className="text-sm font-medium">{template.name}</p>
-                      <p className="text-sm text-muted-foreground">{template.description}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{template.segment_count} segments</p>
-                    </div>
-                    <Button
-                      size="sm"
-                      disabled={applyTemplateMutation.isPending}
-                      onClick={() => applyTemplateMutation.mutate(template.template_id)}
-                    >
-                      {applyTemplateMutation.isPending ? "Applying..." : "Apply"}
-                    </Button>
-                  </CardContent>
-                </Card>
+              <li key={template.template_id} className="flex items-center justify-between gap-4 py-3">
+                <div>
+                  <p className="text-sm font-medium">{template.name}</p>
+                  <p className="text-sm text-muted-foreground">{template.description}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{template.segment_count} segments</p>
+                </div>
+                <Button
+                  size="sm"
+                  disabled={applyTemplateMutation.isPending}
+                  onClick={() => applyTemplateMutation.mutate(template.template_id)}
+                >
+                  {applyTemplateMutation.isPending ? "Applying..." : "Apply"}
+                </Button>
               </li>
             ))}
           </ul>
@@ -142,7 +141,7 @@ export function SegmentsPage() {
       )}
 
       <section className="space-y-4">
-        <h2 className="text-base font-semibold">Add a Segment</h2>
+        <h2 className="text-base font-semibold tracking-tight leading-snug">Add a Segment</h2>
         <form onSubmit={handleCreate} className="space-y-3">
           <Input
             value={name}
@@ -177,16 +176,25 @@ export function SegmentsPage() {
       </section>
 
       <section className="space-y-4">
-        <h2 className="text-base font-semibold">Your Segments</h2>
-        {segmentsQuery.isLoading && <p className="text-sm text-muted-foreground">Loading...</p>}
-        {segmentsQuery.data && segments.length === 0 && (
-          <p className="text-sm text-muted-foreground">No segments yet - add one above.</p>
+        <h2 className="text-base font-semibold tracking-tight leading-snug">Your Segments</h2>
+        {segmentsQuery.isLoading && (
+          <div className="space-y-2" aria-label="Loading segments">
+            <Skeleton className="h-16" />
+            <Skeleton className="h-16" />
+          </div>
         )}
-        <ul className="space-y-2">
-          {segments.map((segment) => (
-            <li key={segment.segment_id}>
-              <Card>
-                {editingId === segment.segment_id ? (
+        {segmentsQuery.data && segments.length === 0 && (
+          <EmptyState
+            icon={StackIcon}
+            title="No segments yet"
+            description="Add a segment above to save extra writing instructions for a specific part of your project."
+          />
+        )}
+        <ul className="divide-y divide-border">
+          {segments.map((segment) =>
+            editingId === segment.segment_id ? (
+              <li key={segment.segment_id} className="py-2">
+                <Card>
                   <CardContent className="space-y-3 py-4">
                     <Input value={editName} onChange={(e) => setEditName(e.target.value)} required />
                     <Textarea
@@ -213,30 +221,30 @@ export function SegmentsPage() {
                       </p>
                     )}
                   </CardContent>
-                ) : (
-                  <>
-                    <CardHeader className="flex-row items-center justify-between space-y-0">
-                      <CardTitle className="text-sm">{segment.name}</CardTitle>
-                      <div className="flex gap-1">
-                        <Button size="sm" variant="ghost" onClick={() => startEditing(segment)}>
-                          Edit
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={deleteMutation.isPending}
-                          onClick={() => deleteMutation.mutate(segment.segment_id)}
-                        >
-                          Delete
-                        </Button>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="text-sm text-muted-foreground">{segment.instructions}</CardContent>
-                  </>
-                )}
-              </Card>
-            </li>
-          ))}
+                </Card>
+              </li>
+            ) : (
+              <li key={segment.segment_id} className="py-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm">{segment.name}</CardTitle>
+                  <div className="flex gap-1">
+                    <Button size="sm" variant="ghost" onClick={() => startEditing(segment)}>
+                      Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={deleteMutation.isPending}
+                      onClick={() => deleteMutation.mutate(segment.segment_id)}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">{segment.instructions}</p>
+              </li>
+            ),
+          )}
         </ul>
         {deleteMutation.isError && (
           <p className="text-sm text-destructive">

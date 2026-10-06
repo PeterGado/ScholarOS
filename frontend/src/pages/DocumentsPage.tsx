@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Inbox } from "lucide-react";
+import { TrayIcon } from "@phosphor-icons/react";
 import {
   deleteResearchDocument,
   listProjectDocuments,
@@ -14,9 +14,9 @@ import { useToast } from "@/lib/ToastContext";
 import { useWorkspaceContext } from "@/components/WorkspaceGate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const DELETABLE_STATUSES = new Set(["pending", "failed"]);
 // Mirrors the backend's own MAX_RESEARCH_DOCUMENTS_PER_PROJECT (app/modules/document/
@@ -154,12 +154,16 @@ export function DocumentsPage() {
     <div className="space-y-8">
       <section className="space-y-4">
         <div>
-          <h1 className="text-lg font-semibold">Research Documents</h1>
+          <h1 className="text-2xl font-semibold tracking-tight leading-snug">Research Documents</h1>
           <p className="text-sm text-muted-foreground">
             Upload source material for your AI to draw on. Supports plain text, Word (.docx), and
             PDF files. Once a document finishes processing, it moves out of the pending list
             below into "Processed documents" and your searchable knowledge base. Up to
-            {" "}{RESEARCH_DOCUMENT_LIMIT} documents per project ({documentCount}/{RESEARCH_DOCUMENT_LIMIT} used).
+            {" "}{RESEARCH_DOCUMENT_LIMIT} documents per project (
+            <span className="tabular-nums">
+              {documentCount}/{RESEARCH_DOCUMENT_LIMIT}
+            </span>{" "}
+            used).
           </p>
         </div>
         <form onSubmit={handleUpload} className="flex flex-wrap items-end gap-3">
@@ -241,10 +245,16 @@ export function DocumentsPage() {
           </p>
         )}
 
-        {documentsQuery.isLoading && <p className="text-sm text-muted-foreground">Loading documents...</p>}
+        {documentsQuery.isLoading && (
+          <div className="space-y-2" aria-label="Loading documents">
+            <Skeleton className="h-14" />
+            <Skeleton className="h-14" />
+            <Skeleton className="h-14" />
+          </div>
+        )}
         {documentsQuery.data && allDocuments.length === 0 && (
           <EmptyState
-            icon={Inbox}
+            icon={TrayIcon}
             title="No documents yet"
             description="Upload source material above so your AI can draw on it when writing for you."
           />
@@ -254,42 +264,38 @@ export function DocumentsPage() {
             Nothing pending - uploaded documents will appear here while processing.
           </p>
         )}
-        <ul className="space-y-2">
+        <ul className="divide-y divide-border">
           {inProgressDocuments.map((doc) => (
-            <li key={doc.document_id}>
-              <Card>
-                <CardContent className="space-y-2 py-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">{doc.title}</span>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={doc.processing_status === "failed" ? "destructive" : "secondary"}>
-                        {doc.processing_status}
-                      </Badge>
-                      {doc.processing_status === "failed" && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={retryMutation.isPending}
-                          onClick={() => retryMutation.mutate(doc.document_id)}
-                        >
-                          Retry
-                        </Button>
-                      )}
-                      {DELETABLE_STATUSES.has(doc.processing_status) && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={deleteMutation.isPending}
-                          onClick={() => deleteMutation.mutate(doc.document_id)}
-                        >
-                          Delete
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                  {doc.error_message && <p className="text-sm text-destructive">{doc.error_message}</p>}
-                </CardContent>
-              </Card>
+            <li key={doc.document_id} className="space-y-2 py-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">{doc.title}</span>
+                <div className="flex items-center gap-2">
+                  <Badge variant={doc.processing_status === "failed" ? "destructive" : "secondary"}>
+                    {doc.processing_status}
+                  </Badge>
+                  {doc.processing_status === "failed" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={retryMutation.isPending}
+                      onClick={() => retryMutation.mutate(doc.document_id)}
+                    >
+                      Retry
+                    </Button>
+                  )}
+                  {DELETABLE_STATUSES.has(doc.processing_status) && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={deleteMutation.isPending}
+                      onClick={() => deleteMutation.mutate(doc.document_id)}
+                    >
+                      Delete
+                    </Button>
+                  )}
+                </div>
+              </div>
+              {doc.error_message && <p className="text-sm text-destructive">{doc.error_message}</p>}
             </li>
           ))}
         </ul>
@@ -318,43 +324,39 @@ export function DocumentsPage() {
       {processedDocuments.length > 0 && (
         <section className="space-y-4">
           <div>
-            <h2 className="text-base font-semibold">Processed documents</h2>
+            <h2 className="text-base font-semibold tracking-tight leading-snug">Processed documents</h2>
             <p className="text-sm text-muted-foreground">
               Already absorbed into your Agent's knowledge base - searchable below, not editable
               as files here.
             </p>
           </div>
-          <ul className="space-y-2">
+          <ul className="divide-y divide-border">
             {processedDocuments.map((doc) => (
-              <li key={doc.document_id}>
-                <Card>
-                  <CardContent className="flex items-center justify-between py-3">
-                    <div>
-                      <span className="text-sm font-medium">{doc.title}</span>
-                      <p className="text-xs text-muted-foreground">
-                        {doc.author && doc.publication_year
-                          ? `${doc.author} (${doc.publication_year})`
-                          : doc.author
-                            ? `${doc.author} - year not set`
-                            : doc.publication_year
-                              ? `${doc.publication_year} - author not set`
-                              : "No author/year set - can only be cited by title"}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {doc.doi_verification_status === "verified" && (
-                        <Badge variant="secondary">DOI verified</Badge>
-                      )}
-                      {doc.doi_verification_status === "mismatch" && (
-                        <Badge variant="destructive">DOI mismatch - check this</Badge>
-                      )}
-                      {doc.doi_verification_status === "not_found" && (
-                        <Badge variant="destructive">DOI not found</Badge>
-                      )}
-                      <Badge variant="secondary">processed</Badge>
-                    </div>
-                  </CardContent>
-                </Card>
+              <li key={doc.document_id} className="flex items-center justify-between py-3">
+                <div>
+                  <span className="text-sm font-medium">{doc.title}</span>
+                  <p className="text-xs text-muted-foreground">
+                    {doc.author && doc.publication_year
+                      ? `${doc.author} (${doc.publication_year})`
+                      : doc.author
+                        ? `${doc.author} - year not set`
+                        : doc.publication_year
+                          ? `${doc.publication_year} - author not set`
+                          : "No author/year set - can only be cited by title"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {doc.doi_verification_status === "verified" && (
+                    <Badge variant="success">DOI verified</Badge>
+                  )}
+                  {doc.doi_verification_status === "mismatch" && (
+                    <Badge variant="warning">DOI mismatch - check this</Badge>
+                  )}
+                  {doc.doi_verification_status === "not_found" && (
+                    <Badge variant="destructive">DOI not found</Badge>
+                  )}
+                  <Badge variant="success">processed</Badge>
+                </div>
               </li>
             ))}
           </ul>
@@ -362,24 +364,25 @@ export function DocumentsPage() {
       )}
 
       <section className="space-y-4">
-        <h2 className="text-base font-semibold">Search Processed Knowledge</h2>
+        <h2 className="text-base font-semibold tracking-tight leading-snug">Search Processed Knowledge</h2>
         <form onSubmit={handleSearch} className="flex gap-3">
           <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search your knowledge..." />
           <Button type="submit">Search</Button>
         </form>
-        {searchQuery.isFetching && <p className="text-sm text-muted-foreground">Searching...</p>}
+        {searchQuery.isFetching && (
+          <div className="space-y-2" aria-label="Searching">
+            <Skeleton className="h-16" />
+            <Skeleton className="h-16" />
+          </div>
+        )}
         {searchQuery.data && searchQuery.data.length === 0 && (
           <p className="text-sm text-muted-foreground">No matching knowledge yet.</p>
         )}
-        <ul className="space-y-2">
+        <ul className="divide-y divide-border">
           {searchQuery.data?.map((result) => (
-            <li key={result.chunk_id}>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Score: {result.score.toFixed(3)}</CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">{result.content}</CardContent>
-              </Card>
+            <li key={result.chunk_id} className="space-y-1 py-3">
+              <p className="text-sm font-medium tabular-nums">Score: {result.score.toFixed(3)}</p>
+              <p className="text-sm text-muted-foreground">{result.content}</p>
             </li>
           ))}
         </ul>

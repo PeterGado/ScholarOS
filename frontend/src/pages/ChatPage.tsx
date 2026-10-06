@@ -1,7 +1,9 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
+import { ChatCircleIcon } from "@phosphor-icons/react";
 import { startConversation } from "@/api/writing";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 
 // The empty state shown at /chat (no conversation selected yet) - the sidebar and layout
 // itself come from ChatLayout, which wraps this via <Outlet/>.
@@ -18,15 +20,18 @@ export function ChatPage() {
   });
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
-      <h1 className="text-lg font-semibold">Your Agent Workspace</h1>
-      <p className="max-w-sm text-sm text-muted-foreground">
-        Start a conversation - it automatically uses your project context, research, writing
-        style, and memory.
-      </p>
-      <Button onClick={() => newChatMutation.mutate()} disabled={newChatMutation.isPending}>
-        {newChatMutation.isPending ? "Starting..." : "New chat"}
-      </Button>
+    <div className="flex flex-1 items-center justify-center p-8">
+      <EmptyState
+        icon={ChatCircleIcon}
+        title="Your Agent Workspace"
+        description="Start a conversation - it automatically uses your project context, research, writing style, and memory."
+        action={
+          <Button onClick={() => newChatMutation.mutate()} disabled={newChatMutation.isPending}>
+            {newChatMutation.isPending ? "Starting..." : "New chat"}
+          </Button>
+        }
+        className="max-w-md border-none"
+      />
     </div>
   );
 }

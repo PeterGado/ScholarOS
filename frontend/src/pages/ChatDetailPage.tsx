@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { MarkdownMessage } from "@/components/MarkdownMessage";
 import { ThinkingIndicator } from "@/components/ThinkingIndicator";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const REPLY_POLL_INTERVAL_MS = 1500;
 const IN_FLIGHT_STATES = new Set(["queued", "running"]);
@@ -194,16 +196,22 @@ function ChatConversation({ conversationId }: { conversationId: number }) {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <div ref={scrollRef} className="flex-1 space-y-6 overflow-y-auto px-6 py-6">
-        {messagesQuery.isLoading && <p className="text-sm text-muted-foreground">Loading messages...</p>}
+        {messagesQuery.isLoading && (
+          <div className="mx-auto max-w-2xl space-y-3" aria-label="Loading messages">
+            <Skeleton className="h-16 w-2/3" />
+            <Skeleton className="ml-auto h-12 w-1/2" />
+            <Skeleton className="h-20 w-3/4" />
+          </div>
+        )}
         {messagesQuery.isError && (
-          <div className="mx-auto max-w-2xl rounded-lg border border-destructive/50 bg-destructive/5 px-4 py-3">
-            <p className="text-sm text-destructive">
+          <Alert>
+            <AlertDescription className="text-destructive">
               {messagesQuery.error instanceof ApiError ? messagesQuery.error.message : "Could not load this conversation."}
-            </p>
+            </AlertDescription>
             <Button size="sm" variant="outline" className="mt-2" onClick={() => messagesQuery.refetch()}>
               Try again
             </Button>
-          </div>
+          </Alert>
         )}
         {messagesQuery.hasNextPage && (
           <div className="mx-auto max-w-2xl text-center">
@@ -219,7 +227,7 @@ function ChatConversation({ conversationId }: { conversationId: number }) {
         )}
         {messages.map((message) =>
           message.direction === "user_request" ? (
-            <div key={message.message_id} className="mx-auto max-w-2xl rounded-2xl bg-muted px-4 py-3">
+            <div key={message.message_id} className="mx-auto max-w-2xl rounded-xl bg-muted px-4 py-3">
               <p className="mb-1 text-xs font-medium text-muted-foreground">You</p>
               <MarkdownMessage content={message.content} />
             </div>
@@ -237,11 +245,11 @@ function ChatConversation({ conversationId }: { conversationId: number }) {
           </div>
         )}
         {replyFailed && replyStatusQuery.data && (
-          <div className="mx-auto max-w-2xl rounded-lg border border-destructive/50 bg-destructive/5 px-4 py-3">
-            <p className="mb-1 text-xs font-medium text-destructive">Reply failed</p>
-            <p className="text-sm text-muted-foreground">
+          <Alert>
+            <AlertTitle>Reply failed</AlertTitle>
+            <AlertDescription>
               {replyStatusQuery.data?.last_error ?? "The assistant could not generate a reply."}
-            </p>
+            </AlertDescription>
             <Button
               size="sm"
               variant="outline"
@@ -256,19 +264,19 @@ function ChatConversation({ conversationId }: { conversationId: number }) {
                 {retryMutation.error instanceof ApiError ? retryMutation.error.message : "Could not retry."}
               </p>
             )}
-          </div>
+          </Alert>
         )}
         {replyStatusQuery.isError && !replyStatusQuery.data && (
-          <div className="mx-auto max-w-2xl rounded-lg border border-destructive/50 bg-destructive/5 px-4 py-3">
-            <p className="text-sm text-destructive">
+          <Alert>
+            <AlertDescription className="text-destructive">
               {replyStatusQuery.error instanceof ApiError
                 ? replyStatusQuery.error.message
                 : "Could not check the assistant reply status."}
-            </p>
+            </AlertDescription>
             <Button size="sm" variant="outline" className="mt-2" onClick={() => replyStatusQuery.refetch()}>
               Check again
             </Button>
-          </div>
+          </Alert>
         )}
       </div>
 
@@ -279,7 +287,7 @@ function ChatConversation({ conversationId }: { conversationId: number }) {
               value={selectedSegmentId ?? ""}
               onChange={(e) => setSelectedSegmentId(e.target.value ? Number(e.target.value) : null)}
               aria-label="Project segment"
-              className="rounded-md border border-input bg-transparent px-2 py-1 text-xs text-muted-foreground"
+              className="rounded-lg border border-input bg-transparent px-2 py-1 text-xs text-muted-foreground"
             >
               <option value="">No segment selected</option>
               {segments.map((segment) => (
