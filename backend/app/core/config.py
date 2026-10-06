@@ -72,7 +72,27 @@ class Settings(BaseSettings):
     # confirmed number for the specific model configured below - adjust if it proves too tight
     # or still too loose. Only applied to the multi-key path; the single-key path is unchanged.
     ai_max_calls_per_minute_per_key: int = 10
-    ai_model: str = "gemini-3.6-flash"
+    # Gemini model selection (2026-10-06, bumped from "gemini-3.6-flash"): the project owner
+    # asked for the strongest available tier for quality, but a real live call against the
+    # actual deployed API key confirmed the free tier has ZERO quota for any Pro-tier model
+    # ("limit: 0" on a live 429) and gemini-2.5-pro is outright deprecated for new users - Pro
+    # access requires billing enabled on a Google Cloud project, which this app's multi-key
+    # failover pool (all free-tier accounts) deliberately doesn't have. gemini-3.7-flash is the
+    # newest Flash-tier model confirmed to actually work on this key with a real live call
+    # (gemini-3.8-flash, the newest release, returned a real 503 "high demand" twice in a row a
+    # few minutes apart on this same key - not reliable enough to default to yet; revisit once
+    # that settles). If billing is ever enabled on a key in the pool, a Pro-tier model becomes
+    # worth retrying for a further quality jump.
+    ai_model: str = "gemini-3.7-flash"
+    # Generation temperature (2026-10-06): no deliberate value was ever set before this - every
+    # call ran at whichever default the provider SDK happens to apply when the field is left
+    # unset. 0.4 is deliberately below a typical 1.0 default, chosen to reduce rambling and
+    # factual drift on grounded academic writing without going fully deterministic (0.0 reads
+    # flat and repetitive across replies in the same conversation). None preserves the old
+    # "whatever the provider defaults to" behavior - both GoogleGenAIProvider.generate and
+    # OpenAICompatibleProvider.generate already treat max_output_tokens=None as "don't force a
+    # value" the same way; temperature follows that same precedent.
+    ai_temperature: float | None = 0.4
     ai_embedding_model: str = "gemini-embedding-001"
     # 2026-09-21: no per-call output bound existed anywhere - a single generate() call could run
     # to whatever the provider's own model default allows, uncapped by ScholarOS. Bounds runaway
@@ -94,6 +114,18 @@ class Settings(BaseSettings):
     # once friends actually start registering and using it concurrently. Set to null to disable
     # entirely.
     ai_daily_token_cap_per_user: int | None = 2_000_000
+    # Multi-pass reply generation (2026-10-06, draft -> critique -> revise): a chat reply used
+    # to be exactly one generate() call; this makes GenerateConversationReplyUseCase run a
+    # second model-driven self-critique pass and a third revision pass before anything reaches
+    # the user. Defaults to True (an explicit, user-approved trade-off, not a conservative
+    # default like registration_invite_code/google_oauth_client_id above) - the project owner
+    # has already weighed the ~3x AI-call cost and latency per reply against the quality gain
+    # and accepted it at this project's current scale (free-tier keys, no real-time latency
+    # SLA). GenerateConversationReplyUseCase's own `enable_multi_pass` constructor parameter is
+    # what this actually drives, threaded down through WorkItemExecutorLoop and
+    # process_one_work_item (app.workers.executor) - see those for the wiring. Set to False here
+    # as a zero-code-change escape hatch if the cost/latency ever becomes a real problem.
+    ai_enable_multi_pass_generation: bool = True
     # Frontend milestone (2026-09-16): a browser-based frontend on its own origin (the Vite
     # dev server) cannot reach this API at all without CORS headers - not a design choice,
     # every cross-origin browser request is blocked by default. Defaults cover the Vite dev

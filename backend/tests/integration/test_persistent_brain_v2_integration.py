@@ -29,7 +29,7 @@ from app.modules.writing.application.chat import SendChatMessageUseCase, StartCo
 from app.modules.writing.application.memory_inspection import ListMemoryUseCase, SupersedeMemoryRecordUseCase
 from app.modules.writing.domain.conversation_context import CONVERSATION_SUMMARY_ORIGIN
 from app.modules.writing.domain.entities import MemoryRecord
-from app.modules.writing.domain.enums import CreatedBy, MemoryRecordType
+from app.modules.writing.domain.enums import CreatedBy, MemoryRecordType, MessageDirection
 from app.modules.writing.domain.exceptions import MemoryRecordNotFoundError
 from app.modules.writing.infrastructure.repositories import (
     SqlAlchemyConversationRepository,
@@ -171,7 +171,7 @@ def _provision_document_with_knowledge(
     assert claimed is True, "fixture bug: no document-processing Work Item was queued"
 
 
-def _send_and_process(session, storage, workspace, conversation_id, content, provider):
+def _send_and_process(session, storage, workspace, conversation_id, content, provider, *, enable_multi_pass_generation=True):
     use_case = SendChatMessageUseCase(
         SqlAlchemyConversationRepository(session),
         SqlAlchemyMessageRepository(session),
@@ -195,6 +195,7 @@ def _send_and_process(session, storage, workspace, conversation_id, content, pro
         storage=storage,
         # Never make a real Wikipedia network call from a test (2026-09-30).
         background_knowledge_provider=lambda topic: None,
+        enable_multi_pass_generation=enable_multi_pass_generation,
     )
 
 
@@ -228,7 +229,80 @@ def test_a_long_conversation_gets_summarized_and_the_summary_is_used_going_forwa
     # The NEXT message's real prompt actually includes the summary, not 20+ raw messages.
     prior_call_count = provider.call_count
     _send_and_process(session, storage, workspace, conversation.conversation_id, "One more message.", provider)
-    assert provider.call_count == prior_call_count + 1  # only the reply call, no re-summarization yet
+    # Multi-pass generation (2026-10-06) is enabled by default: one reply now costs 3 generate()
+    # calls (draft, critique, revise), not 1 - no re-summarization yet either way.
+    assert provider.call_count == prior_call_count + 3
+
+
+class StagedTextGenerationProvider:
+    """Distinguishes the draft/critique/revise calls of one reply by ordinal position within
+    the reply cycle specifically (not raw call_count), since summarization/memory-extraction
+    calls can interleave between reply cycles and must not shift the draft/critique/revise
+    position - matched by their own existing prompt markers first, same as
+    FakeTextGenerationProvider above.
+    """
+
+    def __init__(
+        self,
+        *,
+        draft: str = "Draft reply.",
+        critique: str = "Found an issue to fix.",
+        revision: str = "Revised reply.",
+        summary: str = "A rolling summary of the conversation so far.",
+    ):
+        self._draft = draft
+        self._critique = critique
+        self._revision = revision
+        self._summary = summary
+        self.call_count = 0
+        self.reply_call_count = 0
+
+    def generate(self, prompt: str) -> str:
+        self.call_count += 1
+        if "compacting an ongoing conversation" in prompt:
+            return self._summary
+        if "extracting durable project memory" in prompt:
+            return '{"memories": []}'
+        self.reply_call_count += 1
+        position = (self.reply_call_count - 1) % 3
+        if position == 0:
+            return self._draft
+        if position == 1:
+            return self._critique
+        return self._revision
+
+
+def test_multi_pass_generation_persists_the_revision_not_the_draft(session, storage):
+    workspace = _make_workspace(session, username="researcher-multi-pass")
+    conversation = StartConversationUseCase(
+        SqlAlchemyConversationRepository(session), SqlAlchemyAgentRepository(session), SqlAlchemyUnitOfWork(session)
+    ).execute(user_id=workspace.agent.user_id)
+    provider = StagedTextGenerationProvider()
+
+    _send_and_process(session, storage, workspace, conversation.conversation_id, "Write it.", provider)
+
+    messages = SqlAlchemyMessageRepository(session).list_by_conversation_id(conversation.conversation_id)
+    reply = next(m for m in messages if m.direction == MessageDirection.SYSTEM_RESPONSE)
+    assert reply.content == "Revised reply."
+    assert provider.reply_call_count == 3
+
+
+def test_disabling_multi_pass_persists_the_draft_with_exactly_one_call(session, storage):
+    workspace = _make_workspace(session, username="researcher-single-pass")
+    conversation = StartConversationUseCase(
+        SqlAlchemyConversationRepository(session), SqlAlchemyAgentRepository(session), SqlAlchemyUnitOfWork(session)
+    ).execute(user_id=workspace.agent.user_id)
+    provider = StagedTextGenerationProvider()
+
+    _send_and_process(
+        session, storage, workspace, conversation.conversation_id, "Write it.", provider,
+        enable_multi_pass_generation=False,
+    )
+
+    messages = SqlAlchemyMessageRepository(session).list_by_conversation_id(conversation.conversation_id)
+    reply = next(m for m in messages if m.direction == MessageDirection.SYSTEM_RESPONSE)
+    assert reply.content == "Draft reply."
+    assert provider.reply_call_count == 1
 
 
 def test_a_failing_summarization_does_not_fail_the_chat_reply_but_is_logged(session, storage, caplog):

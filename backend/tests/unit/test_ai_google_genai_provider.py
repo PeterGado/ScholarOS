@@ -134,6 +134,24 @@ def test_generate_always_passes_safety_settings_even_with_no_max_output_tokens_c
     assert len(config.safety_settings) == 4
 
 
+def test_generate_passes_temperature_to_the_provider_config():
+    models = FakeModels(generate_response=FakeGenerateResponse("text"))
+    provider = _build_provider(models, temperature=0.4)
+
+    provider.generate("prompt")
+
+    assert models.generate_configs[0].temperature == 0.4
+
+
+def test_generate_passes_temperature_none_when_not_configured():
+    models = FakeModels(generate_response=FakeGenerateResponse("text"))
+    provider = _build_provider(models, temperature=None)
+
+    provider.generate("prompt")
+
+    assert models.generate_configs[0].temperature is None
+
+
 def test_generate_configures_safety_settings_at_block_medium_and_above():
     """2026-09-30, added after friend testing found violent/harassing/derogatory messages
     passing through with no moderation - the SDK's unset default was never deliberately chosen.
@@ -306,6 +324,13 @@ def test_create_google_genai_provider_wires_max_output_tokens_from_settings():
     provider = create_google_genai_provider(settings)
 
     assert provider._max_output_tokens == 1234
+
+
+def test_create_google_genai_provider_wires_temperature_from_settings():
+    settings = Settings(ai_api_key="test-key", ai_temperature=0.4)
+    provider = create_google_genai_provider(settings)
+
+    assert provider._temperature == 0.4
 
 
 def test_create_google_genai_provider_returns_a_failover_provider_when_multiple_keys_are_set():

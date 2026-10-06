@@ -84,6 +84,26 @@ def test_generate_omits_max_tokens_entirely_when_not_configured():
     provider.generate("prompt")
 
 
+def test_generate_includes_temperature_in_the_request_body_when_configured():
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        assert body["temperature"] == 0.4
+        return httpx.Response(200, json={"choices": [{"message": {"content": "text"}}]})
+
+    provider = _build_provider(handler, temperature=0.4)
+    provider.generate("prompt")
+
+
+def test_generate_omits_temperature_entirely_when_not_configured():
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        assert "temperature" not in body
+        return httpx.Response(200, json={"choices": [{"message": {"content": "text"}}]})
+
+    provider = _build_provider(handler, temperature=None)
+    provider.generate("prompt")
+
+
 def test_generate_raises_provider_request_error_on_non_2xx():
     provider = _build_provider(lambda request: httpx.Response(500, json={"error": "boom"}))
     with pytest.raises(ProviderRequestError):
@@ -176,3 +196,14 @@ def test_create_default_provider_wires_max_output_tokens_from_settings():
     provider = create_default_provider(settings)
 
     assert provider._max_output_tokens == 1234
+
+
+def test_create_default_provider_wires_temperature_from_settings():
+    settings = Settings(
+        ai_base_url="https://configured-provider.test/v1",
+        ai_api_key="configured-key",
+        ai_temperature=0.4,
+    )
+    provider = create_default_provider(settings)
+
+    assert provider._temperature == 0.4

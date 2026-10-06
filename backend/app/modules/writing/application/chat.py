@@ -25,6 +25,8 @@ from app.modules.writing.domain.context_assembly import (
     ContextMemory,
     ContextStyleSignal,
     assemble_context,
+    build_critique_prompt,
+    build_revision_prompt,
     detect_likely_citations,
     find_unverified_citations,
 )
@@ -487,7 +489,10 @@ both optional - a document can be fully processed and still have neither)."""
 
 class GenerateConversationReplyUseCase:
     """Worker-side counterpart of `SendChatMessageUseCase` - assembles the final prompt,
-    calls the AI provider, and persists the reply as a plain Conversation Message.
+    calls the AI provider, and persists the reply as a plain Conversation Message. When
+    `enable_multi_pass` is true (the default), the AI provider is called three times per reply
+    instead of once: a draft, a self-critique of that draft, then a revision that addresses the
+    critique before anything is persisted (see `execute` for the exact sequence).
 
     **Scalable conversation memory (Persistent Brain v2).** After persisting the reply, checks
     whether this Conversation has grown past `conversation_summarization.
@@ -520,6 +525,7 @@ class GenerateConversationReplyUseCase:
         unit_of_work: UnitOfWork,
         *,
         background_knowledge_provider: Callable[[str], str | None] = fetch_wikipedia_background,
+        enable_multi_pass: bool = True,
     ) -> None:
         self._messages = message_repository
         self._conversations = conversation_repository
@@ -532,6 +538,9 @@ class GenerateConversationReplyUseCase:
         # Engineering Implications: retrieval-adjacent components must be testable without
         # network access).
         self._background_knowledge_provider = background_knowledge_provider
+        # Multi-pass draft -> critique -> revise (2026-10-06, settings.
+        # ai_enable_multi_pass_generation): see execute()'s own comment for the sequence.
+        self._enable_multi_pass = enable_multi_pass
 
     def execute(self, *, conversation_id: int, context: ContextAssemblyInput) -> Message:
         # A queued reply may outlive a user deleting its conversation. Do not spend an AI call
@@ -549,11 +558,21 @@ class GenerateConversationReplyUseCase:
             context, background_knowledge=self._background_knowledge_provider(context.topic)
         )
         assembled = assemble_context(context_with_background)
-        generated_content = self._text_provider.generate(assembled.prompt)
-        if not generated_content or not generated_content.strip():
-            raise EmptyGeneratedContentError()
+        draft = self._require_nonempty(self._text_provider.generate(assembled.prompt))
 
-        content = generated_content.strip()
+        if self._enable_multi_pass:
+            # Draft -> critique -> revise (2026-10-06): critique and revision each read the same
+            # assembled.prompt the draft was generated from, never a re-assembled or re-budgeted
+            # one - build_critique_prompt/build_revision_prompt only ever append to it, they
+            # never call assemble_context again. The guardrails below run on whichever content
+            # actually gets persisted - the revision, not the draft - once this branch is taken.
+            critique = self._text_provider.generate(build_critique_prompt(assembled.prompt, draft))
+            content = self._require_nonempty(
+                self._text_provider.generate(build_revision_prompt(assembled.prompt, draft, critique or ""))
+            )
+        else:
+            content = draft
+
         if not assembled.evidence:
             if detect_likely_citations(content):
                 content += CITATION_FABRICATION_WARNING
@@ -581,6 +600,12 @@ class GenerateConversationReplyUseCase:
         self._summarize_if_needed(conversation_id)
         self._extract_memory_if_needed(conversation_id, context)
         return persisted
+
+    @staticmethod
+    def _require_nonempty(text: str) -> str:
+        if not text or not text.strip():
+            raise EmptyGeneratedContentError()
+        return text.strip()
 
     def _summarize_if_needed(self, conversation_id: int) -> None:
         try:

@@ -52,6 +52,7 @@ def process_one_work_item(
     storage: ContentStore,
     background_knowledge_provider: Callable[[str], str | None] = fetch_wikipedia_background,
     doi_lookup_provider: Callable[[str], CrossrefWork | None] = fetch_crossref_work,
+    enable_multi_pass_generation: bool = True,
 ) -> bool:
     """Claims and fully processes at most one queued Work Item using `session`.
 
@@ -106,6 +107,7 @@ def process_one_work_item(
                 text_provider,
                 uow,
                 background_knowledge_provider=background_knowledge_provider,
+                enable_multi_pass=enable_multi_pass_generation,
             ).execute(conversation_id=conversation_id, context=chat_context)
         except Exception as exc:  # noqa: BLE001 - worker routes all failures through bounded retry
             updated_item = work_items.mark_failed(
@@ -232,6 +234,7 @@ class WorkItemExecutorLoop:
         stale_running_threshold: timedelta = timedelta(minutes=10),
         worker_count: int = 1,
         background_knowledge_provider: Callable[[str], str | None] = fetch_wikipedia_background,
+        enable_multi_pass_generation: bool = True,
     ) -> None:
         self._session_factory = session_factory
         self._text_provider = text_provider
@@ -242,6 +245,7 @@ class WorkItemExecutorLoop:
         self._stale_running_threshold = stale_running_threshold
         self._worker_count = worker_count
         self._background_knowledge_provider = background_knowledge_provider
+        self._enable_multi_pass_generation = enable_multi_pass_generation
         self._stop_event = threading.Event()
         self._threads: list[threading.Thread] = []
 
@@ -306,6 +310,7 @@ class WorkItemExecutorLoop:
                 embedding_model_version=self._embedding_model_version,
                 storage=self._storage,
                 background_knowledge_provider=self._background_knowledge_provider,
+                enable_multi_pass_generation=self._enable_multi_pass_generation,
             )
         except Exception:
             logger.exception(

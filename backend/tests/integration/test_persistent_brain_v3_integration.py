@@ -160,7 +160,10 @@ def test_only_the_most_recent_memories_reach_a_real_chat_prompt(session, storage
         background_knowledge_provider=lambda topic: None,
     )
     assert claimed is True
-    assert len(spy.prompts) == 1
+    # Multi-pass generation (2026-10-06) is enabled by default: one reply now costs 3 generate()
+    # calls (draft, critique, revise) - spy.prompts[0] is still the draft, which carries the
+    # same full context as the old single call did.
+    assert len(spy.prompts) == 3
     real_prompt = spy.prompts[0]
 
     # The 20 most recent memories (25, 24, ..., 5) reach the real prompt...
@@ -312,7 +315,11 @@ def test_a_content_blocked_message_does_not_poison_a_later_reply_in_the_same_con
     )
     assert second_claimed is True
 
-    assert len(provider.prompts) == 2
+    # Multi-pass generation (2026-10-06): the first (blocked) message raises on its one draft
+    # call, never reaching critique/revise - 1 prompt. The second message succeeds through all
+    # three passes - 3 more prompts. provider.prompts[1] is still the second message's draft,
+    # which is what matters here.
+    assert len(provider.prompts) == 4
     second_prompt = provider.prompts[1]
     # The fix: the blocked message's own text must not have been replayed into the second
     # prompt's conversation history, which is what caused it to be blocked too before the fix.

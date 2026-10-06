@@ -64,6 +64,7 @@ class GoogleGenAIProvider:
         model: str,
         embedding_model: str,
         max_output_tokens: int | None = None,
+        temperature: float | None = None,
         client: _GenAIClient | None = None,
     ) -> None:
         if not api_key:
@@ -72,10 +73,15 @@ class GoogleGenAIProvider:
         self._model = model
         self._embedding_model = embedding_model
         self._max_output_tokens = max_output_tokens
+        self._temperature = temperature
         self._client = client if client is not None else genai.Client(api_key=api_key)
 
     def generate(self, prompt: str) -> str:
-        config = types.GenerateContentConfig(max_output_tokens=self._max_output_tokens, safety_settings=_SAFETY_SETTINGS)
+        config = types.GenerateContentConfig(
+            max_output_tokens=self._max_output_tokens,
+            temperature=self._temperature,
+            safety_settings=_SAFETY_SETTINGS,
+        )
         try:
             response = self._client.models.generate_content(model=self._model, contents=prompt, config=config)
         except Exception as exc:  # noqa: BLE001 - the SDK's exception hierarchy is not part of our contract
@@ -154,6 +160,7 @@ def create_google_genai_provider(settings) -> GoogleGenAIProvider | FailoverProv
                         model=settings.ai_model,
                         embedding_model=settings.ai_embedding_model,
                         max_output_tokens=settings.ai_max_output_tokens,
+                        temperature=settings.ai_temperature,
                     ),
                     max_calls_per_minute=settings.ai_max_calls_per_minute_per_key,
                 )
@@ -166,6 +173,7 @@ def create_google_genai_provider(settings) -> GoogleGenAIProvider | FailoverProv
         model=settings.ai_model,
         embedding_model=settings.ai_embedding_model,
         max_output_tokens=settings.ai_max_output_tokens,
+        temperature=settings.ai_temperature,
     )
 
 

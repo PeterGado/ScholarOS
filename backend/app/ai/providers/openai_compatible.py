@@ -28,6 +28,7 @@ class OpenAICompatibleProvider:
         model: str,
         embedding_model: str,
         max_output_tokens: int | None = None,
+        temperature: float | None = None,
         timeout: float = 30.0,
         client: httpx.Client | None = None,
     ) -> None:
@@ -40,6 +41,7 @@ class OpenAICompatibleProvider:
         self._model = model
         self._embedding_model = embedding_model
         self._max_output_tokens = max_output_tokens
+        self._temperature = temperature
         self._client = client if client is not None else httpx.Client(timeout=timeout)
         self._headers = {"Authorization": f"Bearer {api_key}"}
 
@@ -47,6 +49,8 @@ class OpenAICompatibleProvider:
         request_body = {"model": self._model, "messages": [{"role": "user", "content": prompt}]}
         if self._max_output_tokens is not None:
             request_body["max_tokens"] = self._max_output_tokens
+        if self._temperature is not None:
+            request_body["temperature"] = self._temperature
         body = self._post("/chat/completions", request_body)
         try:
             return body["choices"][0]["message"]["content"]
@@ -132,6 +136,7 @@ def create_default_provider(settings: Settings) -> OpenAICompatibleProvider | Fa
                         model=settings.ai_model,
                         embedding_model=settings.ai_embedding_model,
                         max_output_tokens=settings.ai_max_output_tokens,
+                        temperature=settings.ai_temperature,
                     ),
                     max_calls_per_minute=settings.ai_max_calls_per_minute_per_key,
                 )
@@ -145,4 +150,5 @@ def create_default_provider(settings: Settings) -> OpenAICompatibleProvider | Fa
         model=settings.ai_model,
         embedding_model=settings.ai_embedding_model,
         max_output_tokens=settings.ai_max_output_tokens,
+        temperature=settings.ai_temperature,
     )

@@ -93,6 +93,11 @@ a default to Australian English (that prompt author's own preference, not reques
 a "final self-edit checklist" step, which assumes a multi-pass editing workflow ScholarOS's
 single-pass generation call doesn't have.
 
+2026-10-06: ScholarOS's generation pipeline now does have a multi-pass draft -> critique ->
+revise step (see build_critique_prompt/build_revision_prompt below) - the self-edit-checklist
+step is still deliberately not folded in here, since the critique/revision prompts above
+already serve an equivalent role structurally.
+
 Also extended same day with the plain-verb substitutions ('is' not 'serves as', etc.) and a
 tighter inflated-significance rule, after a live quality-confirmation smoke test against the
 real deployed backend caught both patterns slipping through on a real reply ("serves as the
@@ -461,6 +466,64 @@ def _grounding_rules(*, has_evidence: bool) -> tuple[str, str]:
             "above."
         )
     return ("GROUNDING RULES", text)
+
+
+def build_critique_prompt(assembled_prompt: str, draft: str) -> str:
+    """Second-pass prompt for GenerateConversationReplyUseCase's draft -> critique -> revise
+    pipeline (multi-pass generation, 2026-10-06). Takes the exact prompt the draft was
+    generated from - never a rebuilt or re-budgeted one - plus the draft text itself, and
+    asks the model to find concrete problems against the standards that prompt already
+    states. The critique this returns is read by build_revision_prompt below, never shown
+    to the user directly.
+    """
+    return (
+        f"{assembled_prompt}\n\n"
+        "---\n\n"
+        "A draft reply has already been written for the task above. Your job now is only to "
+        "critique it - do not rewrite it yet.\n\n"
+        f"DRAFT REPLY:\n{draft}\n\n"
+        "Critique the draft specifically against the standards already stated above. Check:\n"
+        "- Factual grounding: does every claim and citation actually match RESEARCH EVIDENCE "
+        "above, with no invented authors, years, or findings, per GROUNDING RULES?\n"
+        "- Instruction adherence: does it do exactly what WRITING INSTRUCTIONS (and SEGMENT "
+        "INSTRUCTIONS, if present) actually asked for, no more and no less?\n"
+        "- Style and tone: does it match WRITING STYLE AND TONE?\n"
+        "- Human-sounding writing: does it avoid the AI-writing patterns listed in "
+        "HUMAN-SOUNDING WRITING - forced triads, 'not X but Y' contrasts, inflated "
+        "significance, staged openers, chatbot leftovers, and the rest?\n"
+        "- Academic rigor and structure: is the argument well-organized, logically ordered, "
+        "and actually substantiated, not just assertive?\n"
+        "- Clarity and completeness: is anything confusing, redundant, or missing given what "
+        "was asked?\n\n"
+        "List only concrete, actionable problems you actually find, each in one sentence. If "
+        "the draft already satisfies all of the above, say plainly that it needs no changes - "
+        "do not invent a problem just to have something to say."
+    )
+
+
+def build_revision_prompt(assembled_prompt: str, draft: str, critique: str) -> str:
+    """Third-pass prompt for the same pipeline as build_critique_prompt above. Takes the same
+    assembled prompt again, plus the draft and its critique, and asks for exactly one final
+    reply - explicitly allowed to be the draft unchanged when the critique found nothing
+    substantive, so GenerateConversationReplyUseCase never has to parse a pass/fail verdict
+    out of free text.
+    """
+    return (
+        f"{assembled_prompt}\n\n"
+        "---\n\n"
+        "A draft reply and a critique of that draft have already been produced for the task "
+        "above.\n\n"
+        f"DRAFT REPLY:\n{draft}\n\n"
+        f"CRITIQUE:\n{critique}\n\n"
+        "Produce ONE final reply that addresses every actionable point the critique raised, "
+        "while still satisfying every constraint in the task above - WRITING INSTRUCTIONS, "
+        "SEGMENT INSTRUCTIONS (if present), GROUNDING RULES, WRITING STYLE AND TONE, and "
+        "HUMAN-SOUNDING WRITING. Preserve every citation from the draft that GROUNDING RULES "
+        "already allows; do not introduce a new one. If the critique found nothing "
+        "substantive, return the draft essentially unchanged rather than rewriting it for its "
+        "own sake. Output only the final reply itself - no preamble, no mention of the draft "
+        "or critique, and no description of what changed."
+    )
 
 
 _NAME = r"[A-Z][A-Za-z'-]+"

@@ -81,6 +81,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         settings.ai_embedding_model,
         storage,
         worker_count=settings.work_item_worker_count,
+        enable_multi_pass_generation=settings.ai_enable_multi_pass_generation,
     )
     executor_loop.start()
 

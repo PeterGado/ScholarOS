@@ -53,7 +53,7 @@ def _create_workspace(client, headers, *, topic="Coastal erosion") -> dict:
     return response.json()
 
 
-def _process_next_work_item(db_engine, tmp_path, *, text_provider=None) -> bool:
+def _process_next_work_item(db_engine, tmp_path, *, text_provider=None, enable_multi_pass_generation=True) -> bool:
     session = build_sessionmaker(db_engine)()
     try:
         storage = FilesystemStorage(tmp_path / "object-store")
@@ -66,6 +66,7 @@ def _process_next_work_item(db_engine, tmp_path, *, text_provider=None) -> bool:
             # Never make a real Wikipedia network call from a test (2026-09-30) - mirrors every
             # other fake provider above.
             background_knowledge_provider=lambda topic: None,
+            enable_multi_pass_generation=enable_multi_pass_generation,
         )
     finally:
         session.close()
@@ -316,14 +317,16 @@ def test_a_second_message_carries_prior_conversation_into_context(client, auth_h
         headers=auth_headers,
     )
     spy = SpyingProvider()
-    _process_next_work_item(db_engine, tmp_path, text_provider=spy)
+    # Multi-pass generation isn't what this test exercises (conversation-history carryover is)
+    # and would otherwise triple spy.prompts and shift every index below - opt out explicitly.
+    _process_next_work_item(db_engine, tmp_path, text_provider=spy, enable_multi_pass_generation=False)
 
     client.post(
         f"/writing/conversations/{conversation['conversation_id']}/messages",
         json={"content": "What methodology did I just mention?"},
         headers=auth_headers,
     )
-    _process_next_work_item(db_engine, tmp_path, text_provider=spy)
+    _process_next_work_item(db_engine, tmp_path, text_provider=spy, enable_multi_pass_generation=False)
 
     assert len(spy.prompts) == 2
     # The second prompt's RELEVANT CONVERSATION CONTEXT section carries the first exchange.
