@@ -35,3 +35,15 @@ export async function getProfile(): Promise<ProfileResponse> {
   const response = await apiClient.get("/auth/profile");
   return profileResponseSchema.parse(response.data);
 }
+
+export async function updateEmail(email: string): Promise<void> {
+  await apiClient.put("/auth/email", { email });
+}
+
+export async function requestPasswordReset(email: string): Promise<void> {
+  await apiClient.post("/auth/password-reset/request", { email });
+}
+
+export async function confirmPasswordReset(token: string, newPassword: string): Promise<void> {
+  await apiClient.post("/auth/password-reset/confirm", { token, new_password: newPassword });
+}

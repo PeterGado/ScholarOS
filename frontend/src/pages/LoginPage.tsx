@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Link, Navigate } from "react-router-dom";
+import { Link, Navigate, useLocation } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { login, loginWithGoogle } from "@/api/auth";
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input";
 
 export function LoginPage() {
   const { isAuthenticated, setToken } = useAuth();
+  const location = useLocation();
+  const passwordWasReset = Boolean((location.state as { passwordWasReset?: boolean } | null)?.passwordWasReset);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +60,11 @@ export function LoginPage() {
       </div>
       <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4 rounded-lg border border-border p-6">
         <h1 className="text-lg font-semibold">Sign in to ScholarOS</h1>
+        {passwordWasReset && (
+          <p className="text-sm text-muted-foreground">
+            Your password was reset. Sign in with your new password below.
+          </p>
+        )}
         <div className="space-y-1">
           <label htmlFor="username" className="text-sm font-medium">
             Username
@@ -71,9 +78,14 @@ export function LoginPage() {
           />
         </div>
         <div className="space-y-1">
-          <label htmlFor="password" className="text-sm font-medium">
-            Password
-          </label>
+          <div className="flex items-center justify-between">
+            <label htmlFor="password" className="text-sm font-medium">
+              Password
+            </label>
+            <Link to="/forgot-password" className="text-xs text-muted-foreground hover:text-foreground">
+              Forgot password?
+            </Link>
+          </div>
           <Input
             id="password"
             type="password"

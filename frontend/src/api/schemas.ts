@@ -13,6 +13,7 @@ export type TokenResponse = z.infer<typeof tokenResponseSchema>;
 
 export const profileResponseSchema = z.object({
   username: z.string(),
+  email: z.string().nullable(),
 });
 export type ProfileResponse = z.infer<typeof profileResponseSchema>;
 
