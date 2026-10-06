@@ -8,6 +8,7 @@ import { ApiError } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { MarkdownMessage } from "@/components/MarkdownMessage";
+import { ThinkingIndicator } from "@/components/ThinkingIndicator";
 
 const REPLY_POLL_INTERVAL_MS = 1500;
 const IN_FLIGHT_STATES = new Set(["queued", "running"]);
@@ -15,6 +16,7 @@ const IN_FLIGHT_STATES = new Set(["queued", "running"]);
 interface ActiveReply {
   conversationId: number;
   workItemId: number;
+  startedAt: number;
 }
 
 function activeReplyStorageKey(conversationId: number) {
@@ -35,7 +37,10 @@ function loadActiveReply(conversationId: number): ActiveReply | null {
       typeof value.workItemId === "number" &&
       value.conversationId === conversationId
     ) {
-      return value as ActiveReply;
+      // startedAt predates this field on an already-stored value (pre-2026-10-06) - fall back
+      // to "now" rather than drop a resumable in-flight reply entirely.
+      const startedAt = "startedAt" in value && typeof value.startedAt === "number" ? value.startedAt : Date.now();
+      return { conversationId: value.conversationId, workItemId: value.workItemId, startedAt };
     }
   } catch {
     // Session storage is a convenience for restoring an in-flight reply, never a dependency.
@@ -78,7 +83,7 @@ function ChatConversation({ conversationId }: { conversationId: number }) {
       setActiveReply(null);
       return;
     }
-    const reply = { conversationId, workItemId };
+    const reply = { conversationId, workItemId, startedAt: Date.now() };
     try {
       window.sessionStorage.setItem(activeReplyStorageKey(conversationId), JSON.stringify(reply));
     } catch {
@@ -168,6 +173,9 @@ function ChatConversation({ conversationId }: { conversationId: number }) {
     mutationFn: () => retryChatReply(conversationId, activeWorkItemId!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["chat-reply-status", conversationId, activeWorkItemId] });
+      // A retry is a genuinely new attempt - restart the elapsed-time clock the thinking
+      // indicator's staged labels are based on, rather than carry over the failed attempt's.
+      trackActiveReply(activeWorkItemId!);
     },
   });
 
@@ -222,10 +230,10 @@ function ChatConversation({ conversationId }: { conversationId: number }) {
             </div>
           ),
         )}
-        {isWaitingForReply && !replyFailed && (
+        {isWaitingForReply && !replyFailed && activeReply && (
           <div className="mx-auto max-w-2xl">
             <p className="mb-1 text-xs font-medium text-muted-foreground">Assistant</p>
-            <p className="text-sm text-muted-foreground">Thinking...</p>
+            <ThinkingIndicator startedAt={activeReply.startedAt} />
           </div>
         )}
         {replyFailed && replyStatusQuery.data && (
