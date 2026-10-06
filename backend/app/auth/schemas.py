@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 
 
 class LoginRequest(BaseModel):
@@ -39,9 +39,36 @@ class TokenResponse(BaseModel):
 
 
 class ProfileResponse(BaseModel):
-    """Response body for GET /auth/profile - the one piece of account info the frontend needs
-    to display (e.g. the Settings page), kept separate from TokenResponse and the 204-only
-    GET /auth/me so neither of those deliberately-minimal contracts has to grow a body.
+    """Response body for GET /auth/profile - the account info the frontend needs to display
+    (e.g. the Settings page), kept separate from TokenResponse and the 204-only GET /auth/me
+    so neither of those deliberately-minimal contracts has to grow a body.
+
+    `email` (2026-10-06) is nullable: registration never collects one, so most accounts have
+    none until a user explicitly adds one via PUT /auth/email.
     """
 
     username: str
+    email: str | None = None
+
+
+class UpdateEmailRequest(BaseModel):
+    """Request body for PUT /auth/email (2026-10-06, Settings) - what makes password reset
+    reachable for a username/password account, since registration itself never asks for one.
+    """
+
+    email: EmailStr
+
+
+class RequestPasswordResetRequest(BaseModel):
+    """Request body for POST /auth/password-reset/request (2026-10-06)."""
+
+    email: EmailStr
+
+
+class ConfirmPasswordResetRequest(BaseModel):
+    """Request body for POST /auth/password-reset/confirm (2026-10-06). `token` is the raw,
+    single-use token from the emailed reset link - never the hash stored at rest.
+    """
+
+    token: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=1)

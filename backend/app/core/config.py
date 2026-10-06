@@ -139,6 +139,25 @@ class Settings(BaseSettings):
     web_engine_max_overflow: int = 15
     worker_engine_pool_size: int = 10
     worker_engine_max_overflow: int = 10
+    # Password reset (2026-10-06): unset means the feature fails closed with EmailSendError
+    # rather than silently pretending to send (app.email.resend.send_email's own docstring) -
+    # same "missing config fails the same way a bad call would" precedent as ai_api_key/
+    # google_oauth_client_id above, not a new pattern.
+    resend_api_key: str | None = None
+    # Resend's own shared sender address, usable with zero domain setup - switch this to a
+    # verified address on your own domain once one exists (see docs/Social_Media_Post's
+    # eventual custom-domain work); nothing else about the integration needs to change.
+    password_reset_from_address: str = "ScholarOS <onboarding@resend.dev>"
+    # How long a reset link stays usable before ConfirmPasswordResetUseCase rejects it as
+    # expired (InvalidResetTokenError) - an hour is generous for someone to receive and click
+    # an email, short enough that a stale, unused link in an old inbox isn't a standing risk
+    # forever.
+    password_reset_token_ttl_minutes: int = 60
+    # The reset link emailed to a user points at the frontend's own confirm-reset page (which
+    # then calls this API with the token from the URL), not at this API directly - the backend
+    # has no reason to otherwise know where its frontend is deployed, so this must be set
+    # explicitly per environment rather than guessed from a request header.
+    frontend_base_url: str = "http://localhost:5173"
 
 
 @lru_cache

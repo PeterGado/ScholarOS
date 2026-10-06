@@ -2,15 +2,33 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from app.auth.entities import AuthSession
+from app.auth.entities import AuthSession, PasswordResetToken
 from app.auth.models import AuthSession as AuthSessionModel
+from app.auth.models import PasswordResetToken as PasswordResetTokenModel
 from app.auth.repository import (
     AuthSessionRepository,
+    PasswordResetTokenRepository,
+    UserAccountRepository,
     UserCredential,
     UserCredentialLookup,
     UserRegistrationRepository,
 )
 from app.database.shared_models import User
+
+
+def _as_utc(value: datetime | None) -> datetime | None:
+    """PasswordResetTokenModel's datetime columns are plain `DateTime` (no `timezone=True`),
+    which both SQLite and Postgres (TIMESTAMP WITHOUT TIME ZONE, the default) store and return
+    naive, regardless of how they were written - a real bug this surfaced via a genuine e2e
+    test, not a hypothetical: PasswordResetToken.is_valid() compares `expires_at` against
+    `datetime.now(timezone.utc)`, and Python refuses to compare a naive and an aware datetime
+    at all (TypeError), not silently getting the wrong answer. Every datetime this module
+    persists is always UTC by convention (`datetime.now(timezone.utc)` at every write site) -
+    this re-attaches that known timezone on read rather than leaving the caller to guess.
+    """
+    if value is None or value.tzinfo is not None:
+        return value
+    return value.replace(tzinfo=timezone.utc)
 
 
 class SqlAlchemyAuthSessionRepository(AuthSessionRepository):
@@ -42,6 +60,13 @@ class SqlAlchemyAuthSessionRepository(AuthSessionRepository):
         row.last_active_at = datetime.now(timezone.utc)
         self._session.flush()
         session.last_active_at = row.last_active_at
+
+    def end_all_for_user(self, user_id: int) -> None:
+        now = datetime.now(timezone.utc)
+        self._session.query(AuthSessionModel).filter_by(user_id=user_id, ended_at=None).update(
+            {"ended_at": now}
+        )
+        self._session.flush()
 
     @staticmethod
     def _to_domain(row: AuthSessionModel) -> AuthSession:
@@ -101,3 +126,57 @@ class SqlAlchemyUserRegistrationRepository(UserRegistrationRepository):
         self._session.add(row)
         self._session.flush()
         return row
+
+
+class SqlAlchemyUserAccountRepository(UserAccountRepository):
+    """Concrete UserAccountRepository (app.auth.repository, 2026-10-06) - the post-creation
+    mutation counterpart neither SqlAlchemyUserCredentialLookup (read-only) nor
+    SqlAlchemyUserRegistrationRepository (creation-only) cover.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def update_password_hash(self, user_id: int, password_hash: str) -> None:
+        row = self._session.get(User, user_id)
+        row.password_hash = password_hash
+        self._session.flush()
+
+    def update_email(self, user_id: int, email: str | None) -> None:
+        row = self._session.get(User, user_id)
+        row.email = email
+        self._session.flush()
+
+
+class SqlAlchemyPasswordResetTokenRepository(PasswordResetTokenRepository):
+    """Concrete PasswordResetTokenRepository (app.auth.repository, 2026-10-06)."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def create(self, *, user_id: int, token_hash: str, expires_at: datetime) -> PasswordResetToken:
+        row = PasswordResetTokenModel(user_id=user_id, token_hash=token_hash, expires_at=expires_at)
+        self._session.add(row)
+        self._session.flush()
+        return self._to_domain(row)
+
+    def get_by_token_hash(self, token_hash: str) -> PasswordResetToken | None:
+        row = self._session.query(PasswordResetTokenModel).filter_by(token_hash=token_hash).one_or_none()
+        return self._to_domain(row) if row is not None else None
+
+    def mark_used(self, token: PasswordResetToken) -> None:
+        row = self._session.get(PasswordResetTokenModel, token.token_id)
+        row.used_at = datetime.now(timezone.utc)
+        self._session.flush()
+        token.used_at = row.used_at
+
+    @staticmethod
+    def _to_domain(row: PasswordResetTokenModel) -> PasswordResetToken:
+        return PasswordResetToken(
+            token_id=row.token_id,
+            user_id=row.user_id,
+            token_hash=row.token_hash,
+            created_at=_as_utc(row.created_at),
+            expires_at=_as_utc(row.expires_at),
+            used_at=_as_utc(row.used_at),
+        )

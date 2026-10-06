@@ -6,14 +6,18 @@ from app.ai.providers.base import EmbeddingProvider, TextGenerationProvider
 from app.ai.providers.factory import create_provider
 from app.ai.usage_guard import AiUsageGuard
 from app.ai.usage_infrastructure import SqlAlchemyAiUsageRepository
+from app.auth.account import UpdateEmailUseCase
 from app.auth.dependencies import extract_bearer_token
 from app.auth.infrastructure import (
     SqlAlchemyAuthSessionRepository,
+    SqlAlchemyPasswordResetTokenRepository,
+    SqlAlchemyUserAccountRepository,
     SqlAlchemyUserCredentialLookup,
     SqlAlchemyUserRegistrationRepository,
 )
 from app.auth.google_oauth import verify_google_id_token
 from app.auth.google_sign_in import GoogleSignInUseCase
+from app.auth.password_reset import ConfirmPasswordResetUseCase, RequestPasswordResetUseCase
 from app.auth.registration import RegisterUserUseCase
 from app.auth.service import AuthService
 from app.core.config import get_settings
@@ -270,6 +274,48 @@ def get_google_sign_in_use_case(
         required_invite_code=get_settings().registration_invite_code,
         google_client_id=get_settings().google_oauth_client_id,
     )
+
+
+def get_user_account_repository(db: Session = Depends(get_db)) -> SqlAlchemyUserAccountRepository:
+    return SqlAlchemyUserAccountRepository(db)
+
+
+def get_password_reset_token_repository(db: Session = Depends(get_db)) -> SqlAlchemyPasswordResetTokenRepository:
+    return SqlAlchemyPasswordResetTokenRepository(db)
+
+
+def get_update_email_use_case(
+    user_lookup: SqlAlchemyUserCredentialLookup = Depends(get_user_credential_lookup),
+    user_account: SqlAlchemyUserAccountRepository = Depends(get_user_account_repository),
+    unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
+) -> UpdateEmailUseCase:
+    return UpdateEmailUseCase(user_lookup, user_account, unit_of_work)
+
+
+def get_request_password_reset_use_case(
+    user_lookup: SqlAlchemyUserCredentialLookup = Depends(get_user_credential_lookup),
+    reset_tokens: SqlAlchemyPasswordResetTokenRepository = Depends(get_password_reset_token_repository),
+    unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
+) -> RequestPasswordResetUseCase:
+    settings = get_settings()
+    return RequestPasswordResetUseCase(
+        user_lookup,
+        reset_tokens,
+        unit_of_work,
+        token_ttl_minutes=settings.password_reset_token_ttl_minutes,
+        frontend_base_url=settings.frontend_base_url,
+        resend_api_key=settings.resend_api_key,
+        from_address=settings.password_reset_from_address,
+    )
+
+
+def get_confirm_password_reset_use_case(
+    reset_tokens: SqlAlchemyPasswordResetTokenRepository = Depends(get_password_reset_token_repository),
+    user_account: SqlAlchemyUserAccountRepository = Depends(get_user_account_repository),
+    session_repository: SqlAlchemyAuthSessionRepository = Depends(get_auth_session_repository),
+    unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
+) -> ConfirmPasswordResetUseCase:
+    return ConfirmPasswordResetUseCase(reset_tokens, user_account, session_repository, unit_of_work)
 
 
 async def get_current_user_id(

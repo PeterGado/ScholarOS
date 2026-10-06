@@ -1,16 +1,30 @@
 from fastapi import APIRouter, Depends, Request, status
 
 from app.api.exception_handlers import ErrorResponse
+from app.auth.account import UpdateEmailUseCase
 from app.auth.dependencies import extract_bearer_token
 from app.auth.google_sign_in import GoogleSignInUseCase
+from app.auth.password_reset import ConfirmPasswordResetUseCase, RequestPasswordResetUseCase
 from app.auth.registration import RegisterUserUseCase
-from app.auth.schemas import GoogleSignInRequest, LoginRequest, ProfileResponse, RegisterRequest, TokenResponse
+from app.auth.schemas import (
+    ConfirmPasswordResetRequest,
+    GoogleSignInRequest,
+    LoginRequest,
+    ProfileResponse,
+    RegisterRequest,
+    RequestPasswordResetRequest,
+    TokenResponse,
+    UpdateEmailRequest,
+)
 from app.auth.service import AuthService
 from app.core.dependencies import (
     get_auth_service,
+    get_confirm_password_reset_use_case,
     get_current_user_id,
     get_google_sign_in_use_case,
     get_register_user_use_case,
+    get_request_password_reset_use_case,
+    get_update_email_use_case,
 )
 from app.core.rate_limit import limiter
 
@@ -151,7 +165,75 @@ def get_profile(
     signal" contract stays true, and separate from TokenResponse so login/register stay as
     minimal as 05_Constraints_and_Integrity.md §17 documents them.
     """
-    return ProfileResponse(username=auth_service.get_username(user_id))
+    return ProfileResponse(username=auth_service.get_username(user_id), email=auth_service.get_email(user_id))
+
+
+@router.put(
+    "/email",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        401: {"model": ErrorResponse, "description": "Missing, malformed, unknown, or ended session."},
+        409: {"model": ErrorResponse, "description": "That email is already associated with another account."},
+        422: {"model": ErrorResponse, "description": "Malformed request body, or not a valid email address."},
+    },
+)
+def update_email(
+    payload: UpdateEmailRequest,
+    user_id: int = Depends(get_current_user_id),
+    use_case: UpdateEmailUseCase = Depends(get_update_email_use_case),
+) -> None:
+    """Adds or changes the email on the authenticated user's own account (2026-10-06,
+    Settings) - the only way a username/password account ever gets an email on file, since
+    registration itself never collects one. Primarily what makes POST /auth/password-reset/
+    request reachable for that account.
+    """
+    use_case.execute(user_id=user_id, email=payload.email)
+
+
+@router.post(
+    "/password-reset/request",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        422: {"model": ErrorResponse, "description": "Malformed request body, or not a valid email address."},
+        429: {"model": ErrorResponse, "description": "Too many requests from this client."},
+    },
+)
+# Same shape as /auth/login's own rate limit reasoning - a publicly reachable endpoint that
+# triggers a real email send per call must not be left unthrottled.
+@limiter.limit("5/minute")
+def request_password_reset(
+    request: Request,
+    payload: RequestPasswordResetRequest,
+    use_case: RequestPasswordResetUseCase = Depends(get_request_password_reset_use_case),
+) -> None:
+    """Starts a password reset (2026-10-06). Always 204, regardless of whether the email
+    matched a real account or whether sending actually succeeded - RequestPasswordResetUseCase
+    itself swallows both cases (see its own docstring) specifically so this response can never
+    be used to enumerate which emails have an account here.
+    """
+    use_case.execute(email=payload.email)
+
+
+@router.post(
+    "/password-reset/confirm",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        401: {"model": ErrorResponse, "description": "The reset token is invalid, expired, or already used."},
+        422: {"model": ErrorResponse, "description": "Malformed request body, or password shorter than the minimum."},
+        429: {"model": ErrorResponse, "description": "Too many attempts from this client."},
+    },
+)
+# A token-guessing surface, same reasoning as /auth/login's own throttle.
+@limiter.limit("10/minute")
+def confirm_password_reset(
+    request: Request,
+    payload: ConfirmPasswordResetRequest,
+    use_case: ConfirmPasswordResetUseCase = Depends(get_confirm_password_reset_use_case),
+) -> None:
+    """Completes a password reset (2026-10-06): verifies the token, sets the new password, and
+    ends every other active session for the account.
+    """
+    use_case.execute(raw_token=payload.token, new_password=payload.new_password)
 
 
 @router.post(

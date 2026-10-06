@@ -6,15 +6,18 @@ from slowapi.errors import RateLimitExceeded
 
 from app.ai.exceptions import AiUsageQuotaExceededError, ProviderConfigurationError, ProviderRequestError
 from app.auth.exceptions import (
+    EmailAlreadyInUseError,
     GoogleAccountEmailConflictError,
     GoogleSignInNotConfiguredError,
     InvalidCredentialsError,
     InvalidGoogleTokenError,
     InvalidInviteCodeError,
+    InvalidResetTokenError,
     InvalidSessionError,
     UsernameAlreadyTakenError,
     WeakPasswordError,
 )
+from app.email.exceptions import EmailSendError
 from app.core.exceptions import ScholarOSError, UnsupportedUploadFormatError, UploadTooLargeError
 from app.modules.agent.domain.exceptions import AgentAlreadyExistsForUserError, AgentNotFoundForUserError
 from app.modules.document.domain.exceptions import (
@@ -185,6 +188,9 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(InvalidGoogleTokenError, _handle_unauthorized)
     app.add_exception_handler(GoogleAccountEmailConflictError, _handle_conflict)
     app.add_exception_handler(GoogleSignInNotConfiguredError, _handle_service_unavailable)
+    app.add_exception_handler(InvalidResetTokenError, _handle_unauthorized)
+    app.add_exception_handler(EmailAlreadyInUseError, _handle_conflict)
+    app.add_exception_handler(EmailSendError, _handle_service_unavailable)
     app.add_exception_handler(UploadTooLargeError, _handle_payload_too_large)
     app.add_exception_handler(UnsupportedUploadFormatError, _handle_invalid_input)
     app.add_exception_handler(AiUsageQuotaExceededError, _handle_usage_quota_exceeded)

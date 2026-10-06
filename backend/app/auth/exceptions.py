@@ -92,3 +92,24 @@ class GoogleSignInNotConfiguredError(AuthDomainError):
 
     def __init__(self) -> None:
         super().__init__("Google sign-in is not configured.")
+
+
+class InvalidResetTokenError(AuthDomainError):
+    """Raised for a missing, unknown, expired, or already-used password reset token (2026-10-06)
+    - deliberately one error for all four reasons, the same non-distinguishing style
+    InvalidSessionError already uses, so a confirm attempt never reveals *why* a token didn't
+    work (e.g. "expired" vs "already used" could help an attacker time a guessing attempt).
+    """
+
+    def __init__(self) -> None:
+        super().__init__("This password reset link is invalid or has expired.")
+
+
+class EmailAlreadyInUseError(AuthDomainError):
+    """Raised when updating an account's email (Settings) to one already registered to a
+    different account - the `users.email` UNIQUE constraint's domain-level translation, the
+    same shape UsernameAlreadyTakenError already gives registration.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("That email is already associated with another account.")

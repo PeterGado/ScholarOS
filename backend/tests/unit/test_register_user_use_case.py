@@ -64,6 +64,12 @@ class FakeAuthSessionRepository(AuthSessionRepository):
     def touch(self, session: AuthSession) -> None:
         session.last_active_at = datetime.now(timezone.utc)
 
+    def end_all_for_user(self, user_id: int) -> None:
+        now = datetime.now(timezone.utc)
+        for session in self._by_hash.values():
+            if session.user_id == user_id and session.ended_at is None:
+                session.ended_at = now
+
 
 class FakeUnitOfWork:
     def __init__(self):

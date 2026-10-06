@@ -77,13 +77,68 @@ def test_profile_returns_the_signed_in_username(client, provisioned_user):
     response = client.get("/auth/profile", headers={"Authorization": f"Bearer {token}"})
 
     assert response.status_code == 200
-    assert response.json() == {"username": USERNAME}
+    assert response.json() == {"username": USERNAME, "email": None}
 
 
 def test_profile_without_a_token_returns_401(client):
     response = client.get("/auth/profile")
 
     assert response.status_code == 401
+
+
+# --- Email (2026-10-06) ---------------------------------------------------------------------
+
+
+def test_updating_email_is_reflected_in_profile(client, provisioned_user):
+    login_response = client.post("/auth/login", json={"username": USERNAME, "password": PASSWORD})
+    token = login_response.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    update_response = client.put("/auth/email", json={"email": "researcher@example.com"}, headers=headers)
+    assert update_response.status_code == 204
+
+    profile_response = client.get("/auth/profile", headers=headers)
+    assert profile_response.json() == {"username": USERNAME, "email": "researcher@example.com"}
+
+
+def test_updating_email_to_an_invalid_address_returns_422(client, provisioned_user):
+    login_response = client.post("/auth/login", json={"username": USERNAME, "password": PASSWORD})
+    token = login_response.json()["access_token"]
+
+    response = client.put(
+        "/auth/email", json={"email": "not-an-email"}, headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 422
+
+
+def test_updating_email_without_a_token_returns_401(client):
+    response = client.put("/auth/email", json={"email": "researcher@example.com"})
+
+    assert response.status_code == 401
+
+
+def test_updating_email_to_one_already_in_use_returns_409(client, db_engine):
+    from app.auth.hashing import hash_password
+    from app.database.session import build_sessionmaker
+    from app.database.shared_models import User
+
+    session = build_sessionmaker(db_engine)()
+    try:
+        session.add(User(username="researcher-a", password_hash=hash_password("s3cret"), email="taken@example.com"))
+        session.add(User(username="researcher-b", password_hash=hash_password("s3cret")))
+        session.commit()
+    finally:
+        session.close()
+
+    login_response = client.post("/auth/login", json={"username": "researcher-b", "password": "s3cret"})
+    token = login_response.json()["access_token"]
+
+    response = client.put(
+        "/auth/email", json={"email": "taken@example.com"}, headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 409
 
 
 # --- Scenario E -------------------------------------------------------------------

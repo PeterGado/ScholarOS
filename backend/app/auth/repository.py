@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
+from datetime import datetime
 from typing import Protocol
 
-from app.auth.entities import AuthSession
+from app.auth.entities import AuthSession, PasswordResetToken
 
 
 class AuthSessionRepository(ABC):
@@ -29,6 +30,36 @@ class AuthSessionRepository(ABC):
         """
         ...
 
+    @abstractmethod
+    def end_all_for_user(self, user_id: int) -> None:
+        """Ends every active session for a user (2026-10-06, password reset) - a successful
+        reset should not leave an attacker's existing session (the whole reason the user is
+        resetting) still valid. Not used by logout, which only ever ends the one calling
+        session.
+        """
+        ...
+
+
+class PasswordResetTokenRepository(ABC):
+    """Persistence port for PasswordResetToken - same shape as AuthSessionRepository, since a
+    reset token is structurally a short-lived, single-use credential looked up by hash, just
+    like a session token.
+    """
+
+    @abstractmethod
+    def create(self, *, user_id: int, token_hash: str, expires_at: datetime) -> PasswordResetToken: ...
+
+    @abstractmethod
+    def get_by_token_hash(self, token_hash: str) -> PasswordResetToken | None: ...
+
+    @abstractmethod
+    def mark_used(self, token: PasswordResetToken) -> None:
+        """Persist the single-use consumption (sets `used_at`) - called the moment a reset
+        actually succeeds, so the same link can never be replayed even within its validity
+        window.
+        """
+        ...
+
 
 class UserCredential(Protocol):
     """Structural shape AuthService needs from a user record - deliberately not a direct
@@ -39,6 +70,7 @@ class UserCredential(Protocol):
     user_id: int
     username: str
     password_hash: str
+    email: str | None
 
 
 class UserCredentialLookup(Protocol):
@@ -74,3 +106,15 @@ class UserRegistrationRepository(Protocol):
         is exactly "separate narrow ports rather than growing one interface to cover both."
         """
         ...
+
+
+class UserAccountRepository(Protocol):
+    """A third narrow write capability (2026-10-06, password reset + optional email), same
+    rationale as UserRegistrationRepository's own docstring: a separate port rather than
+    growing UserCredentialLookup (read-only) or UserRegistrationRepository (account creation
+    only, not post-creation mutation).
+    """
+
+    def update_password_hash(self, user_id: int, password_hash: str) -> None: ...
+
+    def update_email(self, user_id: int, email: str | None) -> None: ...

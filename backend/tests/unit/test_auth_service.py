@@ -16,6 +16,7 @@ class FakeUserCredential:
     user_id: int
     username: str
     password_hash: str
+    email: str | None = None
 
 
 class FakeUserCredentialLookup(UserCredentialLookup):
@@ -56,6 +57,12 @@ class FakeAuthSessionRepository(AuthSessionRepository):
     def touch(self, session: AuthSession) -> None:
         self.touch_calls += 1
         session.last_active_at = datetime.now(timezone.utc)
+
+    def end_all_for_user(self, user_id: int) -> None:
+        now = datetime.now(timezone.utc)
+        for session in self._by_hash.values():
+            if session.user_id == user_id and session.ended_at is None:
+                session.ended_at = now
 
 
 class LockedOnCommitUnitOfWork:

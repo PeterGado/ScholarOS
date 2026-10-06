@@ -24,3 +24,20 @@ class AuthSession(Base):
     started_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
     last_active_at: Mapped[datetime | None] = mapped_column(nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+
+class PasswordResetToken(Base):
+    """Password reset token persistence (2026-10-06). Looked up by token hash before any
+    identity is known - the same bootstrap reasoning `sessions` is excluded from Row-Level
+    Security for (see cff25673e0e3's own docstring) applies identically here, so this table is
+    excluded from RLS too.
+    """
+
+    __tablename__ = "password_reset_tokens"
+
+    token_id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(nullable=True)

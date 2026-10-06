@@ -71,6 +71,16 @@ class AuthService:
         assert user is not None, f"user_id {user_id} came from a verified session but has no User row"
         return user.username
 
+    def get_email(self, user_id: int) -> str | None:
+        """Sibling to get_username (2026-10-06, GET /auth/profile) - kept as a separate method
+        rather than widening get_username's return shape, so that method's existing callers and
+        tests are unaffected. Returns None for the common case of a username/password account
+        that never added one (registration doesn't collect it; see PUT /auth/email).
+        """
+        user = self._users.get_by_id(user_id)
+        assert user is not None, f"user_id {user_id} came from a verified session but has no User row"
+        return user.email
+
     def logout(self, raw_token: str) -> None:
         session = self._require_active_session(raw_token)
         try:
