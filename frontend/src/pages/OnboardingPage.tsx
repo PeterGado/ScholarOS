@@ -5,8 +5,11 @@ import { createAgentWorkspace } from "@/api/agents";
 import { uploadResearchDocuments } from "@/api/documents";
 import { extractWritingStyleProfile, startConversation, uploadWritingStyleDocument } from "@/api/writing";
 import { ApiError } from "@/lib/apiClient";
+import { CheckIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import type { AgentWorkspaceResponse } from "@/api/schemas";
 
 type Step = "project" | "documents" | "generating";
@@ -119,36 +122,27 @@ function ProjectStep({ onCreated }: { onCreated: (workspace: AgentWorkspaceRespo
       </div>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-1">
-          <label htmlFor="title" className="text-sm font-medium">
-            Project title
-          </label>
-          <input
+          <Label htmlFor="title">Project title</Label>
+          <Input
             id="title"
-            className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             required
           />
         </div>
         <div className="space-y-1">
-          <label htmlFor="topic" className="text-sm font-medium">
-            Topic
-          </label>
-          <input
+          <Label htmlFor="topic">Topic</Label>
+          <Input
             id="topic"
-            className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
             required
           />
         </div>
         <div className="space-y-1">
-          <label htmlFor="description" className="text-sm font-medium">
-            Description (optional)
-          </label>
-          <textarea
+          <Label htmlFor="description">Description (optional)</Label>
+          <Textarea
             id="description"
-            className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={3}
@@ -229,7 +223,7 @@ function DocumentsStep({ projectId, onGenerate }: { projectId: number; onGenerat
         </p>
       </div>
 
-      <div className="space-y-2 rounded-lg border border-border p-4">
+      <div className="space-y-2 rounded-xl border border-border p-4">
         <h2 className="text-sm font-semibold">Research documents</h2>
         <p className="text-xs text-muted-foreground">
           Source material for your AI to cite and draw on. Supports plain text and Word (.docx).
@@ -255,13 +249,16 @@ function DocumentsStep({ projectId, onGenerate }: { projectId: number; onGenerat
         {researchUploaded.length > 0 && (
           <ul className="space-y-1 text-sm text-muted-foreground">
             {researchUploaded.map((title, index) => (
-              <li key={index}>&#10003; {title}</li>
+              <li key={index} className="flex items-center gap-1.5">
+                <CheckIcon className="size-3.5 shrink-0 text-success" />
+                {title}
+              </li>
             ))}
           </ul>
         )}
       </div>
 
-      <div className="space-y-2 rounded-lg border border-border p-4">
+      <div className="space-y-2 rounded-xl border border-border p-4">
         <h2 className="text-sm font-semibold">Writing style samples</h2>
         <p className="text-xs text-muted-foreground">
           Something you've written, so the AI can match your voice. Without one, a solid

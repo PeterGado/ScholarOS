@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeftIcon } from "@phosphor-icons/react";
 import { confirmPasswordReset } from "@/api/auth";
 import { ApiError } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
@@ -39,8 +39,8 @@ export function ResetPasswordPage() {
 
   if (!token) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background px-4">
-        <div className="w-full max-w-sm space-y-4 rounded-lg border border-border p-6 text-center">
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-background px-4">
+        <div className="w-full max-w-sm space-y-4 rounded-xl border border-border p-6 text-center">
           <h1 className="text-lg font-semibold">Invalid reset link</h1>
           <p className="text-sm text-muted-foreground">
             This link is missing its token. Request a new one below.
@@ -54,14 +54,24 @@ export function ResetPasswordPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background px-4">
+    <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-background px-4">
+      <a
+        href="#reset-password-form"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[60] focus:rounded-lg focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-foreground focus:ring-2 focus:ring-ring"
+      >
+        Skip to content
+      </a>
       <div className="w-full max-w-sm">
         <Link to="/login" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="size-4" />
+          <ArrowLeftIcon className="size-4" />
           Back to sign in
         </Link>
       </div>
-      <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4 rounded-lg border border-border p-6">
+      <form
+        id="reset-password-form"
+        onSubmit={handleSubmit}
+        className="w-full max-w-sm space-y-4 rounded-xl border border-border p-6"
+      >
         <h1 className="text-lg font-semibold">Choose a new password</h1>
         <div className="space-y-1">
           <label htmlFor="new-password" className="text-sm font-medium">

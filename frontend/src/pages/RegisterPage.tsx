@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link, Navigate } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeftIcon } from "@phosphor-icons/react";
 import { register, loginWithGoogle } from "@/api/auth";
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 import { ApiError } from "@/lib/apiClient";
@@ -50,17 +50,27 @@ export function RegisterPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background px-4">
+    <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-background px-4">
+      <a
+        href="#register-form"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[60] focus:rounded-lg focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-foreground focus:ring-2 focus:ring-ring"
+      >
+        Skip to content
+      </a>
       <div className="w-full max-w-sm">
         <Link
           to="/"
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
-          <ArrowLeft className="size-4" />
+          <ArrowLeftIcon className="size-4" />
           Back to home
         </Link>
       </div>
-      <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4 rounded-lg border border-border p-6">
+      <form
+        id="register-form"
+        onSubmit={handleSubmit}
+        className="w-full max-w-sm space-y-4 rounded-xl border border-border p-6"
+      >
         <h1 className="text-lg font-semibold">Create your ScholarOS account</h1>
         <div className="space-y-1">
           <label htmlFor="username" className="text-sm font-medium">
