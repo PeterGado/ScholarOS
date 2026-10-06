@@ -58,6 +58,7 @@ async def upload_research_document(
     author: str | None = Form(None),
     source: str | None = Form(None),
     publication_year: int | None = Form(None, ge=1000, le=2100),
+    doi: str | None = Form(None),
     user_id: int = Depends(get_current_user_id),
     use_case: UploadResearchDocumentUseCase = Depends(get_upload_research_document_use_case),
 ) -> ResearchDocumentResponse:
@@ -88,6 +89,7 @@ async def upload_research_document(
         author=author,
         source=source,
         publication_year=publication_year,
+        doi=doi,
         extension=extension,
     )
     return ResearchDocumentResponse.from_domain(document)

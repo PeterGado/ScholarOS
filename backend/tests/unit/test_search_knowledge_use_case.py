@@ -109,6 +109,9 @@ class FakeDocumentRepository(DocumentRepository):
     def update_processing_status(self, document_id, status, *, processed_at=None):
         raise NotImplementedError
 
+    def update_doi_verification(self, document_id, *, status, author, publication_year):
+        raise NotImplementedError
+
     def mark_deleted(self, document_id, *, deleted_at):
         raise NotImplementedError
 

@@ -8,6 +8,19 @@ class DocumentProcessingStatus(str, Enum):
     FAILED = "failed"
 
 
+class DoiVerificationStatus(str, Enum):
+    """Result of checking a user-supplied DOI against Crossref (2026-10-06, citation
+    grounding). `None` on the document itself (not a member here) means "no DOI was given, or
+    it hasn't been checked yet" - deliberately not a PENDING member, since the check runs as
+    part of the same background pass as knowledge extraction (VerifyDocumentDoiUseCase), not a
+    separately-observable waiting state.
+    """
+
+    VERIFIED = "verified"
+    MISMATCH = "mismatch"
+    NOT_FOUND = "not_found"
+
+
 class DocumentPurpose(str, Enum):
     """Resolves a gap Stage 3/4 explicitly flagged and deferred (see
     `UploadWritingStyleDocumentUseCase`/`ExtractWritingStyleProfileUseCase`'s own docstrings,

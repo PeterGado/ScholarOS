@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from app.modules.document.domain.enums import DocumentProcessingStatus, DocumentPurpose
+from app.modules.document.domain.enums import DocumentProcessingStatus, DocumentPurpose, DoiVerificationStatus
 from app.modules.document.domain.exceptions import (
     EmptyDocumentContentError,
     InvalidDocumentFormatError,
@@ -33,6 +33,13 @@ class ResearchDocument:
     # value the model can be told to reproduce verbatim in an "(Author, Year)" citation, which
     # only works if it's unambiguous.
     publication_year: int | None = None
+    # Added 2026-10-06: a DOI the user supplies is checked against Crossref (never trusted at
+    # face value) by VerifyDocumentDoiUseCase, run as a non-critical step after knowledge
+    # extraction. doi_verification_status stays None until that check actually runs (or if no
+    # doi was ever given) - see DoiVerificationStatus's own docstring for why there's no
+    # separate PENDING member.
+    doi: str | None = None
+    doi_verification_status: DoiVerificationStatus | None = None
     processing_status: DocumentProcessingStatus = DocumentProcessingStatus.PENDING
     purpose: DocumentPurpose = DocumentPurpose.RESEARCH
     ingested_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -58,6 +65,7 @@ class ResearchDocument:
         author: str | None = None,
         source: str | None = None,
         publication_year: int | None = None,
+        doi: str | None = None,
         purpose: DocumentPurpose = DocumentPurpose.RESEARCH,
     ) -> "ResearchDocument":
         return cls(
@@ -68,5 +76,6 @@ class ResearchDocument:
             author=author,
             source=source,
             publication_year=publication_year,
+            doi=doi,
             purpose=purpose,
         )

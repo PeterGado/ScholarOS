@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 
 from app.modules.document.domain.entities import ResearchDocument
-from app.modules.document.domain.enums import DocumentProcessingStatus, DocumentPurpose
+from app.modules.document.domain.enums import DocumentProcessingStatus, DocumentPurpose, DoiVerificationStatus
 
 
 class DocumentRepository(ABC):
@@ -48,6 +48,22 @@ class DocumentRepository(ABC):
     ) -> None:
         """Added Stage 6 (Async Dispatch): the only way `processing_status`/`processed_at`
         are ever changed after creation - previously no write path existed at all.
+        """
+        ...
+
+    @abstractmethod
+    def update_doi_verification(
+        self,
+        document_id: int,
+        *,
+        status: DoiVerificationStatus,
+        author: str | None,
+        publication_year: int | None,
+    ) -> None:
+        """Persists the outcome of VerifyDocumentDoiUseCase's Crossref check (2026-10-06).
+        `author`/`publication_year` are written unconditionally (not merged) - the use case
+        itself decides whether to keep the user's existing values or fill them from the
+        verified Crossref record, so this method just stores whatever it's given.
         """
         ...
 

@@ -4,9 +4,9 @@ from sqlalchemy import Enum, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
-from app.modules.document.domain.enums import DocumentProcessingStatus, DocumentPurpose
+from app.modules.document.domain.enums import DocumentProcessingStatus, DocumentPurpose, DoiVerificationStatus
 
-__all__ = ["ResearchDocument", "DocumentProcessingStatus", "DocumentPurpose"]
+__all__ = ["ResearchDocument", "DocumentProcessingStatus", "DocumentPurpose", "DoiVerificationStatus"]
 
 
 class ResearchDocument(Base):
@@ -26,6 +26,11 @@ class ResearchDocument(Base):
     author: Mapped[str | None] = mapped_column(String(255), nullable=True)
     source: Mapped[str | None] = mapped_column(String(255), nullable=True)
     publication_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    doi: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    doi_verification_status: Mapped[DoiVerificationStatus | None] = mapped_column(
+        Enum(DoiVerificationStatus, native_enum=False, length=16),
+        nullable=True,
+    )
     format: Mapped[str] = mapped_column(String(64), nullable=False)
     content_reference: Mapped[str] = mapped_column(String(512), nullable=False)
     processing_status: Mapped[DocumentProcessingStatus] = mapped_column(

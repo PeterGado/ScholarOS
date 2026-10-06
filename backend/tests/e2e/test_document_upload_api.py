@@ -82,6 +82,27 @@ def test_upload_document_with_author_and_year_returns_both(client, auth_headers)
     assert body["publication_year"] == 2012
 
 
+def test_upload_document_with_a_doi_returns_it_unverified_until_processed(client, auth_headers):
+    """The upload response itself can never reflect verification - that only happens later,
+    in the background (VerifyDocumentDoiUseCase, run as part of document processing) - so
+    doi_verification_status must be null immediately after upload, not any particular status.
+    """
+    workspace = _create_workspace(client, auth_headers)
+    project_id = workspace["project"]["project_id"]
+
+    response = client.post(
+        f"/projects/{project_id}/documents",
+        files={"file": ("source.pdf", io.BytesIO(b"pdf bytes"), "application/pdf")},
+        data={"title": "Baseline survey", "format": "pdf", "doi": "10.1038/nphys1170"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["doi"] == "10.1038/nphys1170"
+    assert body["doi_verification_status"] is None
+
+
 def test_upload_document_with_an_out_of_range_year_is_rejected(client, auth_headers):
     workspace = _create_workspace(client, auth_headers)
     project_id = workspace["project"]["project_id"]

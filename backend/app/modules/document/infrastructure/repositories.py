@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.modules.document.domain.entities import ResearchDocument
-from app.modules.document.domain.enums import DocumentProcessingStatus, DocumentPurpose
+from app.modules.document.domain.enums import DocumentProcessingStatus, DocumentPurpose, DoiVerificationStatus
 from app.modules.document.domain.exceptions import ResearchDocumentNotFoundError
 from app.modules.document.domain.repositories import DocumentRepository
 from app.modules.document.infrastructure.models import ResearchDocument as ResearchDocumentModel
@@ -53,6 +53,7 @@ class SqlAlchemyDocumentRepository(DocumentRepository):
             author=document.author,
             source=document.source,
             publication_year=document.publication_year,
+            doi=document.doi,
             format=document.format,
             content_reference=document.content_reference,
             processing_status=document.processing_status,
@@ -75,6 +76,22 @@ class SqlAlchemyDocumentRepository(DocumentRepository):
             row.processed_at = processed_at
         self._session.flush()
 
+    def update_doi_verification(
+        self,
+        document_id: int,
+        *,
+        status: DoiVerificationStatus,
+        author: str | None,
+        publication_year: int | None,
+    ) -> None:
+        row = self._session.get(ResearchDocumentModel, document_id)
+        if row is None:
+            raise ResearchDocumentNotFoundError(document_id=document_id)
+        row.doi_verification_status = status
+        row.author = author
+        row.publication_year = publication_year
+        self._session.flush()
+
     def mark_deleted(self, document_id: int, *, deleted_at: datetime) -> None:
         row = self._session.get(ResearchDocumentModel, document_id)
         if row is None:
@@ -91,6 +108,8 @@ class SqlAlchemyDocumentRepository(DocumentRepository):
             author=row.author,
             source=row.source,
             publication_year=row.publication_year,
+            doi=row.doi,
+            doi_verification_status=row.doi_verification_status,
             format=row.format,
             content_reference=row.content_reference,
             processing_status=row.processing_status,

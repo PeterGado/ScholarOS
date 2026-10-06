@@ -1,12 +1,15 @@
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Callable
 
+from app.ai.crossref import CrossrefWork, fetch_crossref_work
 from app.ai.usage_guard import AiUsageGuard
 from app.core.pagination import DEFAULT_LIST_LIMIT
 from app.core.unit_of_work import UnitOfWork
 from app.modules.agent.domain.repositories import AgentRepository
 from app.modules.document.domain.entities import ResearchDocument
-from app.modules.document.domain.enums import DocumentProcessingStatus, DocumentPurpose
+from app.modules.document.domain.enums import DocumentProcessingStatus, DocumentPurpose, DoiVerificationStatus
 from app.modules.document.domain.exceptions import (
     DocumentCannotBeDeletedError,
     DocumentCannotBeRetriedError,
@@ -78,6 +81,7 @@ class UploadResearchDocumentUseCase:
         author: str | None = None,
         source: str | None = None,
         publication_year: int | None = None,
+        doi: str | None = None,
         extension: str = "",
     ) -> ResearchDocument:
         project = self._projects.get_by_id(project_id)
@@ -113,6 +117,7 @@ class UploadResearchDocumentUseCase:
                 author=author,
                 source=source,
                 publication_year=publication_year,
+                doi=doi,
                 purpose=DocumentPurpose.RESEARCH,
             )
             document = self._documents.add(document)
@@ -327,3 +332,75 @@ class RetryDocumentProcessingUseCase:
 
         document.processing_status = DocumentProcessingStatus.PENDING
         return document
+
+
+_DOI_NAME_TOKEN = re.compile(r"[A-Za-z]+")
+
+
+class VerifyDocumentDoiUseCase:
+    """Checks a user-supplied DOI against Crossref (2026-10-06, citation grounding) - run as a
+    non-critical enrichment step after knowledge extraction succeeds (see
+    `process_one_work_item`'s document branch), never blocking document processing itself: a
+    Crossref outage must not turn a successfully-processed document into a failed one.
+
+    A no-op when the document has no `doi` set - every caller can call this unconditionally
+    rather than pre-checking, the same pattern `fetch_wikipedia_background` uses for an empty
+    topic.
+
+    When the DOI resolves and the user left `author`/`publication_year` blank, both are filled
+    from the verified Crossref record - the most accurate metadata available, for the least
+    user effort. When the user *did* supply them, they are compared (loosely - whole-word
+    token overlap on the author, exact match on the year) against the real record rather than
+    overwritten; a mismatch is surfaced via `DoiVerificationStatus.MISMATCH`, not silently
+    corrected, since the user's own text might be right and Crossref's record wrong.
+    """
+
+    def __init__(
+        self,
+        document_repository: DocumentRepository,
+        unit_of_work: UnitOfWork,
+        *,
+        doi_lookup_provider: Callable[[str], CrossrefWork | None] = fetch_crossref_work,
+    ) -> None:
+        self._documents = document_repository
+        self._uow = unit_of_work
+        self._lookup = doi_lookup_provider
+
+    def execute(self, *, document_id: int) -> None:
+        document = self._documents.get_by_id(document_id)
+        if document is None or not document.doi:
+            return
+
+        work = self._lookup(document.doi)
+        if work is None:
+            status = DoiVerificationStatus.NOT_FOUND
+            author, publication_year = document.author, document.publication_year
+        elif self._matches(document, work):
+            status = DoiVerificationStatus.VERIFIED
+            author = document.author or (", ".join(work.authors) if work.authors else document.author)
+            publication_year = document.publication_year or work.year
+        else:
+            status = DoiVerificationStatus.MISMATCH
+            author, publication_year = document.author, document.publication_year
+
+        try:
+            self._documents.update_doi_verification(
+                document_id, status=status, author=author, publication_year=publication_year
+            )
+            self._uow.commit()
+        except Exception:
+            self._uow.rollback()
+            raise
+
+    @staticmethod
+    def _matches(document: ResearchDocument, work: CrossrefWork) -> bool:
+        year_ok = document.publication_year is None or document.publication_year == work.year
+        if not document.author:
+            author_ok = True
+        else:
+            entered_tokens = {token.lower() for token in _DOI_NAME_TOKEN.findall(document.author)}
+            real_tokens = {
+                token.lower() for name in work.authors for token in _DOI_NAME_TOKEN.findall(name)
+            }
+            author_ok = bool(entered_tokens & real_tokens)
+        return year_ok and author_ok

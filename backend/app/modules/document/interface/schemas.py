@@ -22,6 +22,8 @@ class ResearchDocumentResponse(BaseModel):
     author: str | None
     source: str | None
     publication_year: int | None
+    doi: str | None
+    doi_verification_status: str | None
     format: str
     processing_status: str
     ingested_at: datetime
@@ -36,6 +38,8 @@ class ResearchDocumentResponse(BaseModel):
             author=document.author,
             source=document.source,
             publication_year=document.publication_year,
+            doi=document.doi,
+            doi_verification_status=document.doi_verification_status.value if document.doi_verification_status else None,
             format=document.format,
             processing_status=document.processing_status.value,
             ingested_at=document.ingested_at,

@@ -75,6 +75,12 @@ class FakeDocumentRepository(DocumentRepository):
         if processed_at is not None:
             document.processed_at = processed_at
 
+    def update_doi_verification(self, document_id, *, status, author, publication_year):
+        document = self._by_id[document_id]
+        document.doi_verification_status = status
+        document.author = author
+        document.publication_year = publication_year
+
     def mark_deleted(self, document_id, *, deleted_at):
         self._by_id[document_id].deleted_at = deleted_at
 

@@ -6,12 +6,14 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
+from app.ai.crossref import CrossrefWork, fetch_crossref_work
 from app.ai.exceptions import ProviderContentBlockedError, ProviderRateLimitError
 from app.ai.providers.base import EmbeddingProvider, TextGenerationProvider
 from app.ai.wikipedia import fetch_wikipedia_background
 from app.database.unit_of_work import SqlAlchemyUnitOfWork
 from app.modules.agent.infrastructure.repositories import SqlAlchemyAgentRepository
 from app.modules.document.domain.enums import DocumentProcessingStatus
+from app.modules.document.application.use_cases import VerifyDocumentDoiUseCase
 from app.modules.document.domain.exceptions import ResearchDocumentNotFoundError
 from app.modules.document.domain.ports import ContentStore
 from app.modules.document.infrastructure.repositories import SqlAlchemyDocumentRepository
@@ -49,6 +51,7 @@ def process_one_work_item(
     embedding_model_version: str,
     storage: ContentStore,
     background_knowledge_provider: Callable[[str], str | None] = fetch_wikipedia_background,
+    doi_lookup_provider: Callable[[str], CrossrefWork | None] = fetch_crossref_work,
 ) -> bool:
     """Claims and fully processes at most one queued Work Item using `session`.
 
@@ -61,6 +64,12 @@ def process_one_work_item(
     single execution per the Stage 6 plan; `ResearchDocument.processing_status` becomes
     meaningful here for the first time: `processing` while claimed, `processed` on success,
     `pending` while a retry is still pending, `failed` once retries are exhausted.
+
+    `doi_lookup_provider` (2026-10-06) defaults to the real Crossref client, same injection
+    pattern as `background_knowledge_provider` - tests must always override it, since the
+    default makes a real network call (VerifyDocumentDoiUseCase is a no-op for a document with
+    no `doi`, so most tests are unaffected either way, but an e2e test that does set one must
+    inject a fake here, exactly like the existing text_provider/embedding_provider fakes).
     """
     uow = SqlAlchemyUnitOfWork(session)
     work_items = WorkItemRepository(session)
@@ -140,6 +149,18 @@ def process_one_work_item(
             uow,
         )
         extract_knowledge.execute(document_id=document_id)
+
+        # DOI verification (2026-10-06) is non-critical enrichment, deliberately outside the
+        # try/except above's "any failure retries the whole document" contract - a transient
+        # Crossref outage must not turn a successfully-extracted document into a failed one
+        # (same reasoning as summarization/memory-extraction failures being swallowed in
+        # GenerateConversationReplyUseCase). A no-op when the document has no doi set.
+        try:
+            VerifyDocumentDoiUseCase(
+                documents, uow, doi_lookup_provider=doi_lookup_provider
+            ).execute(document_id=document_id)
+        except Exception as doi_exc:  # noqa: BLE001 - never let this fail document processing
+            logger.warning("DOI verification failed for document %s (non-critical): %s", document_id, doi_exc)
     except Exception as exc:  # noqa: BLE001 - any pipeline failure is a retryable work-item failure
         # A document deleted while its Work Item was still queued (DeleteResearchDocumentUseCase
         # only permits deleting pending/failed documents, exactly the states a queued item can
