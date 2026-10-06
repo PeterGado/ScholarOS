@@ -4,9 +4,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getProfile, updateEmail } from "@/api/auth";
 import { resetAgentWorkspace } from "@/api/agents";
 import { ApiError } from "@/lib/apiClient";
+import { useToast } from "@/lib/ToastContext";
 import { useWorkspaceContext } from "@/components/WorkspaceGate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const CONFIRMATION_WORD = "RESET";
@@ -18,6 +20,7 @@ export function SettingsPage() {
   const workspace = useWorkspaceContext();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const [confirmationText, setConfirmationText] = useState("");
   const [email, setEmail] = useState("");
 
@@ -29,7 +32,10 @@ export function SettingsPage() {
 
   const emailMutation = useMutation({
     mutationFn: () => updateEmail(email.trim()),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["auth-profile"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["auth-profile"] });
+      showToast("Email saved.");
+    },
   });
 
   const resetMutation = useMutation({
@@ -45,7 +51,7 @@ export function SettingsPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-lg font-semibold">Settings</h1>
+        <h1 className="text-2xl font-semibold tracking-tight leading-snug">Settings</h1>
         <p className="text-sm text-muted-foreground">
           Signed in workspace: <span className="font-medium text-foreground">{workspace.project.title}</span>
         </p>
@@ -67,9 +73,9 @@ export function SettingsPage() {
             </p>
           </div>
           <div className="space-y-2">
-            <label htmlFor="account-email" className="text-sm text-muted-foreground">
+            <Label htmlFor="account-email" className="text-sm text-muted-foreground">
               Email
-            </label>
+            </Label>
             <p className="text-xs text-muted-foreground">
               Used only for password reset links. Nothing else is sent here.
             </p>
@@ -96,7 +102,6 @@ export function SettingsPage() {
                 {emailMutation.error instanceof ApiError ? emailMutation.error.message : "Could not save email."}
               </p>
             )}
-            {emailMutation.isSuccess && <p className="text-sm text-muted-foreground">Email saved.</p>}
           </div>
         </CardContent>
       </Card>
@@ -115,9 +120,9 @@ export function SettingsPage() {
             </p>
           </div>
           <div className="space-y-2">
-            <label htmlFor="reset-confirm" className="text-xs font-medium text-muted-foreground">
+            <Label htmlFor="reset-confirm" className="text-xs font-medium text-muted-foreground">
               Type {CONFIRMATION_WORD} to confirm
-            </label>
+            </Label>
             <Input
               id="reset-confirm"
               value={confirmationText}
@@ -125,6 +130,11 @@ export function SettingsPage() {
               placeholder={CONFIRMATION_WORD}
               className="max-w-xs"
             />
+            {confirmationText.length > 0 && (
+              <p className={`text-xs ${canReset ? "text-success" : "text-muted-foreground"}`}>
+                {canReset ? "Confirmed - ready to permanently reset." : `Keep typing: "${CONFIRMATION_WORD}"`}
+              </p>
+            )}
           </div>
           <Button
             variant="destructive"

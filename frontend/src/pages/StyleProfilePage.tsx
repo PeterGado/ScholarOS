@@ -1,6 +1,6 @@
 import { useRef, type FormEvent } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileText, PenLine } from "lucide-react";
+import { FileTextIcon, PencilLineIcon } from "@phosphor-icons/react";
 import {
   extractWritingStyleProfile,
   getWritingProfile,
@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 
 // Mirrors the backend's own MAX_WRITING_STYLE_SAMPLES (app/modules/writing/application/
 // style_ingestion.py, itself equal to style_extraction's MAX_SAMPLES_PER_EXTRACTION) - the
@@ -76,7 +77,7 @@ export function StyleProfilePage() {
   return (
     <div className="space-y-8">
       <section className="space-y-4">
-        <h1 className="text-lg font-semibold">Writing Style</h1>
+        <h1 className="text-2xl font-semibold tracking-tight leading-snug">Writing Style</h1>
         <p className="text-sm text-muted-foreground">
           Upload samples of your own writing so the AI can match your voice. Uploaded samples stay
           here across visits - they're never shown on the Research Documents page since they're
@@ -101,31 +102,32 @@ export function StyleProfilePage() {
           </p>
         )}
 
-        {documentsQuery.isLoading && <p className="text-sm text-muted-foreground">Loading samples...</p>}
+        {documentsQuery.isLoading && (
+          <div className="space-y-2" aria-label="Loading samples">
+            <Skeleton className="h-12" />
+            <Skeleton className="h-12" />
+          </div>
+        )}
         {documentsQuery.data && documents.length === 0 && (
           <EmptyState
-            icon={FileText}
+            icon={FileTextIcon}
             title="No writing samples yet"
             description="Upload something you've written above so ScholarOS can learn to match your voice."
           />
         )}
         {documentsQuery.data && documents.length > 0 && (
-          <ul className="space-y-2">
+          <ul className="divide-y divide-border">
             {documents.map((doc) => (
-              <li key={doc.document_id}>
-                <Card>
-                  <CardContent className="flex items-center justify-between py-3">
-                    <span className="text-sm font-medium">{doc.title}</span>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={deleteMutation.isPending}
-                      onClick={() => deleteMutation.mutate(doc.document_id)}
-                    >
-                      Delete
-                    </Button>
-                  </CardContent>
-                </Card>
+              <li key={doc.document_id} className="flex items-center justify-between py-3">
+                <span className="text-sm font-medium">{doc.title}</span>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  disabled={deleteMutation.isPending}
+                  onClick={() => deleteMutation.mutate(doc.document_id)}
+                >
+                  Delete
+                </Button>
               </li>
             ))}
           </ul>
@@ -170,11 +172,15 @@ export function StyleProfilePage() {
       </section>
 
       <section className="space-y-4">
-        <h2 className="text-base font-semibold">Current Profile</h2>
-        {profileQuery.isLoading && <p className="text-sm text-muted-foreground">Loading...</p>}
+        <h2 className="text-base font-semibold tracking-tight leading-snug">Current Profile</h2>
+        {profileQuery.isLoading && (
+          <div className="space-y-2" aria-label="Loading profile">
+            <Skeleton className="h-16" />
+          </div>
+        )}
         {profileQuery.isError && (
           <EmptyState
-            icon={PenLine}
+            icon={PencilLineIcon}
             title="No writing profile yet"
             description="Upload and extract samples above to generate one."
           />
