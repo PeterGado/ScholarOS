@@ -1,5 +1,6 @@
 import random
-from typing import Callable, Protocol
+from collections.abc import Callable
+from typing import Protocol
 
 from app.ai.exceptions import ProviderConfigurationError, ProviderRateLimitError
 from app.ai.providers.base import EmbeddingProvider, TextGenerationProvider

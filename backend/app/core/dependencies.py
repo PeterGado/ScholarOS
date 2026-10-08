@@ -9,8 +9,13 @@ from app.ai.usage_infrastructure import SqlAlchemyAiUsageRepository
 from app.auth.account import UpdateEmailUseCase
 from app.auth.account_linking import ConnectGoogleAccountUseCase, SetPasswordUseCase
 from app.auth.dependencies import extract_bearer_token
-from app.auth.email_verification import ConfirmEmailVerificationUseCase, RequestEmailVerificationUseCase
+from app.auth.email_verification import (
+    ConfirmEmailVerificationUseCase,
+    RequestEmailVerificationUseCase,
+)
 from app.auth.email_verification_guard import EmailVerificationGuard
+from app.auth.google_oauth import verify_google_id_token
+from app.auth.google_sign_in import GoogleSignInUseCase
 from app.auth.infrastructure import (
     SqlAlchemyAuthSessionRepository,
     SqlAlchemyEmailVerificationTokenRepository,
@@ -19,10 +24,11 @@ from app.auth.infrastructure import (
     SqlAlchemyUserCredentialLookup,
     SqlAlchemyUserRegistrationRepository,
 )
-from app.auth.google_oauth import verify_google_id_token
+from app.auth.password_reset import (
+    ConfirmPasswordResetUseCase,
+    RequestPasswordResetUseCase,
+)
 from app.auth.password_strength import is_breached_password
-from app.auth.google_sign_in import GoogleSignInUseCase
-from app.auth.password_reset import ConfirmPasswordResetUseCase, RequestPasswordResetUseCase
 from app.auth.registration import RegisterUserUseCase
 from app.auth.service import AuthService
 from app.core.config import get_settings
@@ -30,7 +36,10 @@ from app.database.rls_context import current_user_id
 from app.database.session import get_db
 from app.database.unit_of_work import SqlAlchemyUnitOfWork
 from app.modules.agent.application.reset_workspace import ResetAgentWorkspaceUseCase
-from app.modules.agent.application.use_cases import CreateAgentWorkspaceUseCase, GetAgentWorkspaceUseCase
+from app.modules.agent.application.use_cases import (
+    CreateAgentWorkspaceUseCase,
+    GetAgentWorkspaceUseCase,
+)
 from app.modules.agent.infrastructure.repositories import SqlAlchemyAgentRepository
 from app.modules.document.application.use_cases import (
     DeleteResearchDocumentUseCase,
@@ -38,7 +47,10 @@ from app.modules.document.application.use_cases import (
     RetryDocumentProcessingUseCase,
     UploadResearchDocumentUseCase,
 )
-from app.modules.document.infrastructure.repositories import SqlAlchemyDocumentRepository
+from app.modules.document.domain.ports import ContentStore
+from app.modules.document.infrastructure.repositories import (
+    SqlAlchemyDocumentRepository,
+)
 from app.modules.knowledge.application.retrieval import SearchKnowledgeUseCase
 from app.modules.knowledge.infrastructure.repositories import (
     SqlAlchemyChunkEvidenceLinkRepository,
@@ -57,8 +69,14 @@ from app.modules.writing.application.chat import (
     SendChatMessageUseCase,
     StartConversationUseCase,
 )
-from app.modules.writing.application.memory_inspection import ListMemoryUseCase, SupersedeMemoryRecordUseCase
-from app.modules.writing.application.profile_view import GetWritingProfileUseCase, ResetWritingProfileUseCase
+from app.modules.writing.application.memory_inspection import (
+    ListMemoryUseCase,
+    SupersedeMemoryRecordUseCase,
+)
+from app.modules.writing.application.profile_view import (
+    GetWritingProfileUseCase,
+    ResetWritingProfileUseCase,
+)
 from app.modules.writing.application.segment_templates import (
     ApplySegmentTemplateUseCase,
     ListSegmentTemplatesUseCase,
@@ -69,7 +87,9 @@ from app.modules.writing.application.segments import (
     ListWritingSegmentsUseCase,
     UpdateWritingSegmentUseCase,
 )
-from app.modules.writing.application.style_extraction import ExtractWritingStyleProfileUseCase
+from app.modules.writing.application.style_extraction import (
+    ExtractWritingStyleProfileUseCase,
+)
 from app.modules.writing.application.style_ingestion import (
     ListWritingStyleDocumentsUseCase,
     UploadWritingStyleDocumentUseCase,
@@ -84,7 +104,6 @@ from app.modules.writing.infrastructure.repositories import (
     SqlAlchemyWritingProfileRepository,
     SqlAlchemyWritingSegmentRepository,
 )
-from app.modules.document.domain.ports import ContentStore
 from app.storage.exceptions import InvalidStorageConfigurationError
 from app.storage.filesystem import FilesystemStorage
 from app.storage.s3_compatible import S3CompatibleStorage

@@ -1,5 +1,5 @@
 import enum
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import Enum, String
 from sqlalchemy.orm import Mapped, mapped_column
@@ -47,5 +47,5 @@ class User(Base):
     status: Mapped[UserStatus] = mapped_column(
         Enum(UserStatus, native_enum=False, length=16), nullable=False, default=UserStatus.ACTIVE
     )
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
     updated_at: Mapped[datetime | None] = mapped_column(nullable=True)

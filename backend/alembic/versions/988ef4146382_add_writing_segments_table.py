@@ -18,17 +18,17 @@ condition mirrors memory_records' own one-hop-via-agents shape exactly (confirme
 table's real policy in cff25673e0e3), and reuses the existing `app_current_user_id()` function
 rather than redefining it.
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = '988ef4146382'
-down_revision: Union[str, Sequence[str], None] = 'b017cd8cd1c0'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = 'b017cd8cd1c0'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

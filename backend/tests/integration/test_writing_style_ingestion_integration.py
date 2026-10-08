@@ -5,19 +5,25 @@ from app.database.session import build_engine, build_sessionmaker, init_db
 from app.database.shared_models import User
 from app.database.unit_of_work import SqlAlchemyUnitOfWork
 from app.modules.agent.application.use_cases import CreateAgentWorkspaceUseCase
-from app.modules.agent.infrastructure.repositories import SqlAlchemyAgentRepository
 from app.modules.agent.domain.exceptions import AgentNotFoundForUserError
+from app.modules.agent.infrastructure.repositories import SqlAlchemyAgentRepository
 from app.modules.document.domain.enums import DocumentProcessingStatus
 from app.modules.document.domain.exceptions import EmptyDocumentContentError
-from app.modules.document.infrastructure.repositories import SqlAlchemyDocumentRepository
+from app.modules.document.infrastructure.repositories import (
+    SqlAlchemyDocumentRepository,
+)
 from app.modules.project.application.use_cases import CreateProjectUseCase
 from app.modules.project.infrastructure.repositories import SqlAlchemyProjectRepository
 from app.modules.writing.application.style_ingestion import (
     DEFAULT_WRITING_PROFILE_NAME,
     UploadWritingStyleDocumentUseCase,
 )
-from app.modules.writing.infrastructure.models import WritingProfile as WritingProfileModel
-from app.modules.writing.infrastructure.repositories import SqlAlchemyWritingProfileRepository
+from app.modules.writing.infrastructure.models import (
+    WritingProfile as WritingProfileModel,
+)
+from app.modules.writing.infrastructure.repositories import (
+    SqlAlchemyWritingProfileRepository,
+)
 from app.storage.filesystem import FilesystemStorage
 
 

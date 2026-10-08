@@ -4,9 +4,15 @@ from app.api.exception_handlers import ErrorResponse
 from app.auth.account import UpdateEmailUseCase
 from app.auth.account_linking import ConnectGoogleAccountUseCase, SetPasswordUseCase
 from app.auth.dependencies import extract_bearer_token
-from app.auth.email_verification import ConfirmEmailVerificationUseCase, RequestEmailVerificationUseCase
+from app.auth.email_verification import (
+    ConfirmEmailVerificationUseCase,
+    RequestEmailVerificationUseCase,
+)
 from app.auth.google_sign_in import GoogleSignInUseCase
-from app.auth.password_reset import ConfirmPasswordResetUseCase, RequestPasswordResetUseCase
+from app.auth.password_reset import (
+    ConfirmPasswordResetUseCase,
+    RequestPasswordResetUseCase,
+)
 from app.auth.registration import RegisterUserUseCase
 from app.auth.schemas import (
     ConfirmEmailVerificationRequest,
@@ -155,7 +161,7 @@ def get_current_session(
     with no way back to the landing page short of manually clearing browser storage). No body:
     the status code alone (204 valid, 401 not) is the only signal a caller needs.
     """
-    return None
+    return
 
 
 @router.get(

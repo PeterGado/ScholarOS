@@ -4,8 +4,12 @@ from app.auth.hashing import hash_password
 from app.core.config import get_settings
 from app.database.session import build_sessionmaker
 from app.database.shared_models import User
-from app.modules.document.application.use_cases import MAX_RESEARCH_DOCUMENTS_PER_PROJECT
-from app.modules.document.infrastructure.repositories import SqlAlchemyDocumentRepository
+from app.modules.document.application.use_cases import (
+    MAX_RESEARCH_DOCUMENTS_PER_PROJECT,
+)
+from app.modules.document.infrastructure.repositories import (
+    SqlAlchemyDocumentRepository,
+)
 from app.storage.filesystem import FilesystemStorage
 from app.workers.executor import process_one_work_item
 

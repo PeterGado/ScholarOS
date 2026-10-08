@@ -3,9 +3,17 @@ import json
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.modules.knowledge.domain.entities import ChunkEmbedding, ChunkEvidenceLink, KnowledgeChunk, KnowledgeElement
+from app.modules.knowledge.domain.entities import (
+    ChunkEmbedding,
+    ChunkEvidenceLink,
+    KnowledgeChunk,
+    KnowledgeElement,
+)
 from app.modules.knowledge.domain.enums import KnowledgeElementStatus
-from app.modules.knowledge.domain.lexical_query import build_fts_match_query, build_postgres_tsquery
+from app.modules.knowledge.domain.lexical_query import (
+    build_fts_match_query,
+    build_postgres_tsquery,
+)
 from app.modules.knowledge.domain.repositories import (
     ChunkEvidenceLinkRepository,
     KnowledgeChunkEmbeddingRepository,
@@ -13,10 +21,18 @@ from app.modules.knowledge.domain.repositories import (
     KnowledgeElementRepository,
     LexicalSearchRepository,
 )
-from app.modules.knowledge.infrastructure.models import ChunkEvidenceLink as ChunkEvidenceLinkModel
-from app.modules.knowledge.infrastructure.models import KnowledgeChunk as KnowledgeChunkModel
-from app.modules.knowledge.infrastructure.models import KnowledgeElement as KnowledgeElementModel
-from app.modules.knowledge.infrastructure.vector_models import KnowledgeChunkEmbedding as KnowledgeChunkEmbeddingModel
+from app.modules.knowledge.infrastructure.models import (
+    ChunkEvidenceLink as ChunkEvidenceLinkModel,
+)
+from app.modules.knowledge.infrastructure.models import (
+    KnowledgeChunk as KnowledgeChunkModel,
+)
+from app.modules.knowledge.infrastructure.models import (
+    KnowledgeElement as KnowledgeElementModel,
+)
+from app.modules.knowledge.infrastructure.vector_models import (
+    KnowledgeChunkEmbedding as KnowledgeChunkEmbeddingModel,
+)
 
 
 class SqlAlchemyKnowledgeElementRepository(KnowledgeElementRepository):

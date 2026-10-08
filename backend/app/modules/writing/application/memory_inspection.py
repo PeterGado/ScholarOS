@@ -1,14 +1,24 @@
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.core.pagination import DEFAULT_LIST_LIMIT
 from app.core.unit_of_work import UnitOfWork
 from app.modules.agent.domain.exceptions import AgentNotFoundForUserError
 from app.modules.agent.domain.repositories import AgentRepository
 from app.modules.writing.domain.entities import MemoryProvenanceLink, MemoryRecord
-from app.modules.writing.domain.enums import CreatedBy, MemoryProvenanceSourceType, MemoryRecordStatus
-from app.modules.writing.domain.exceptions import MemoryRecordAlreadySupersededError, MemoryRecordNotFoundError
-from app.modules.writing.domain.repositories import MemoryProvenanceLinkRepository, MemoryRecordRepository
+from app.modules.writing.domain.enums import (
+    CreatedBy,
+    MemoryProvenanceSourceType,
+    MemoryRecordStatus,
+)
+from app.modules.writing.domain.exceptions import (
+    MemoryRecordAlreadySupersededError,
+    MemoryRecordNotFoundError,
+)
+from app.modules.writing.domain.repositories import (
+    MemoryProvenanceLinkRepository,
+    MemoryRecordRepository,
+)
 
 
 @dataclass
@@ -118,7 +128,7 @@ class SupersedeMemoryRecordUseCase:
                 MemoryProvenanceLink(record_id=new_record.record_id, source_type=MemoryProvenanceSourceType.USER_INPUT)
             )
             self._memory_records.mark_superseded(
-                record_id, superseded_record_id=new_record.record_id, superseded_at=datetime.now(timezone.utc)
+                record_id, superseded_record_id=new_record.record_id, superseded_at=datetime.now(UTC)
             )
             self._uow.commit()
         except Exception:

@@ -38,7 +38,7 @@ def test_only_counts_real_messages_since_the_last_summary():
     summary = _message(30, "Summary of the old messages.", origin=CONVERSATION_SUMMARY_ORIGIN)
     few_new = [_message(i, f"New {i}.") for i in range(31, 35)]
 
-    to_summarize = select_messages_to_summarize(old + [summary] + few_new)
+    to_summarize = select_messages_to_summarize([*old, summary, *few_new])
 
     # Only 4 real messages exist since the summary - well under the trigger count.
     assert to_summarize == []

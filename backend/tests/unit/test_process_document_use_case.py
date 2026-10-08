@@ -4,7 +4,11 @@ from app.modules.document.domain.entities import ResearchDocument
 from app.modules.document.domain.exceptions import ResearchDocumentNotFoundError
 from app.modules.document.domain.repositories import DocumentRepository
 from app.modules.knowledge.application.use_cases import ProcessDocumentUseCase
-from app.modules.knowledge.domain.exceptions import EmptyExtractedTextError, MissingStoredContentError, UnsupportedDocumentFormatError
+from app.modules.knowledge.domain.exceptions import (
+    EmptyExtractedTextError,
+    MissingStoredContentError,
+    UnsupportedDocumentFormatError,
+)
 from app.modules.knowledge.domain.text_extraction import PlainTextExtractor
 
 

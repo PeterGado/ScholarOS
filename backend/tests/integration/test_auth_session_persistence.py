@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import inspect
@@ -177,8 +177,8 @@ def test_a_session_with_a_very_stale_last_active_at_remains_active_at_the_persis
     db_session.commit()
 
     row = db_session.get(AuthSessionModel, session.session_id)
-    row.last_active_at = datetime.now(timezone.utc) - timedelta(days=365)
-    row.started_at = datetime.now(timezone.utc) - timedelta(days=365)
+    row.last_active_at = datetime.now(UTC) - timedelta(days=365)
+    row.started_at = datetime.now(UTC) - timedelta(days=365)
     db_session.commit()
 
     refetched = repo.get_by_token_hash("e" * 64)

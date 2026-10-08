@@ -4,17 +4,16 @@ from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, 
 
 from app.api.exception_handlers import ErrorResponse
 from app.core.config import get_settings
-from app.core.pagination import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT
 from app.core.dependencies import (
     get_apply_segment_template_use_case,
     get_create_writing_segment_use_case,
     get_current_user_id,
+    get_delete_conversation_use_case,
     get_delete_writing_segment_use_case,
     get_extract_writing_style_profile_use_case,
     get_get_chat_reply_status_use_case,
     get_get_writing_profile_use_case,
     get_list_conversation_messages_use_case,
-    get_delete_conversation_use_case,
     get_list_conversations_use_case,
     get_list_memory_use_case,
     get_list_segment_templates_use_case,
@@ -30,6 +29,7 @@ from app.core.dependencies import (
 )
 from app.core.document_formats import looks_like_a_supported_document
 from app.core.exceptions import UnsupportedUploadFormatError
+from app.core.pagination import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT
 from app.core.rate_limit import limiter
 from app.core.uploads import read_upload_within_limit
 from app.modules.writing.application.chat import (
@@ -46,7 +46,10 @@ from app.modules.writing.application.memory_inspection import (
     MemoryRecordWithProvenance,
     SupersedeMemoryRecordUseCase,
 )
-from app.modules.writing.application.profile_view import GetWritingProfileUseCase, ResetWritingProfileUseCase
+from app.modules.writing.application.profile_view import (
+    GetWritingProfileUseCase,
+    ResetWritingProfileUseCase,
+)
 from app.modules.writing.application.segment_templates import (
     ApplySegmentTemplateUseCase,
     ListSegmentTemplatesUseCase,
@@ -57,7 +60,9 @@ from app.modules.writing.application.segments import (
     ListWritingSegmentsUseCase,
     UpdateWritingSegmentUseCase,
 )
-from app.modules.writing.application.style_extraction import ExtractWritingStyleProfileUseCase
+from app.modules.writing.application.style_extraction import (
+    ExtractWritingStyleProfileUseCase,
+)
 from app.modules.writing.application.style_ingestion import (
     ListWritingStyleDocumentsUseCase,
     UploadWritingStyleDocumentUseCase,

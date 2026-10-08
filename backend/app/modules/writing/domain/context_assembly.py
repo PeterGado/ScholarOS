@@ -1,9 +1,12 @@
 import re
 from dataclasses import dataclass
 
-from app.modules.writing.domain.enums import MemoryRecordType, MessageDirection, ProfileCharacteristicType
+from app.modules.writing.domain.enums import (
+    MemoryRecordType,
+    MessageDirection,
+    ProfileCharacteristicType,
+)
 from app.modules.writing.domain.exceptions import InvalidContextAssemblyInputError
-
 
 DEFAULT_CONTEXT_CHARACTER_LIMIT = 12000
 DEFAULT_MAX_EVIDENCE = 10
@@ -270,13 +273,15 @@ def assemble_context(context: ContextAssemblyInput) -> AssembledContext:
         ("HUMAN-SOUNDING WRITING", HUMANIZER_GUIDANCE),
         (
             "RESPONSE TASK — LATEST USER MESSAGE",
-            "Respond directly to the latest user message below. Treat it as the task to complete; "
-            "do not merely produce a generic draft or repeat background context. If it asks a "
-            "question, answer it. If it asks for writing, provide that writing. Ask one concise "
-            "clarifying question only when essential information is missing. If it asks for "
-            "citations or sources that GROUNDING RULES above says are unavailable, follow "
-            "GROUNDING RULES instead of inventing any - that rule overrides this one.\n\n"
-            f"User: {context.instructions.strip()}",
+            (
+                "Respond directly to the latest user message below. Treat it as the task to complete; "
+                "do not merely produce a generic draft or repeat background context. If it asks a "
+                "question, answer it. If it asks for writing, provide that writing. Ask one concise "
+                "clarifying question only when essential information is missing. If it asks for "
+                "citations or sources that GROUNDING RULES above says are unavailable, follow "
+                "GROUNDING RULES instead of inventing any - that rule overrides this one.\n\n"
+                f"User: {context.instructions.strip()}"
+            ),
         ),
     ]
 
@@ -653,7 +658,7 @@ def _fit_sections_reserving_tail(
             rendered_tails.append(tail)
             remaining -= len(tail) + 2
 
-    parts = [leading] + rendered_tails if leading else rendered_tails
+    parts = [leading, *rendered_tails] if leading else rendered_tails
     return "\n\n".join(part for part in parts if part)
 
 

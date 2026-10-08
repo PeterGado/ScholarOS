@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import sentry_sdk
 from fastapi import APIRouter, Depends, Response
@@ -36,8 +36,8 @@ def queue_health_check(response: Response, db: Session = Depends(get_db)) -> dic
     # already UTC (see WorkItem.created_at's own default) - Postgres returns it tz-aware already,
     # so this is a no-op there. Without it, this subtraction raises on SQLite.
     if oldest_created_at.tzinfo is None:
-        oldest_created_at = oldest_created_at.replace(tzinfo=timezone.utc)
-    age_seconds = (datetime.now(timezone.utc) - oldest_created_at).total_seconds()
+        oldest_created_at = oldest_created_at.replace(tzinfo=UTC)
+    age_seconds = (datetime.now(UTC) - oldest_created_at).total_seconds()
     healthy = age_seconds <= threshold
     if not healthy:
         response.status_code = 503

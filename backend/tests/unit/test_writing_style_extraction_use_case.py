@@ -9,9 +9,18 @@ from app.modules.document.domain.entities import ResearchDocument
 from app.modules.document.domain.repositories import DocumentRepository
 from app.modules.project.domain.entities import Project
 from app.modules.project.domain.repositories import ProjectRepository
-from app.modules.writing.application.style_extraction import ExtractWritingStyleProfileUseCase
-from app.modules.writing.domain.entities import ProfileCharacteristic, ProfileCharacteristicSource, WritingProfile
-from app.modules.writing.domain.enums import ProfileCharacteristicType, WritingProfileStatus
+from app.modules.writing.application.style_extraction import (
+    ExtractWritingStyleProfileUseCase,
+)
+from app.modules.writing.domain.entities import (
+    ProfileCharacteristic,
+    ProfileCharacteristicSource,
+    WritingProfile,
+)
+from app.modules.writing.domain.enums import (
+    ProfileCharacteristicType,
+    WritingProfileStatus,
+)
 from app.modules.writing.domain.exceptions import (
     InvalidStyleSampleReferenceError,
     MissingStoredStyleSampleError,

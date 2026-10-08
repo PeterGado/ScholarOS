@@ -11,7 +11,11 @@ from app.modules.document.domain.ports import ContentStore
 from app.modules.document.domain.repositories import DocumentRepository
 from app.modules.project.domain.repositories import ProjectRepository
 from app.modules.writing.application.style_ingestion import DEFAULT_WRITING_PROFILE_NAME
-from app.modules.writing.domain.entities import ProfileCharacteristic, ProfileCharacteristicSource, WritingProfile
+from app.modules.writing.domain.entities import (
+    ProfileCharacteristic,
+    ProfileCharacteristicSource,
+    WritingProfile,
+)
 from app.modules.writing.domain.exceptions import (
     InvalidStyleSampleReferenceError,
     MissingStoredStyleSampleError,
@@ -24,7 +28,10 @@ from app.modules.writing.domain.repositories import (
     ProfileCharacteristicSourceRepository,
     WritingProfileRepository,
 )
-from app.modules.writing.domain.style_extraction import decode_sample_text, extract_style_characteristics
+from app.modules.writing.domain.style_extraction import (
+    decode_sample_text,
+    extract_style_characteristics,
+)
 
 
 @dataclass

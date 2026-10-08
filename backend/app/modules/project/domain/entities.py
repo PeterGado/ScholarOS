@@ -1,8 +1,11 @@
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.modules.project.domain.enums import ProjectStatus
-from app.modules.project.domain.exceptions import InvalidProjectTitleError, InvalidProjectTopicError
+from app.modules.project.domain.exceptions import (
+    InvalidProjectTitleError,
+    InvalidProjectTopicError,
+)
 
 
 @dataclass
@@ -20,7 +23,7 @@ class Project:
     project_id: int | None = None
     description: str | None = None
     status: ProjectStatus = ProjectStatus.ACTIVE
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = None
     closed_at: datetime | None = None
     deleted_at: datetime | None = None

@@ -1,7 +1,6 @@
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
+from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 
@@ -18,21 +17,27 @@ if config.config_file_name is not None:
 # runs - the exact same import list `app.database.session.init_db` uses, kept in sync
 # deliberately (a model missing from one but not the other would silently diverge what
 # `create_all` and Alembic each believe the schema is).
-from app.ai.models import AiUsageRecord  # noqa: E402,F401
-from app.auth.models import AuthSession  # noqa: E402,F401
-from app.core.rate_limit_models import RateLimitCounter  # noqa: E402,F401
-from app.database.base import Base  # noqa: E402
-from app.database.shared_models import User  # noqa: E402,F401
-from app.modules.agent.infrastructure.models import Agent  # noqa: E402,F401
-from app.modules.document.infrastructure.models import ResearchDocument  # noqa: E402,F401
-from app.modules.knowledge.infrastructure.models import (  # noqa: E402,F401
+from app.ai.models import AiUsageRecord  # noqa: F401
+from app.auth.models import AuthSession  # noqa: F401
+from app.core.config import get_settings
+from app.core.rate_limit_models import RateLimitCounter  # noqa: F401
+from app.database.base import Base
+from app.database.session import normalize_database_url
+from app.database.shared_models import User  # noqa: F401
+from app.modules.agent.infrastructure.models import Agent  # noqa: F401
+from app.modules.document.infrastructure.models import (
+    ResearchDocument,  # noqa: F401
+)
+from app.modules.knowledge.infrastructure.models import (  # noqa: F401
     ChunkEvidenceLink,
     KnowledgeChunk,
     KnowledgeElement,
 )
-from app.modules.knowledge.infrastructure.vector_models import KnowledgeChunkEmbedding  # noqa: E402,F401
-from app.modules.project.infrastructure.models import Project  # noqa: E402,F401
-from app.modules.writing.infrastructure.models import (  # noqa: E402,F401
+from app.modules.knowledge.infrastructure.vector_models import (
+    KnowledgeChunkEmbedding,  # noqa: F401
+)
+from app.modules.project.infrastructure.models import Project  # noqa: F401
+from app.modules.writing.infrastructure.models import (  # noqa: F401
     Conversation,
     MemoryProvenanceLink,
     MemoryRecord,
@@ -42,9 +47,7 @@ from app.modules.writing.infrastructure.models import (  # noqa: E402,F401
     ProfileCharacteristicSource,
     WritingProfile,
 )
-from app.workers.models import WorkItem  # noqa: E402,F401
-from app.core.config import get_settings  # noqa: E402
-from app.database.session import normalize_database_url  # noqa: E402
+from app.workers.models import WorkItem  # noqa: F401
 
 target_metadata = Base.metadata
 

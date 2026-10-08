@@ -1,9 +1,13 @@
 import logging
-from datetime import datetime, timedelta, timezone
-from typing import Callable
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 
 from app.auth.exceptions import InvalidVerificationTokenError
-from app.auth.repository import EmailVerificationTokenRepository, UserAccountRepository, UserCredentialLookup
+from app.auth.repository import (
+    EmailVerificationTokenRepository,
+    UserAccountRepository,
+    UserCredentialLookup,
+)
 from app.auth.tokens import generate_session_token, hash_session_token
 from app.core.unit_of_work import UnitOfWork
 from app.email.exceptions import EmailSendError
@@ -55,7 +59,7 @@ class RequestEmailVerificationUseCase:
             return
 
         raw_token = generate_session_token()
-        expires_at = datetime.now(timezone.utc) + timedelta(minutes=self._token_ttl_minutes)
+        expires_at = datetime.now(UTC) + timedelta(minutes=self._token_ttl_minutes)
         try:
             self._verification_tokens.create(
                 user_id=user_id, token_hash=hash_session_token(raw_token), expires_at=expires_at
@@ -101,7 +105,7 @@ class ConfirmEmailVerificationUseCase:
 
     def execute(self, *, raw_token: str) -> None:
         token = self._verification_tokens.get_by_token_hash(hash_session_token(raw_token))
-        if token is None or not token.is_valid(now=datetime.now(timezone.utc)):
+        if token is None or not token.is_valid(now=datetime.now(UTC)):
             raise InvalidVerificationTokenError()
 
         try:

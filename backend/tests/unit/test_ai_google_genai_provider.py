@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 import pytest
 
 from app.ai.exceptions import (
@@ -7,7 +9,10 @@ from app.ai.exceptions import (
     ProviderRequestError,
 )
 from app.ai.providers.failover import FailoverProvider
-from app.ai.providers.google_genai import GoogleGenAIProvider, create_google_genai_provider
+from app.ai.providers.google_genai import (
+    GoogleGenAIProvider,
+    create_google_genai_provider,
+)
 from app.ai.providers.rate_limited import RateLimitedProvider
 from app.core.config import Settings
 
@@ -290,7 +295,7 @@ def test_embed_raises_provider_request_error_when_the_sdk_raises():
 
 def test_embed_raises_provider_request_error_on_malformed_response():
     class EmptyEmbeddingsResponse:
-        embeddings = []
+        embeddings: ClassVar[list[object]] = []
 
     models = FakeModels(embed_response=EmptyEmbeddingsResponse())
     provider = _build_provider(models)

@@ -8,11 +8,17 @@ from app.database.unit_of_work import SqlAlchemyUnitOfWork
 from app.modules.agent.application.use_cases import CreateAgentWorkspaceUseCase
 from app.modules.agent.domain.exceptions import AgentNotFoundForUserError
 from app.modules.agent.infrastructure.repositories import SqlAlchemyAgentRepository
-from app.modules.document.infrastructure.repositories import SqlAlchemyDocumentRepository
+from app.modules.document.infrastructure.repositories import (
+    SqlAlchemyDocumentRepository,
+)
 from app.modules.project.application.use_cases import CreateProjectUseCase
 from app.modules.project.infrastructure.repositories import SqlAlchemyProjectRepository
-from app.modules.writing.application.style_extraction import ExtractWritingStyleProfileUseCase
-from app.modules.writing.application.style_ingestion import UploadWritingStyleDocumentUseCase
+from app.modules.writing.application.style_extraction import (
+    ExtractWritingStyleProfileUseCase,
+)
+from app.modules.writing.application.style_ingestion import (
+    UploadWritingStyleDocumentUseCase,
+)
 from app.modules.writing.domain.exceptions import (
     InvalidStyleSampleReferenceError,
     StyleExtractionError,
@@ -160,7 +166,9 @@ def test_no_duplicate_profile_and_no_orphan_characteristics_after_successful_ext
 
     use_case.execute(user_id=workspace.agent.user_id, document_ids=document_ids)
 
-    from app.modules.writing.infrastructure.models import WritingProfile as WritingProfileModel
+    from app.modules.writing.infrastructure.models import (
+        WritingProfile as WritingProfileModel,
+    )
 
     all_profiles = session.query(WritingProfileModel).filter_by(agent_id=workspace.agent.agent_id).all()
     assert len(all_profiles) == 1

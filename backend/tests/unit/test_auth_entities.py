@@ -1,10 +1,10 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from app.auth.entities import AuthSession
 
 
 def test_a_fresh_session_is_active():
-    session = AuthSession(user_id=1, token_hash="hash", started_at=datetime.now(timezone.utc))
+    session = AuthSession(user_id=1, token_hash="hash", started_at=datetime.now(UTC))
     assert session.is_active is True
 
 
@@ -12,8 +12,8 @@ def test_an_ended_session_is_not_active():
     session = AuthSession(
         user_id=1,
         token_hash="hash",
-        started_at=datetime.now(timezone.utc),
-        ended_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
+        ended_at=datetime.now(UTC),
     )
     assert session.is_active is False
 
@@ -23,7 +23,7 @@ def test_a_very_old_last_active_at_does_not_make_a_session_inactive():
     expiry in this milestone. A session with a stale last_active_at is still valid - only
     ended_at determines validity.
     """
-    long_ago = datetime.now(timezone.utc) - timedelta(days=365)
+    long_ago = datetime.now(UTC) - timedelta(days=365)
     session = AuthSession(
         user_id=1,
         token_hash="hash",

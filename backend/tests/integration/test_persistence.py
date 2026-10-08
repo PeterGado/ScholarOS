@@ -4,7 +4,10 @@ from sqlalchemy.exc import IntegrityError
 from app.database.session import build_engine, build_sessionmaker, init_db
 from app.database.shared_models import User
 from app.modules.agent.infrastructure.models import Agent, AgentStatus
-from app.modules.document.infrastructure.models import DocumentProcessingStatus, ResearchDocument
+from app.modules.document.infrastructure.models import (
+    DocumentProcessingStatus,
+    ResearchDocument,
+)
 from app.modules.project.infrastructure.models import Project
 
 

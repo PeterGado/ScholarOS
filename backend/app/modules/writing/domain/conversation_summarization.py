@@ -1,4 +1,7 @@
-from app.modules.writing.domain.conversation_context import CONVERSATION_SUMMARY_ORIGIN, find_latest_summary_message
+from app.modules.writing.domain.conversation_context import (
+    CONVERSATION_SUMMARY_ORIGIN,
+    find_latest_summary_message,
+)
 from app.modules.writing.domain.entities import Message
 from app.modules.writing.domain.enums import MessageDirection
 

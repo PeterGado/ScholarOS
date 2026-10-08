@@ -12,17 +12,17 @@ explicitly passes False) ever starts out unverified. email_verification_tokens m
 password_reset_tokens exactly, including its exclusion from Row-Level Security (same bootstrap
 reasoning: looked up by hash, e0316c6e0352's own docstring).
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = '1791af381140'
-down_revision: Union[str, Sequence[str], None] = 'e0316c6e0352'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = 'e0316c6e0352'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

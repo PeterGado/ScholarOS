@@ -2,7 +2,10 @@ from dataclasses import dataclass
 
 from app.core.unit_of_work import UnitOfWork
 from app.modules.agent.domain.entities import Agent
-from app.modules.agent.domain.exceptions import AgentAlreadyExistsForUserError, AgentNotFoundForUserError
+from app.modules.agent.domain.exceptions import (
+    AgentAlreadyExistsForUserError,
+    AgentNotFoundForUserError,
+)
 from app.modules.agent.domain.repositories import AgentRepository
 from app.modules.project.application.use_cases import CreateProjectUseCase
 from app.modules.project.domain.entities import Project

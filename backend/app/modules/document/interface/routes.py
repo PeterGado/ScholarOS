@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, 
 
 from app.api.exception_handlers import ErrorResponse
 from app.core.config import get_settings
-from app.core.pagination import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT
 from app.core.dependencies import (
     get_current_user_id,
     get_delete_research_document_use_case,
@@ -14,6 +13,7 @@ from app.core.dependencies import (
 )
 from app.core.document_formats import looks_like_a_supported_document
 from app.core.exceptions import UnsupportedUploadFormatError
+from app.core.pagination import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT
 from app.core.rate_limit import limiter
 from app.core.uploads import read_upload_within_limit
 from app.modules.document.application.use_cases import (
@@ -22,7 +22,10 @@ from app.modules.document.application.use_cases import (
     RetryDocumentProcessingUseCase,
     UploadResearchDocumentUseCase,
 )
-from app.modules.document.interface.schemas import ResearchDocumentListResponse, ResearchDocumentResponse
+from app.modules.document.interface.schemas import (
+    ResearchDocumentListResponse,
+    ResearchDocumentResponse,
+)
 
 router = APIRouter(prefix="/projects", tags=["documents"])
 

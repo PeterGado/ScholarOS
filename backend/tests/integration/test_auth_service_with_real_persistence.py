@@ -2,7 +2,10 @@ import pytest
 
 from app.auth.exceptions import InvalidCredentialsError, InvalidSessionError
 from app.auth.hashing import hash_password
-from app.auth.infrastructure import SqlAlchemyAuthSessionRepository, SqlAlchemyUserCredentialLookup
+from app.auth.infrastructure import (
+    SqlAlchemyAuthSessionRepository,
+    SqlAlchemyUserCredentialLookup,
+)
 from app.auth.service import AuthService
 from app.database.session import build_engine, build_sessionmaker, init_db
 from app.database.shared_models import User

@@ -9,17 +9,17 @@ identity is known - the same bootstrap reasoning `sessions` is excluded from Row
 for (cff25673e0e3's own docstring: "this is what ESTABLISHES identity in the first place")
 applies identically here, so this table is deliberately excluded from RLS too, not a gap.
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = 'e0316c6e0352'
-down_revision: Union[str, Sequence[str], None] = 'e151d6a4fdf6'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = 'e151d6a4fdf6'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

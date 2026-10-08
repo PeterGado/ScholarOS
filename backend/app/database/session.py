@@ -51,7 +51,7 @@ def build_engine(
         is_memory_sqlite = ":memory:" in database_url
 
         @event.listens_for(engine, "connect")
-        def _enable_sqlite_foreign_keys(dbapi_connection, connection_record):  # noqa: ANN001, ARG001
+        def _enable_sqlite_foreign_keys(dbapi_connection, connection_record):
             cursor = dbapi_connection.cursor()
             cursor.execute("PRAGMA foreign_keys=ON")
             # SQLite allows only one writer at a time; without a busy timeout, a writer that
@@ -95,11 +95,11 @@ def build_engine(
         # and issuing BEGIN explicitly on SQLAlchemy's own "begin" hook makes every new
         # SQLAlchemy-level transaction start a fresh read view, eliminating the staleness.
         @event.listens_for(engine, "connect")
-        def _disable_pysqlite_implicit_transactions(dbapi_connection, connection_record):  # noqa: ANN001, ARG001
+        def _disable_pysqlite_implicit_transactions(dbapi_connection, connection_record):
             dbapi_connection.isolation_level = None
 
         @event.listens_for(engine, "begin")
-        def _emit_explicit_sqlite_begin(conn):  # noqa: ANN001
+        def _emit_explicit_sqlite_begin(conn):
             conn.exec_driver_sql("BEGIN")
 
     else:
@@ -121,7 +121,7 @@ def build_engine(
         # and `column = NULL` is always false in SQL, so RLS fails closed with no special-casing
         # needed anywhere for the pre-authentication case.
         @event.listens_for(engine, "begin")
-        def _set_rls_user_context(conn):  # noqa: ANN001
+        def _set_rls_user_context(conn):
             user_id = current_user_id.get()
             if user_id is not None:
                 conn.exec_driver_sql(
@@ -198,13 +198,17 @@ def init_db(target_engine: Engine | None = None) -> None:
     from app.database.base import Base
     from app.database.shared_models import User  # noqa: F401
     from app.modules.agent.infrastructure.models import Agent  # noqa: F401
-    from app.modules.document.infrastructure.models import ResearchDocument  # noqa: F401
+    from app.modules.document.infrastructure.models import (
+        ResearchDocument,  # noqa: F401
+    )
     from app.modules.knowledge.infrastructure.models import (  # noqa: F401
         ChunkEvidenceLink,
         KnowledgeChunk,
         KnowledgeElement,
     )
-    from app.modules.knowledge.infrastructure.vector_models import KnowledgeChunkEmbedding  # noqa: F401
+    from app.modules.knowledge.infrastructure.vector_models import (
+        KnowledgeChunkEmbedding,  # noqa: F401
+    )
     from app.modules.project.infrastructure.models import Project  # noqa: F401
     from app.modules.writing.infrastructure.models import (  # noqa: F401
         MemoryProvenanceLink,

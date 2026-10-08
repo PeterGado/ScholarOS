@@ -3,10 +3,16 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.modules.document.domain.entities import ResearchDocument
-from app.modules.document.domain.enums import DocumentProcessingStatus, DocumentPurpose, DoiVerificationStatus
+from app.modules.document.domain.enums import (
+    DocumentProcessingStatus,
+    DocumentPurpose,
+    DoiVerificationStatus,
+)
 from app.modules.document.domain.exceptions import ResearchDocumentNotFoundError
 from app.modules.document.domain.repositories import DocumentRepository
-from app.modules.document.infrastructure.models import ResearchDocument as ResearchDocumentModel
+from app.modules.document.infrastructure.models import (
+    ResearchDocument as ResearchDocumentModel,
+)
 
 
 class SqlAlchemyDocumentRepository(DocumentRepository):

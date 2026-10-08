@@ -1,7 +1,11 @@
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from app.modules.document.domain.enums import DocumentProcessingStatus, DocumentPurpose, DoiVerificationStatus
+from app.modules.document.domain.enums import (
+    DocumentProcessingStatus,
+    DocumentPurpose,
+    DoiVerificationStatus,
+)
 from app.modules.document.domain.exceptions import (
     EmptyDocumentContentError,
     InvalidDocumentFormatError,
@@ -42,7 +46,7 @@ class ResearchDocument:
     doi_verification_status: DoiVerificationStatus | None = None
     processing_status: DocumentProcessingStatus = DocumentProcessingStatus.PENDING
     purpose: DocumentPurpose = DocumentPurpose.RESEARCH
-    ingested_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    ingested_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     processed_at: datetime | None = None
     deleted_at: datetime | None = None
 

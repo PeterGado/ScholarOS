@@ -1,7 +1,10 @@
 import pytest
 
 from app.modules.project.domain.entities import Project
-from app.modules.project.domain.exceptions import InvalidProjectTitleError, InvalidProjectTopicError
+from app.modules.project.domain.exceptions import (
+    InvalidProjectTitleError,
+    InvalidProjectTopicError,
+)
 
 
 def test_create_produces_an_active_project_with_the_given_topic():

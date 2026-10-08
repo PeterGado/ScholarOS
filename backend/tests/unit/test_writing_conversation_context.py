@@ -79,7 +79,7 @@ def test_messages_after_the_summary_are_still_bounded_to_max_recent():
     for sequence in range(2, 20):
         direction = MessageDirection.USER_REQUEST if sequence % 2 == 0 else MessageDirection.SYSTEM_RESPONSE
         pairs.append(_message(sequence, f"Message {sequence}.", direction=direction))
-    messages = [_message(1, "Summary.", origin=CONVERSATION_SUMMARY_ORIGIN)] + pairs
+    messages = [_message(1, "Summary.", origin=CONVERSATION_SUMMARY_ORIGIN), *pairs]
 
     resolved = resolve_bounded_conversation_messages(messages, max_recent=3)
 

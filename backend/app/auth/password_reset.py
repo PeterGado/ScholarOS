@@ -1,8 +1,12 @@
 import logging
-from datetime import datetime, timedelta, timezone
-from typing import Callable
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 
-from app.auth.exceptions import InvalidResetTokenError, PasswordCompromisedError, WeakPasswordError
+from app.auth.exceptions import (
+    InvalidResetTokenError,
+    PasswordCompromisedError,
+    WeakPasswordError,
+)
 from app.auth.hashing import hash_password
 from app.auth.password_strength import is_breached_password
 from app.auth.registration import MINIMUM_PASSWORD_LENGTH
@@ -59,7 +63,7 @@ class RequestPasswordResetUseCase:
             return
 
         raw_token = generate_session_token()
-        expires_at = datetime.now(timezone.utc) + timedelta(minutes=self._token_ttl_minutes)
+        expires_at = datetime.now(UTC) + timedelta(minutes=self._token_ttl_minutes)
         try:
             self._reset_tokens.create(
                 user_id=user.user_id, token_hash=hash_session_token(raw_token), expires_at=expires_at
@@ -120,7 +124,7 @@ class ConfirmPasswordResetUseCase:
             raise PasswordCompromisedError()
 
         token = self._reset_tokens.get_by_token_hash(hash_session_token(raw_token))
-        if token is None or not token.is_valid(now=datetime.now(timezone.utc)):
+        if token is None or not token.is_valid(now=datetime.now(UTC)):
             raise InvalidResetTokenError()
 
         try:

@@ -7,7 +7,11 @@ from app.modules.writing.domain.exceptions import (
     SegmentTemplateNotFoundError,
     TooManyWritingSegmentsError,
 )
-from app.modules.writing.domain.segment_templates import SEGMENT_TEMPLATES, SegmentTemplate, get_segment_template
+from app.modules.writing.domain.segment_templates import (
+    SEGMENT_TEMPLATES,
+    SegmentTemplate,
+    get_segment_template,
+)
 
 
 class ListSegmentTemplatesUseCase:

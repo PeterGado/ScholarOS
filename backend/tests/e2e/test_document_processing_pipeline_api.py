@@ -2,11 +2,16 @@ import io
 
 from app.ai.crossref import CrossrefWork
 from app.database.session import build_sessionmaker
-from app.modules.document.domain.enums import DocumentProcessingStatus, DoiVerificationStatus
-from app.modules.document.infrastructure.repositories import SqlAlchemyDocumentRepository
+from app.modules.document.domain.enums import (
+    DocumentProcessingStatus,
+    DoiVerificationStatus,
+)
+from app.modules.document.infrastructure.repositories import (
+    SqlAlchemyDocumentRepository,
+)
+from app.storage.filesystem import FilesystemStorage
 from app.workers.executor import process_one_work_item
 from app.workers.repository import WorkItemRepository
-from app.storage.filesystem import FilesystemStorage
 
 
 class FakeTextGenerationProvider:

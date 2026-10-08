@@ -49,9 +49,13 @@ class FakeUnitOfWork:
 
 
 def _document(**overrides) -> ResearchDocument:
-    defaults = dict(
-        document_id=1, project_id=1, title="Doc", format="txt", content_reference="ref-1",
-    )
+    defaults = {
+        "document_id": 1,
+        "project_id": 1,
+        "title": "Doc",
+        "format": "txt",
+        "content_reference": "ref-1",
+    }
     defaults.update(overrides)
     return ResearchDocument(**defaults)
 

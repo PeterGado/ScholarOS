@@ -6,6 +6,13 @@ name: CI
 # Deliberately verification-only for now: no deploy step. Wiring auto-deploy on top of this
 # needs FLY_API_TOKEN/VERCEL_TOKEN added as GitHub repo secrets first - a separate decision
 # from "run the tests," since it changes what merging to main actually does.
+#
+# 2026-10-08: two gaps closed. The backend had no lint or type-check at all (its only static
+# analysis had ever been a manual pass recorded in a journal entry), and the e2e specs existed
+# but nothing ran them. Backend lint/type-check now run as blocking steps in the backend job;
+# the `e2e` job runs the subset of browser specs that need no live AI provider, each against its
+# own fresh throwaway database. See backend/pyproject.toml for the rule set and the documented
+# type-check baseline, and frontend/playwright.config.ts for which specs are hermetic.
 
 on:
   push:
@@ -15,7 +22,7 @@ on:
 
 jobs:
   backend:
-    name: Backend tests
+    name: Backend lint, type-check, and tests
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -31,6 +38,12 @@ jobs:
 
       - name: Install dependencies
         run: pip install -e ".[dev]"
+
+      - name: Lint
+        run: ruff check app tests alembic
+
+      - name: Type-check
+        run: mypy
 
       - name: Run test suite
         run: pytest -q
@@ -61,3 +74,66 @@ jobs:
 
       - name: Unit tests
         run: npm run test
+
+  e2e:
+    name: End-to-end (hermetic browser specs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -e ".[dev]"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      # Each spec is run against its own fresh database, storage root, and pre-provisioned user,
+      # in its own Playwright invocation - several of these specs assert on onboarding state
+      # ("lands on /onboarding" vs "already has a workspace"), so sharing one database across
+      # them would make the result depend on file ordering. Playwright owns the backend process
+      # (PLAYWRIGHT_START_BACKEND=1) and starts a new one per invocation.
+      #
+      # AUTH_PASSWORD_HASH is generated here rather than committed, matching the repo's own
+      # "no credential literals in source or config" rule (backend/README.md documents the same
+      # generation step for local manual verification). The password is a throwaway; nothing
+      # here is a real secret. AI_API_KEY is deliberately left unset so the app runs its
+      # UnavailableAIProvider: both hermetic specs are provider-free by design, and the
+      # provider-dependent specs live in the `manual` project instead.
+      - name: Run hermetic e2e specs
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_START_BACKEND: "1"
+          PLAYWRIGHT_API_BASE_URL: http://127.0.0.1:8123
+          AUTH_USERNAME: manual-verify-user
+        run: |
+          set -euo pipefail
+          AUTH_PASSWORD_HASH="$(python -c 'import bcrypt; print(bcrypt.hashpw(b"ManualVerify-Pass-1", bcrypt.gensalt()).decode())')"
+          export AUTH_PASSWORD_HASH
+
+          for spec in upload-limits ui-redesign-and-document-retry; do
+            echo "::group::e2e / $spec (fresh database)"
+            export DATABASE_URL="sqlite:///$RUNNER_TEMP/e2e-$spec.db"
+            export STORAGE_ROOT="$RUNNER_TEMP/e2e-$spec-storage"
+            rm -f "$RUNNER_TEMP/e2e-$spec.db"
+            rm -rf "$STORAGE_ROOT"
+            npx playwright test --project=hermetic "e2e/$spec.spec.ts"
+            echo "::endgroup::"
+          done

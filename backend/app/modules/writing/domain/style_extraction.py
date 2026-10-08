@@ -9,7 +9,10 @@ import pypdf
 
 from app.ai.providers.base import TextGenerationProvider
 from app.modules.writing.domain.enums import ProfileCharacteristicType
-from app.modules.writing.domain.exceptions import StyleExtractionError, UnusableWritingStyleSampleError
+from app.modules.writing.domain.exceptions import (
+    StyleExtractionError,
+    UnusableWritingStyleSampleError,
+)
 
 _CODE_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
 

@@ -2,9 +2,12 @@ from app.auth.hashing import hash_password
 from app.database.session import build_sessionmaker
 from app.database.shared_models import User
 from app.database.unit_of_work import SqlAlchemyUnitOfWork
-from app.modules.agent.infrastructure.repositories import SqlAlchemyAgentRepository
 from app.modules.writing.domain.entities import MemoryProvenanceLink, MemoryRecord
-from app.modules.writing.domain.enums import CreatedBy, MemoryProvenanceSourceType, MemoryRecordType
+from app.modules.writing.domain.enums import (
+    CreatedBy,
+    MemoryProvenanceSourceType,
+    MemoryRecordType,
+)
 from app.modules.writing.infrastructure.repositories import (
     SqlAlchemyMemoryProvenanceLinkRepository,
     SqlAlchemyMemoryRecordRepository,

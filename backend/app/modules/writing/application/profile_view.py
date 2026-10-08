@@ -1,12 +1,15 @@
-from datetime import datetime, timezone
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from app.core.unit_of_work import UnitOfWork
 from app.modules.agent.domain.exceptions import AgentNotFoundForUserError
 from app.modules.agent.domain.repositories import AgentRepository
 from app.modules.writing.domain.entities import ProfileCharacteristic, WritingProfile
 from app.modules.writing.domain.exceptions import WritingProfileNotFoundError
-from app.modules.writing.domain.repositories import ProfileCharacteristicRepository, WritingProfileRepository
+from app.modules.writing.domain.repositories import (
+    ProfileCharacteristicRepository,
+    WritingProfileRepository,
+)
 
 
 @dataclass
@@ -92,7 +95,7 @@ class ResetWritingProfileUseCase:
             raise WritingProfileNotFoundError(agent_id=agent.agent_id)
 
         try:
-            self._writing_profiles.deactivate(profile.profile_id, updated_at=datetime.now(timezone.utc))
+            self._writing_profiles.deactivate(profile.profile_id, updated_at=datetime.now(UTC))
             self._uow.commit()
         except Exception:
             self._uow.rollback()

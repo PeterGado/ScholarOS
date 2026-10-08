@@ -27,7 +27,6 @@ from app.modules.writing.domain.exceptions import (
     MessageContextLinkTargetError,
 )
 
-
 # --- Writing Profile / Profile Characteristic -------------------------------------------------------------------
 
 

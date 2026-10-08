@@ -1,6 +1,16 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from sqlalchemy import CheckConstraint, Enum, Float, ForeignKey, Index, String, Text, UniqueConstraint, text
+from sqlalchemy import (
+    CheckConstraint,
+    Enum,
+    Float,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
@@ -17,14 +27,14 @@ from app.modules.writing.domain.enums import (
 )
 
 __all__ = [
-    "WritingProfile",
-    "ProfileCharacteristic",
-    "ProfileCharacteristicSource",
-    "MemoryRecord",
-    "MemoryProvenanceLink",
     "Conversation",
+    "MemoryProvenanceLink",
+    "MemoryRecord",
     "Message",
     "MessageContextLink",
+    "ProfileCharacteristic",
+    "ProfileCharacteristicSource",
+    "WritingProfile",
     "WritingSegment",
 ]
 
@@ -75,7 +85,7 @@ class WritingProfile(Base):
     status: Mapped[WritingProfileStatus] = mapped_column(
         _enum_column(WritingProfileStatus, 16), nullable=False, default=WritingProfileStatus.ACTIVE
     )
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
     updated_at: Mapped[datetime | None] = mapped_column(nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
@@ -95,7 +105,7 @@ class ProfileCharacteristic(Base):
     )
     signal: Mapped[str] = mapped_column(Text, nullable=False)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
 
 
 class ProfileCharacteristicSource(Base):
@@ -117,7 +127,7 @@ class ProfileCharacteristicSource(Base):
         ForeignKey("profile_characteristics.characteristic_id"), nullable=False
     )
     document_id: Mapped[int] = mapped_column(ForeignKey("research_documents.document_id"), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
 
 
 class MemoryRecord(Base):
@@ -140,7 +150,7 @@ class MemoryRecord(Base):
     status: Mapped[MemoryRecordStatus] = mapped_column(
         _enum_column(MemoryRecordStatus, 16), nullable=False, default=MemoryRecordStatus.CURRENT
     )
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
     created_by: Mapped[CreatedBy] = mapped_column(_enum_column(CreatedBy, 16), nullable=False)
     superseded_record_id: Mapped[int | None] = mapped_column(ForeignKey("memory_records.record_id"), nullable=True)
     superseded_at: Mapped[datetime | None] = mapped_column(nullable=True)
@@ -184,7 +194,7 @@ class MemoryProvenanceLink(Base):
     conversation_id: Mapped[int | None] = mapped_column(ForeignKey("conversations.conversation_id"), nullable=True)
     element_id: Mapped[int | None] = mapped_column(ForeignKey("knowledge_elements.element_id"), nullable=True)
     document_id: Mapped[int | None] = mapped_column(ForeignKey("research_documents.document_id"), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
 
 
 class Conversation(Base):
@@ -201,7 +211,7 @@ class Conversation(Base):
     status: Mapped[ConversationStatus] = mapped_column(
         _enum_column(ConversationStatus, 16), nullable=False, default=ConversationStatus.ACTIVE
     )
-    started_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
     summarized_at: Mapped[datetime | None] = mapped_column(nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
@@ -222,7 +232,7 @@ class Message(Base):
     direction: Mapped[MessageDirection] = mapped_column(_enum_column(MessageDirection, 16), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     origin: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
 
 
 class MessageContextLink(Base):
@@ -259,7 +269,7 @@ class MessageContextLink(Base):
     element_id: Mapped[int | None] = mapped_column(ForeignKey("knowledge_elements.element_id"), nullable=True)
     chunk_id: Mapped[int | None] = mapped_column(ForeignKey("knowledge_chunks.chunk_id"), nullable=True)
     memory_record_id: Mapped[int | None] = mapped_column(ForeignKey("memory_records.record_id"), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
 
 
 class WritingSegment(Base):
@@ -278,5 +288,5 @@ class WritingSegment(Base):
     agent_id: Mapped[int] = mapped_column(ForeignKey("agents.agent_id"), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     instructions: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
     updated_at: Mapped[datetime | None] = mapped_column(nullable=True)

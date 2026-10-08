@@ -2,7 +2,7 @@ import asyncio
 import logging
 import threading
 from collections.abc import Callable
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -12,12 +12,17 @@ from app.ai.providers.base import EmbeddingProvider, TextGenerationProvider
 from app.ai.wikipedia import fetch_wikipedia_background
 from app.database.unit_of_work import SqlAlchemyUnitOfWork
 from app.modules.agent.infrastructure.repositories import SqlAlchemyAgentRepository
-from app.modules.document.domain.enums import DocumentProcessingStatus
 from app.modules.document.application.use_cases import VerifyDocumentDoiUseCase
+from app.modules.document.domain.enums import DocumentProcessingStatus
 from app.modules.document.domain.exceptions import ResearchDocumentNotFoundError
 from app.modules.document.domain.ports import ContentStore
-from app.modules.document.infrastructure.repositories import SqlAlchemyDocumentRepository
-from app.modules.knowledge.application.use_cases import ExtractDocumentKnowledgeUseCase, ProcessDocumentUseCase
+from app.modules.document.infrastructure.repositories import (
+    SqlAlchemyDocumentRepository,
+)
+from app.modules.knowledge.application.use_cases import (
+    ExtractDocumentKnowledgeUseCase,
+    ProcessDocumentUseCase,
+)
 from app.modules.knowledge.domain.text_extraction import PlainTextExtractor
 from app.modules.knowledge.infrastructure.repositories import (
     SqlAlchemyChunkEvidenceLinkRepository,
@@ -199,7 +204,7 @@ def process_one_work_item(
 
     work_items.mark_succeeded(item.work_item_id)
     documents.update_processing_status(
-        document_id, DocumentProcessingStatus.PROCESSED, processed_at=datetime.now(timezone.utc))
+        document_id, DocumentProcessingStatus.PROCESSED, processed_at=datetime.now(UTC))
     uow.commit()
     return True
 

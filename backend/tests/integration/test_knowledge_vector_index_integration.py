@@ -9,8 +9,13 @@ from app.database.unit_of_work import SqlAlchemyUnitOfWork
 from app.modules.agent.application.use_cases import CreateAgentWorkspaceUseCase
 from app.modules.agent.infrastructure.repositories import SqlAlchemyAgentRepository
 from app.modules.document.application.use_cases import UploadResearchDocumentUseCase
-from app.modules.document.infrastructure.repositories import SqlAlchemyDocumentRepository
-from app.modules.knowledge.application.use_cases import ExtractDocumentKnowledgeUseCase, ProcessDocumentUseCase
+from app.modules.document.infrastructure.repositories import (
+    SqlAlchemyDocumentRepository,
+)
+from app.modules.knowledge.application.use_cases import (
+    ExtractDocumentKnowledgeUseCase,
+    ProcessDocumentUseCase,
+)
 from app.modules.knowledge.domain.text_extraction import PlainTextExtractor
 from app.modules.knowledge.domain.vector_similarity import rank_by_similarity
 from app.modules.knowledge.infrastructure.repositories import (

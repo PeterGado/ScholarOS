@@ -57,15 +57,15 @@ Gated to no-op on SQLite (`bind.dialect.name != "postgresql"`), matching the exi
 `is_sqlite` gating idiom already used elsewhere in this codebase (see build_engine) - RLS is a
 Postgres-only concept, irrelevant to local dev/test.
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = 'cff25673e0e3'
-down_revision: Union[str, Sequence[str], None] = '4d323d592976'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = '4d323d592976'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 RLS_TABLES: list[tuple[str, str]] = [

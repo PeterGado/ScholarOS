@@ -5,7 +5,10 @@ from fastapi import Depends
 from sqlalchemy.orm import Session
 
 from app.auth.email_verification import RequestEmailVerificationUseCase
-from app.auth.infrastructure import SqlAlchemyEmailVerificationTokenRepository, SqlAlchemyUserCredentialLookup
+from app.auth.infrastructure import (
+    SqlAlchemyEmailVerificationTokenRepository,
+    SqlAlchemyUserCredentialLookup,
+)
 from app.core.dependencies import get_db, get_request_email_verification_use_case
 from app.database.unit_of_work import SqlAlchemyUnitOfWork
 from app.main import app

@@ -3,7 +3,10 @@ import re
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
-from app.auth.infrastructure import SqlAlchemyPasswordResetTokenRepository, SqlAlchemyUserCredentialLookup
+from app.auth.infrastructure import (
+    SqlAlchemyPasswordResetTokenRepository,
+    SqlAlchemyUserCredentialLookup,
+)
 from app.auth.password_reset import RequestPasswordResetUseCase
 from app.core.dependencies import get_db, get_request_password_reset_use_case
 from app.database.unit_of_work import SqlAlchemyUnitOfWork

@@ -1,6 +1,10 @@
 import pytest
 
-from app.ai.exceptions import ProviderConfigurationError, ProviderRateLimitError, ProviderRequestError
+from app.ai.exceptions import (
+    ProviderConfigurationError,
+    ProviderRateLimitError,
+    ProviderRequestError,
+)
 from app.ai.providers.failover import FailoverProvider
 
 

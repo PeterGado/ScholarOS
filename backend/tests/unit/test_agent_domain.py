@@ -1,3 +1,5 @@
+from datetime import UTC
+
 from app.modules.agent.domain.entities import Agent
 from app.modules.agent.domain.enums import AgentStatus
 
@@ -17,8 +19,8 @@ def test_is_active_is_false_once_archived():
 
 
 def test_is_active_is_false_once_soft_deleted():
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     agent = Agent.create(user_id=7)
-    agent.deleted_at = datetime.now(timezone.utc)
+    agent.deleted_at = datetime.now(UTC)
     assert not agent.is_active

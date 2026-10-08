@@ -10,7 +10,9 @@ from app.modules.agent.application.use_cases import CreateAgentWorkspaceUseCase
 from app.modules.agent.infrastructure.repositories import SqlAlchemyAgentRepository
 from app.modules.document.application.use_cases import UploadResearchDocumentUseCase
 from app.modules.document.domain.enums import DocumentProcessingStatus
-from app.modules.document.infrastructure.repositories import SqlAlchemyDocumentRepository
+from app.modules.document.infrastructure.repositories import (
+    SqlAlchemyDocumentRepository,
+)
 from app.modules.project.application.use_cases import CreateProjectUseCase
 from app.modules.project.domain.exceptions import ProjectNotFoundError
 from app.modules.project.infrastructure.repositories import SqlAlchemyProjectRepository

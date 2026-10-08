@@ -1,6 +1,11 @@
 from abc import ABC, abstractmethod
 
-from app.modules.knowledge.domain.entities import ChunkEmbedding, ChunkEvidenceLink, KnowledgeChunk, KnowledgeElement
+from app.modules.knowledge.domain.entities import (
+    ChunkEmbedding,
+    ChunkEvidenceLink,
+    KnowledgeChunk,
+    KnowledgeElement,
+)
 
 
 class KnowledgeElementRepository(ABC):

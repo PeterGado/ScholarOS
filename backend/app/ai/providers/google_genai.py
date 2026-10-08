@@ -84,7 +84,7 @@ class GoogleGenAIProvider:
         )
         try:
             response = self._client.models.generate_content(model=self._model, contents=prompt, config=config)
-        except Exception as exc:  # noqa: BLE001 - the SDK's exception hierarchy is not part of our contract
+        except Exception as exc:
             if _is_rate_limit_error(exc):
                 raise ProviderRateLimitError(
                     "AI provider rate limit reached. Please retry after the provider quota resets."
@@ -102,7 +102,7 @@ class GoogleGenAIProvider:
     def embed(self, text: str) -> list[float]:
         try:
             response = self._client.models.embed_content(model=self._embedding_model, contents=text)
-        except Exception as exc:  # noqa: BLE001 - the SDK's exception hierarchy is not part of our contract
+        except Exception as exc:
             if _is_rate_limit_error(exc):
                 raise ProviderRateLimitError(
                     "AI provider rate limit reached. Please retry after the provider quota resets."
@@ -121,7 +121,7 @@ class GoogleGenAIProvider:
 
         try:
             response = self._client.models.embed_content(model=self._embedding_model, contents=texts)
-        except Exception as exc:  # noqa: BLE001 - the SDK's exception hierarchy is not part of our contract
+        except Exception as exc:
             if _is_rate_limit_error(exc):
                 raise ProviderRateLimitError(
                     "AI provider rate limit reached. Please retry after the provider quota resets."

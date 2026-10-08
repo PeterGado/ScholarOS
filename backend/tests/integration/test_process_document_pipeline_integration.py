@@ -9,11 +9,20 @@ from app.database.unit_of_work import SqlAlchemyUnitOfWork
 from app.modules.agent.application.use_cases import CreateAgentWorkspaceUseCase
 from app.modules.agent.infrastructure.repositories import SqlAlchemyAgentRepository
 from app.modules.document.application.use_cases import UploadResearchDocumentUseCase
-from app.modules.document.infrastructure.repositories import SqlAlchemyDocumentRepository
+from app.modules.document.infrastructure.repositories import (
+    SqlAlchemyDocumentRepository,
+)
 from app.modules.knowledge.application.use_cases import ProcessDocumentUseCase
-from app.modules.knowledge.domain.exceptions import EmptyExtractedTextError, UnsupportedDocumentFormatError
+from app.modules.knowledge.domain.exceptions import (
+    EmptyExtractedTextError,
+    UnsupportedDocumentFormatError,
+)
 from app.modules.knowledge.domain.text_extraction import PlainTextExtractor
-from app.modules.knowledge.infrastructure.models import ChunkEvidenceLink, KnowledgeChunk, KnowledgeElement
+from app.modules.knowledge.infrastructure.models import (
+    ChunkEvidenceLink,
+    KnowledgeChunk,
+    KnowledgeElement,
+)
 from app.modules.project.application.use_cases import CreateProjectUseCase
 from app.modules.project.infrastructure.repositories import SqlAlchemyProjectRepository
 from app.storage.filesystem import FilesystemStorage

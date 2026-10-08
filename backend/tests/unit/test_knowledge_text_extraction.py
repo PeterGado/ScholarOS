@@ -44,7 +44,7 @@ def _build_pdf_bytes(text: str) -> bytes:
 
 def test_extracts_valid_utf8_text():
     extractor = PlainTextExtractor()
-    result = extractor.extract("Hello, research world.".encode("utf-8"), document_id=1)
+    result = extractor.extract(b"Hello, research world.", document_id=1)
     assert result == "Hello, research world."
 
 

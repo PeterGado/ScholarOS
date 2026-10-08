@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -90,7 +90,7 @@ class WorkItemRepository:
             return None
         row.state = WorkItemState.FAILED
         row.last_error = "Cancelled: the record this work item refers to no longer exists."
-        row.completed_at = datetime.now(timezone.utc)
+        row.completed_at = datetime.now(UTC)
         self._session.flush()
         return self._to_domain(row)
 
@@ -116,7 +116,7 @@ class WorkItemRepository:
             )
             .all()
         )
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for row in rows:
             row.state = WorkItemState.FAILED
             row.last_error = "Cancelled: the record this work item refers to no longer exists."
@@ -198,14 +198,14 @@ class WorkItemRepository:
         if row is None:
             return None
         row.state = WorkItemState.RUNNING
-        row.executed_at = datetime.now(timezone.utc)
+        row.executed_at = datetime.now(UTC)
         self._session.flush()
         return self._to_domain(row)
 
     def mark_succeeded(self, work_item_id: int) -> None:
         row = self._session.get(WorkItemModel, work_item_id)
         row.state = WorkItemState.SUCCEEDED
-        row.completed_at = datetime.now(timezone.utc)
+        row.completed_at = datetime.now(UTC)
         self._session.flush()
 
     def mark_failed(self, work_item_id: int, *, error: str, max_attempts: int = DEFAULT_MAX_ATTEMPTS) -> WorkItem:
@@ -220,7 +220,7 @@ class WorkItemRepository:
             row.state = WorkItemState.QUEUED
         else:
             row.state = WorkItemState.FAILED
-            row.completed_at = datetime.now(timezone.utc)
+            row.completed_at = datetime.now(UTC)
         self._session.flush()
         return self._to_domain(row)
 
@@ -249,7 +249,7 @@ class WorkItemRepository:
         concern yet with this rollout's single-machine design, but cheap to make correct now
         while `claim_next_queued` gets the same treatment for the same underlying reason.
         """
-        threshold = datetime.now(timezone.utc) - stale_after
+        threshold = datetime.now(UTC) - stale_after
         query = self._session.query(WorkItemModel).filter(
             WorkItemModel.state == WorkItemState.RUNNING, WorkItemModel.executed_at < threshold
         )
@@ -265,7 +265,7 @@ class WorkItemRepository:
                 row.state = WorkItemState.QUEUED
             else:
                 row.state = WorkItemState.FAILED
-                row.completed_at = datetime.now(timezone.utc)
+                row.completed_at = datetime.now(UTC)
         self._session.flush()
         return len(rows)
 

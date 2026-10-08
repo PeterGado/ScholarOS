@@ -23,9 +23,14 @@ from app.database.unit_of_work import SqlAlchemyUnitOfWork
 from app.modules.agent.application.use_cases import CreateAgentWorkspaceUseCase
 from app.modules.agent.infrastructure.repositories import SqlAlchemyAgentRepository
 from app.modules.document.application.use_cases import UploadResearchDocumentUseCase
-from app.modules.document.infrastructure.repositories import SqlAlchemyDocumentRepository
+from app.modules.document.infrastructure.repositories import (
+    SqlAlchemyDocumentRepository,
+)
 from app.modules.knowledge.application.retrieval import SearchKnowledgeUseCase
-from app.modules.knowledge.application.use_cases import ExtractDocumentKnowledgeUseCase, ProcessDocumentUseCase
+from app.modules.knowledge.application.use_cases import (
+    ExtractDocumentKnowledgeUseCase,
+    ProcessDocumentUseCase,
+)
 from app.modules.knowledge.domain.text_extraction import PlainTextExtractor
 from app.modules.knowledge.infrastructure.repositories import (
     SqlAlchemyChunkEvidenceLinkRepository,
@@ -214,7 +219,9 @@ def test_at_most_one_active_writing_profile_per_agent_is_enforced_but_a_second_a
     """
     from app.modules.writing.domain.entities import WritingProfile
     from app.modules.writing.domain.enums import WritingProfileStatus
-    from app.modules.writing.infrastructure.repositories import SqlAlchemyWritingProfileRepository
+    from app.modules.writing.infrastructure.repositories import (
+        SqlAlchemyWritingProfileRepository,
+    )
 
     user = User(username="profile-owner")
     session.add(user)

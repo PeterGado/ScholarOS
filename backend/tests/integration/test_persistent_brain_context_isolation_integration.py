@@ -20,7 +20,11 @@ from app.modules.writing.domain.context_assembly import (
     ContextStyleSignal,
     assemble_context,
 )
-from app.modules.writing.domain.entities import MemoryRecord, ProfileCharacteristic, WritingProfile
+from app.modules.writing.domain.entities import (
+    MemoryRecord,
+    ProfileCharacteristic,
+    WritingProfile,
+)
 from app.modules.writing.domain.enums import MemoryRecordType, ProfileCharacteristicType
 from app.modules.writing.infrastructure.repositories import (
     SqlAlchemyMemoryRecordRepository,
@@ -77,7 +81,9 @@ def _make_populated_workspace(session, *, username, topic, description, style_si
 
 
 def _assembled_context_for(session, workspace, *, evidence_content: str) -> str:
-    from app.modules.project.infrastructure.repositories import SqlAlchemyProjectRepository
+    from app.modules.project.infrastructure.repositories import (
+        SqlAlchemyProjectRepository,
+    )
 
     project = SqlAlchemyProjectRepository(session).get_by_agent_id(workspace.agent.agent_id)
     profile = SqlAlchemyWritingProfileRepository(session).get_active_by_agent_id(workspace.agent.agent_id)

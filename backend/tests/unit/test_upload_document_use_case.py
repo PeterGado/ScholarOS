@@ -129,7 +129,7 @@ class FakeWorkItemEnqueuer:
 
     def enqueue(self, *, kind, payload_reference, idempotency_key):
         self.enqueued.append({"kind": kind, "payload_reference": payload_reference, "idempotency_key": idempotency_key})
-        return None
+        return
 
 
 class FakeEmailVerificationGuard:
@@ -156,7 +156,7 @@ class FakeWorkItemOutcomeLookup:
 
     def cancel_queued_by_payload_reference(self, payload_reference):
         self.cancelled_payload_references.append(payload_reference)
-        return None
+        return
 
 
 def _build_use_case(project_id=1, agents: dict[int, Agent] | None = None, *, email_verified: bool = True):

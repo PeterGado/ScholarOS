@@ -1,7 +1,7 @@
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Callable
+from datetime import UTC, datetime
 
 from app.ai.crossref import CrossrefWork, fetch_crossref_work
 from app.ai.usage_guard import AiUsageGuard
@@ -10,7 +10,11 @@ from app.core.pagination import DEFAULT_LIST_LIMIT
 from app.core.unit_of_work import UnitOfWork
 from app.modules.agent.domain.repositories import AgentRepository
 from app.modules.document.domain.entities import ResearchDocument
-from app.modules.document.domain.enums import DocumentProcessingStatus, DocumentPurpose, DoiVerificationStatus
+from app.modules.document.domain.enums import (
+    DocumentProcessingStatus,
+    DocumentPurpose,
+    DoiVerificationStatus,
+)
 from app.modules.document.domain.exceptions import (
     DocumentCannotBeDeletedError,
     DocumentCannotBeRetriedError,
@@ -23,7 +27,10 @@ from app.modules.document.domain.repositories import DocumentRepository
 from app.modules.project.domain.exceptions import ProjectNotFoundError
 from app.modules.project.domain.repositories import ProjectRepository
 from app.workers.enums import WorkItemKind
-from app.workers.payloads import build_process_document_idempotency_key, build_process_document_payload_reference
+from app.workers.payloads import (
+    build_process_document_idempotency_key,
+    build_process_document_payload_reference,
+)
 from app.workers.ports import WorkItemEnqueuer, WorkItemOutcomeLookup
 
 _DELETABLE_STATUSES = {DocumentProcessingStatus.PENDING, DocumentProcessingStatus.FAILED}
@@ -274,7 +281,7 @@ class DeleteResearchDocumentUseCase:
             self._work_items.cancel_queued_by_payload_reference(
                 build_process_document_payload_reference(document_id)
             )
-            self._documents.mark_deleted(document_id, deleted_at=datetime.now(timezone.utc))
+            self._documents.mark_deleted(document_id, deleted_at=datetime.now(UTC))
             self._uow.commit()
         except Exception:
             self._uow.rollback()

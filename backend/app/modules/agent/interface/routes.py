@@ -8,7 +8,10 @@ from app.core.dependencies import (
     get_reset_agent_workspace_use_case,
 )
 from app.modules.agent.application.reset_workspace import ResetAgentWorkspaceUseCase
-from app.modules.agent.application.use_cases import CreateAgentWorkspaceUseCase, GetAgentWorkspaceUseCase
+from app.modules.agent.application.use_cases import (
+    CreateAgentWorkspaceUseCase,
+    GetAgentWorkspaceUseCase,
+)
 from app.modules.agent.interface.schemas import (
     AgentWorkspaceResponse,
     CreateAgentWorkspaceRequest,

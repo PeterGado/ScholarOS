@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
 
@@ -45,7 +45,7 @@ def test_queue_health_is_healthy_when_empty(client, db_engine):
 
 
 def test_queue_health_is_healthy_for_a_recently_queued_item(client, db_engine):
-    _enqueue_work_item(db_engine, state=WorkItemState.QUEUED, created_at=datetime.now(timezone.utc))
+    _enqueue_work_item(db_engine, state=WorkItemState.QUEUED, created_at=datetime.now(UTC))
 
     response = client.get("/health/queue")
 
@@ -56,7 +56,7 @@ def test_queue_health_is_healthy_for_a_recently_queued_item(client, db_engine):
 
 
 def test_queue_health_is_unhealthy_for_an_item_stuck_past_the_threshold(client, db_engine):
-    stuck_since = datetime.now(timezone.utc) - timedelta(seconds=900)  # past the 600s default
+    stuck_since = datetime.now(UTC) - timedelta(seconds=900)  # past the 600s default
     _enqueue_work_item(db_engine, state=WorkItemState.RUNNING, created_at=stuck_since)
 
     response = client.get("/health/queue")
@@ -68,7 +68,7 @@ def test_queue_health_is_unhealthy_for_an_item_stuck_past_the_threshold(client, 
 
 
 def test_queue_health_ignores_terminal_items(client, db_engine):
-    stuck_since = datetime.now(timezone.utc) - timedelta(seconds=900)
+    stuck_since = datetime.now(UTC) - timedelta(seconds=900)
     _enqueue_work_item(db_engine, state=WorkItemState.SUCCEEDED, created_at=stuck_since)
 
     response = client.get("/health/queue")

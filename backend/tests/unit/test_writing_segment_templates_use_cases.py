@@ -7,11 +7,17 @@ from app.modules.writing.application.segment_templates import (
     ApplySegmentTemplateUseCase,
     ListSegmentTemplatesUseCase,
 )
-from app.modules.writing.application.segments import MAX_WRITING_SEGMENTS_PER_AGENT, CreateWritingSegmentUseCase
+from app.modules.writing.application.segments import (
+    MAX_WRITING_SEGMENTS_PER_AGENT,
+    CreateWritingSegmentUseCase,
+)
 from app.modules.writing.domain.entities import WritingSegment
 from app.modules.writing.domain.exceptions import SegmentTemplateNotFoundError
 from app.modules.writing.domain.repositories import WritingSegmentRepository
-from app.modules.writing.domain.segment_templates import SEGMENT_TEMPLATES, FYP1_WRITING_GUIDE_TEMPLATE
+from app.modules.writing.domain.segment_templates import (
+    FYP1_WRITING_GUIDE_TEMPLATE,
+    SEGMENT_TEMPLATES,
+)
 
 USER_ID = 1
 AGENT_ID = 1

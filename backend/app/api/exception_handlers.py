@@ -4,7 +4,11 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from slowapi.errors import RateLimitExceeded
 
-from app.ai.exceptions import AiUsageQuotaExceededError, ProviderConfigurationError, ProviderRequestError
+from app.ai.exceptions import (
+    AiUsageQuotaExceededError,
+    ProviderConfigurationError,
+    ProviderRequestError,
+)
 from app.auth.exceptions import (
     EmailAlreadyInUseError,
     EmailNotVerifiedError,
@@ -20,9 +24,16 @@ from app.auth.exceptions import (
     PasswordCompromisedError,
     WeakPasswordError,
 )
+from app.core.exceptions import (
+    ScholarOSError,
+    UnsupportedUploadFormatError,
+    UploadTooLargeError,
+)
 from app.email.exceptions import EmailSendError
-from app.core.exceptions import ScholarOSError, UnsupportedUploadFormatError, UploadTooLargeError
-from app.modules.agent.domain.exceptions import AgentAlreadyExistsForUserError, AgentNotFoundForUserError
+from app.modules.agent.domain.exceptions import (
+    AgentAlreadyExistsForUserError,
+    AgentNotFoundForUserError,
+)
 from app.modules.document.domain.exceptions import (
     DocumentCannotBeDeletedError,
     DocumentCannotBeRetriedError,

@@ -2,7 +2,11 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 
 from app.modules.document.domain.entities import ResearchDocument
-from app.modules.document.domain.enums import DocumentProcessingStatus, DocumentPurpose, DoiVerificationStatus
+from app.modules.document.domain.enums import (
+    DocumentProcessingStatus,
+    DocumentPurpose,
+    DoiVerificationStatus,
+)
 
 
 class DocumentRepository(ABC):

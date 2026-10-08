@@ -5,9 +5,20 @@ from app.modules.agent.domain.repositories import AgentRepository
 from app.modules.document.domain.entities import ResearchDocument
 from app.modules.document.domain.exceptions import ResearchDocumentNotFoundError
 from app.modules.document.domain.repositories import DocumentRepository
-from app.modules.knowledge.application.use_cases import ExtractDocumentKnowledgeUseCase, ProcessDocumentUseCase
-from app.modules.knowledge.domain.entities import ChunkEmbedding, ChunkEvidenceLink, KnowledgeChunk, KnowledgeElement
-from app.modules.knowledge.domain.exceptions import AgentResolutionError, SemanticExtractionError
+from app.modules.knowledge.application.use_cases import (
+    ExtractDocumentKnowledgeUseCase,
+    ProcessDocumentUseCase,
+)
+from app.modules.knowledge.domain.entities import (
+    ChunkEmbedding,
+    ChunkEvidenceLink,
+    KnowledgeChunk,
+    KnowledgeElement,
+)
+from app.modules.knowledge.domain.exceptions import (
+    AgentResolutionError,
+    SemanticExtractionError,
+)
 from app.modules.knowledge.domain.repositories import (
     ChunkEvidenceLinkRepository,
     KnowledgeChunkEmbeddingRepository,
@@ -371,8 +382,10 @@ def test_multiple_chunks_each_get_their_own_element_and_evidence_link():
         content_store=FakeContentStore({"ref-1": long_content}),
         provider=FakeTextGenerationProvider(
             responses=[
-                '[{"element_type": "concept", "label": "First", "description": "d1"},'
-                ' {"element_type": "theme", "label": "Second", "description": "d2"}]'
+                (
+                    '[{"element_type": "concept", "label": "First", "description": "d1"},'
+                    ' {"element_type": "theme", "label": "Second", "description": "d2"}]'
+                )
             ]
         ),
     )

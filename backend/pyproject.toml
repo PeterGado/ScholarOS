@@ -30,6 +30,8 @@ dev = [
     "httpx>=0.27",
     "httpx2>=0.1",
     "moto[s3,server]>=5.0",
+    "ruff>=0.6",
+    "mypy>=1.11",
 ]
 
 [build-system]
@@ -38,3 +40,85 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
+
+# --- Linting (2026-10-08, CI) ---------------------------------------------------------------
+# Adopted when CI gained a backend lint gate; the rule set below is deliberately the
+# bug-finding core (pycodestyle errors, pyflakes, import sorting, the safe pyupgrade
+# modernizations, flake8-bugbear and its neighbors) rather than "everything ruff offers."
+# Two deliberate omissions, both recorded here rather than silently absent:
+#   - E501 (line length): the codebase has no line-length convention and real lines up to ~370
+#     characters exist, many of them long explanatory comment paragraphs. Enforcing it would be
+#     a formatting project, not a lint gate - out of scope for this change.
+#   - RUF059 (unused unpacked variable): 115 pre-existing hits, almost all `for _, thing in`
+#     destructuring in tests; no autofix exists, so enabling it today would mean a large manual
+#     test-suite diff for a style-only nit. Ignored for tests/ only (see per-file-ignores).
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "UP", "B", "RUF", "C4", "PIE", "ISC", "RET", "BLE", "SIM"]
+# Two rules are ignored on purpose, each for a reason that is about *this* codebase rather than
+# about the rule being wrong in general:
+#   - B008 (function-call-in-default-argument) fires on FastAPI's own `x: T = Depends(...)` idiom
+#     at every route and DI-provider signature - the framework's documented pattern, not a bug.
+#   - UP042 (replace-str-enum) wants `class X(str, Enum)` rewritten as `enum.StrEnum` across 20
+#     enums. It is not the cosmetic rewrite it looks like: StrEnum changes `str()`/formatting
+#     behavior (`f"{Member.A}"` becomes "A" instead of "X.A"), and these enums are consumed by
+#     SQLAlchemy `values_callable` column mappings and raw CHECK constraints written against their
+#     lowercase values. Deferred deliberately pending a dedicated, tested change - not applied as
+#     part of adopting a linter.
+ignore = ["B008", "UP042"]
+
+[tool.ruff.lint.per-file-ignores]
+# 115 pre-existing `for _, x in ...` unpackings in the test suite; no autofix exists for RUF059,
+# so enabling it here would mean a large manual test diff for a style-only nit.
+"tests/**" = ["RUF059"]
+# Alembic's own env.py template imports the models after `config = context.config` and the
+# `target_metadata` setup - upstream's canonical layout, not a stray import.
+"alembic/env.py" = ["E402"]
+
+# --- Type checking (2026-10-08, CI) --------------------------------------------------------
+# mypy was never configured before this, so `app/` is being adopted as a *baseline*: the gate is
+# real and blocking for the 147 of 172 modules that are already clean, and the 25 modules that
+# still carry pre-existing errors are listed individually below with their counts. Each is a
+# real, tracked piece of typing debt (overwhelmingly SQLAlchemy column inferencing and Optional
+# narrowing), not a false positive to be permanently silenced - the intent is to fix them and
+# shrink this list, not to grow it. Anything not listed here must be clean.
+[tool.mypy]
+python_version = "3.11"
+files = ["app"]
+# Third-party stubs are not the subject of this gate: `google-genai`'s client methods are only
+# reachable as `object` without stubs, and chasing that here would mean pinning stub versions
+# to satisfy mypy rather than to fix our code.
+ignore_missing_imports = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = [
+    "app.ai.providers.google_genai",          # 3
+    "app.ai.providers.openai_compatible",     # 2
+    "app.ai.providers.unavailable",           # 3
+    "app.api.exception_handlers",             # 2
+    "app.auth.infrastructure",                # 16
+    "app.auth.service",                       # 1
+    "app.core.rate_limit_storage",            # 1
+    "app.modules.agent.application.use_cases",        # 2
+    "app.modules.agent.interface.schemas",            # 2
+    "app.modules.document.application.use_cases",     # 3
+    "app.modules.document.interface.schemas",          # 1
+    "app.modules.knowledge.application.retrieval",     # 3
+    "app.modules.knowledge.application.use_cases",     # 4
+    "app.modules.knowledge.domain.chunking",           # 2
+    "app.modules.knowledge.domain.text_extraction",     # 1
+    "app.modules.writing.application.chat",             # 8
+    "app.modules.writing.application.memory_inspection", # 4
+    "app.modules.writing.application.profile_view",      # 6
+    "app.modules.writing.application.segments",          # 7
+    "app.modules.writing.application.style_extraction",  # 13
+    "app.modules.writing.application.style_ingestion",   # 7
+    "app.modules.writing.domain.style_extraction",       # 1
+    "app.modules.writing.infrastructure.repositories",   # 11
+    "app.modules.writing.interface.schemas",             # 11
+    "app.workers.repository",                            # 11
+]
+ignore_errors = true

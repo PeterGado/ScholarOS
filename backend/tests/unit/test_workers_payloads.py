@@ -1,6 +1,9 @@
 import pytest
 
-from app.modules.writing.domain.context_assembly import ContextAssemblyInput, ContextEvidence
+from app.modules.writing.domain.context_assembly import (
+    ContextAssemblyInput,
+    ContextEvidence,
+)
 from app.workers.payloads import (
     build_generate_chat_reply_payload_reference,
     build_process_document_idempotency_key,

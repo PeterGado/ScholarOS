@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.core.unit_of_work import UnitOfWork
 from app.modules.agent.domain.exceptions import AgentNotFoundForUserError
@@ -107,7 +107,7 @@ class UpdateWritingSegmentUseCase:
         if existing is not None and existing.segment_id != segment_id:
             raise DuplicateWritingSegmentNameError(name=name)
 
-        updated_at = datetime.now(timezone.utc)
+        updated_at = datetime.now(UTC)
         try:
             self._segments.update(segment_id, name=name, instructions=instructions, updated_at=updated_at)
             self._uow.commit()

@@ -4,9 +4,13 @@ from app.auth.hashing import hash_password
 from app.core.config import get_settings
 from app.database.session import build_sessionmaker
 from app.database.shared_models import User
-from app.modules.document.infrastructure.repositories import SqlAlchemyDocumentRepository
+from app.modules.document.infrastructure.repositories import (
+    SqlAlchemyDocumentRepository,
+)
 from app.modules.writing.application.style_ingestion import MAX_WRITING_STYLE_SAMPLES
-from app.modules.writing.infrastructure.repositories import SqlAlchemyWritingProfileRepository
+from app.modules.writing.infrastructure.repositories import (
+    SqlAlchemyWritingProfileRepository,
+)
 
 
 def _create_workspace(client, headers) -> dict:

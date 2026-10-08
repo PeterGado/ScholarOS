@@ -1,5 +1,5 @@
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -12,7 +12,11 @@ from app.auth.exceptions import (
     InvalidInviteCodeError,
 )
 from app.auth.google_sign_in import GoogleSignInUseCase
-from app.auth.repository import AuthSessionRepository, UserCredentialLookup, UserRegistrationRepository
+from app.auth.repository import (
+    AuthSessionRepository,
+    UserCredentialLookup,
+    UserRegistrationRepository,
+)
 from app.auth.service import AuthService
 
 GOOGLE_CLIENT_ID = "test-client-id.apps.googleusercontent.com"
@@ -82,7 +86,7 @@ class FakeAuthSessionRepository(AuthSessionRepository):
         self._next_id = 1
 
     def create(self, *, user_id: int, token_hash: str) -> AuthSession:
-        session = AuthSession(session_id=self._next_id, user_id=user_id, token_hash=token_hash, started_at=datetime.now(timezone.utc))
+        session = AuthSession(session_id=self._next_id, user_id=user_id, token_hash=token_hash, started_at=datetime.now(UTC))
         self._next_id += 1
         self._by_hash[token_hash] = session
         return session
@@ -91,13 +95,13 @@ class FakeAuthSessionRepository(AuthSessionRepository):
         return self._by_hash.get(token_hash)
 
     def end(self, session: AuthSession) -> None:
-        session.ended_at = datetime.now(timezone.utc)
+        session.ended_at = datetime.now(UTC)
 
     def touch(self, session: AuthSession) -> None:
-        session.last_active_at = datetime.now(timezone.utc)
+        session.last_active_at = datetime.now(UTC)
 
     def end_all_for_user(self, user_id: int) -> None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for session in self._by_hash.values():
             if session.user_id == user_id and session.ended_at is None:
                 session.ended_at = now

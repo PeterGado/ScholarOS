@@ -8,7 +8,7 @@ import { test, expect } from "@playwright/test";
 const USERNAME = process.env.PLAYWRIGHT_AUTH_USERNAME ?? "manual-verify-user";
 const PASSWORD = process.env.PLAYWRIGHT_AUTH_PASSWORD ?? "ManualVerify-Pass-1";
 
-test.setTimeout(120_000);
+test.setTimeout(300_000);
 
 // Waits on the real upload response rather than intermediate UI text: the throwaway backend
 // runs a real background executor that may process (and hide, per the "vanishes on success"

@@ -1,12 +1,16 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import Enum, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
-from app.modules.document.domain.enums import DocumentProcessingStatus, DocumentPurpose, DoiVerificationStatus
+from app.modules.document.domain.enums import (
+    DocumentProcessingStatus,
+    DocumentPurpose,
+    DoiVerificationStatus,
+)
 
-__all__ = ["ResearchDocument", "DocumentProcessingStatus", "DocumentPurpose", "DoiVerificationStatus"]
+__all__ = ["DocumentProcessingStatus", "DocumentPurpose", "DoiVerificationStatus", "ResearchDocument"]
 
 
 class ResearchDocument(Base):
@@ -45,7 +49,7 @@ class ResearchDocument(Base):
         nullable=False,
         default=DocumentPurpose.RESEARCH,
     )
-    ingested_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
+    ingested_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
     processed_at: Mapped[datetime | None] = mapped_column(nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(nullable=True)
 

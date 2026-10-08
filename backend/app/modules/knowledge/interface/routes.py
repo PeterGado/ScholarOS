@@ -3,7 +3,11 @@ from fastapi import APIRouter, Depends, Query, Request, status
 from app.api.exception_handlers import ErrorResponse
 from app.core.dependencies import get_current_user_id, get_search_knowledge_use_case
 from app.core.rate_limit import limiter
-from app.modules.knowledge.application.retrieval import DEFAULT_TOP_K, MAX_TOP_K, SearchKnowledgeUseCase
+from app.modules.knowledge.application.retrieval import (
+    DEFAULT_TOP_K,
+    MAX_TOP_K,
+    SearchKnowledgeUseCase,
+)
 from app.modules.knowledge.interface.schemas import SearchResponse
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])

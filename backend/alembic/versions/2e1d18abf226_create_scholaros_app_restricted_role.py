@@ -32,15 +32,15 @@ excluded from RLS specifically, not from the app's normal access).
 
 Gated to no-op on SQLite, matching every other Postgres-only migration in this project.
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = '2e1d18abf226'
-down_revision: Union[str, Sequence[str], None] = 'cff25673e0e3'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = 'cff25673e0e3'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 ROLE_NAME = "scholaros_app"
 

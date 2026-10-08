@@ -13,7 +13,11 @@ from app.modules.writing.domain.context_assembly import (
     detect_likely_citations,
     find_unverified_citations,
 )
-from app.modules.writing.domain.enums import MemoryRecordType, MessageDirection, ProfileCharacteristicType
+from app.modules.writing.domain.enums import (
+    MemoryRecordType,
+    MessageDirection,
+    ProfileCharacteristicType,
+)
 from app.modules.writing.domain.exceptions import InvalidContextAssemblyInputError
 
 

@@ -12,14 +12,20 @@ from app.modules.knowledge.domain.entities import (
     KnowledgeElement,
     TextChunkCandidate,
 )
-from app.modules.knowledge.domain.exceptions import AgentResolutionError, MissingStoredContentError
+from app.modules.knowledge.domain.exceptions import (
+    AgentResolutionError,
+    MissingStoredContentError,
+)
 from app.modules.knowledge.domain.repositories import (
     ChunkEvidenceLinkRepository,
     KnowledgeChunkEmbeddingRepository,
     KnowledgeChunkRepository,
     KnowledgeElementRepository,
 )
-from app.modules.knowledge.domain.semantic_classification import ChunkClassification, classify_chunks_batch
+from app.modules.knowledge.domain.semantic_classification import (
+    ChunkClassification,
+    classify_chunks_batch,
+)
 from app.modules.knowledge.domain.text_extraction import DocumentTextExtractor
 from app.modules.knowledge.domain.text_normalization import normalize_text
 from app.modules.project.domain.repositories import ProjectRepository

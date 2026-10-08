@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from app.ai.exceptions import AiUsageQuotaExceededError
 from app.ai.usage_repository import AiUsageRepository
@@ -40,7 +40,7 @@ class AiUsageGuard:
         if self._daily_token_cap is None:
             return
 
-        since = datetime.now(timezone.utc) - _USAGE_WINDOW
+        since = datetime.now(UTC) - _USAGE_WINDOW
         usage_so_far = self._repository.get_usage_since(user_id=user_id, since=since)
         if usage_so_far + estimated_tokens > self._daily_token_cap:
             raise AiUsageQuotaExceededError()

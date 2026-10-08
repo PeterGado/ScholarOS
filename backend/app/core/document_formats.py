@@ -21,7 +21,7 @@ def looks_like_a_supported_document(content: bytes) -> bool:
     discovered during real processing, exactly as before - this only rejects a file that is
     unambiguously the wrong kind of file altogether, not a real .docx/PDF's internal validity.
     """
-    if content.startswith(_DOCX_MAGIC) or content.startswith(_PDF_MAGIC):
+    if content.startswith((_DOCX_MAGIC, _PDF_MAGIC)):
         return True
     try:
         content.decode("utf-8")

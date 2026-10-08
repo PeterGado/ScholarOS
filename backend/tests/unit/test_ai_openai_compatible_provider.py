@@ -3,8 +3,15 @@ import json
 import httpx
 import pytest
 
-from app.ai.exceptions import ProviderConfigurationError, ProviderRateLimitError, ProviderRequestError
-from app.ai.providers.openai_compatible import OpenAICompatibleProvider, create_default_provider
+from app.ai.exceptions import (
+    ProviderConfigurationError,
+    ProviderRateLimitError,
+    ProviderRequestError,
+)
+from app.ai.providers.openai_compatible import (
+    OpenAICompatibleProvider,
+    create_default_provider,
+)
 from app.core.config import Settings
 
 

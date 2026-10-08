@@ -12,14 +12,18 @@ from app.database.session import build_engine, build_sessionmaker, init_db
 from app.database.shared_models import User
 from app.database.unit_of_work import SqlAlchemyUnitOfWork
 from app.modules.agent.application.use_cases import CreateAgentWorkspaceUseCase
-from app.modules.agent.domain.entities import Agent
 from app.modules.agent.infrastructure.repositories import SqlAlchemyAgentRepository
 from app.modules.document.application.use_cases import UploadResearchDocumentUseCase
 from app.modules.document.domain.enums import DocumentProcessingStatus
 from app.modules.document.infrastructure.models import ResearchDocument
-from app.modules.document.infrastructure.repositories import SqlAlchemyDocumentRepository
-from app.modules.knowledge.infrastructure.models import ChunkEvidenceLink, KnowledgeChunk, KnowledgeElement
-from app.modules.knowledge.domain.enums import CreatedBy as KnowledgeCreatedBy, KnowledgeElementType
+from app.modules.document.infrastructure.repositories import (
+    SqlAlchemyDocumentRepository,
+)
+from app.modules.knowledge.infrastructure.models import (
+    ChunkEvidenceLink,
+    KnowledgeChunk,
+    KnowledgeElement,
+)
 from app.modules.knowledge.infrastructure.vector_models import KnowledgeChunkEmbedding
 from app.modules.project.application.use_cases import CreateProjectUseCase
 from app.modules.project.infrastructure.repositories import SqlAlchemyProjectRepository

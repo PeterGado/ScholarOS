@@ -1,4 +1,5 @@
 import io
+from typing import ClassVar
 
 import pytest
 
@@ -7,8 +8,8 @@ from app.core.dependencies import get_embedding_provider
 from app.database.session import build_sessionmaker
 from app.database.shared_models import User
 from app.main import app
-from app.workers.executor import process_one_work_item
 from app.storage.filesystem import FilesystemStorage
+from app.workers.executor import process_one_work_item
 
 
 class FakeEmbeddingProvider:
@@ -16,7 +17,7 @@ class FakeEmbeddingProvider:
     not merely that a response comes back.
     """
 
-    _VECTORS = {
+    _VECTORS: ClassVar[dict[str, list[float]]] = {
         "Coastal erosion methodology and findings.": [1.0, 0.0],
         "An entirely unrelated culinary history.": [0.0, 1.0],
         "coastal erosion": [1.0, 0.0],

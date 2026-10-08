@@ -1,6 +1,10 @@
 import httpx
 
-from app.ai.exceptions import ProviderConfigurationError, ProviderRateLimitError, ProviderRequestError
+from app.ai.exceptions import (
+    ProviderConfigurationError,
+    ProviderRateLimitError,
+    ProviderRequestError,
+)
 from app.ai.providers.failover import FailoverProvider
 from app.ai.providers.rate_limited import RateLimitedProvider
 from app.core.config import Settings

@@ -4,7 +4,10 @@ import docx
 import pytest
 
 from app.modules.writing.domain.enums import ProfileCharacteristicType
-from app.modules.writing.domain.exceptions import StyleExtractionError, UnusableWritingStyleSampleError
+from app.modules.writing.domain.exceptions import (
+    StyleExtractionError,
+    UnusableWritingStyleSampleError,
+)
 from app.modules.writing.domain.style_extraction import (
     MAX_CHARACTERS_PER_SAMPLE,
     MAX_SAMPLES_PER_EXTRACTION,

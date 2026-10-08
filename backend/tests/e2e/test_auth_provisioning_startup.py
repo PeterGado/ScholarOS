@@ -1,10 +1,10 @@
 import pytest
 from fastapi.testclient import TestClient
 
+import app.database.session as session_module
 from app.auth.hashing import hash_password
 from app.core.config import get_settings
 from app.database.session import build_engine, build_sessionmaker
-import app.database.session as session_module
 from app.database.shared_models import User
 from app.main import app
 
@@ -85,6 +85,6 @@ def test_startup_fails_fast_with_a_malformed_password_hash(db_engine, clear_sett
     monkeypatch.setenv("AUTH_PASSWORD_HASH", "not-a-real-bcrypt-hash")
     get_settings.cache_clear()
 
-    with pytest.raises(Exception):  # noqa: B017 - the exact wrapping exception type is FastAPI/Starlette's, not ours
-        with TestClient(app):
-            pass
+    # The exact wrapping exception type is FastAPI/Starlette's own, not ours.
+    with pytest.raises(Exception), TestClient(app):  # noqa: B017
+        pass

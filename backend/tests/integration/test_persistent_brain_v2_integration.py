@@ -16,6 +16,10 @@ from app.database.shared_models import User
 from app.database.unit_of_work import SqlAlchemyUnitOfWork
 from app.modules.agent.application.use_cases import CreateAgentWorkspaceUseCase
 from app.modules.agent.infrastructure.repositories import SqlAlchemyAgentRepository
+from app.modules.document.application.use_cases import UploadResearchDocumentUseCase
+from app.modules.document.infrastructure.repositories import (
+    SqlAlchemyDocumentRepository,
+)
 from app.modules.knowledge.application.retrieval import SearchKnowledgeUseCase
 from app.modules.knowledge.infrastructure.repositories import (
     SqlAlchemyChunkEvidenceLinkRepository,
@@ -23,16 +27,25 @@ from app.modules.knowledge.infrastructure.repositories import (
     SqlAlchemyKnowledgeChunkRepository,
     SqlAlchemyLexicalSearchRepository,
 )
-from app.modules.document.application.use_cases import UploadResearchDocumentUseCase
-from app.modules.document.infrastructure.repositories import SqlAlchemyDocumentRepository
 from app.modules.project.application.use_cases import CreateProjectUseCase
 from app.modules.project.infrastructure.repositories import SqlAlchemyProjectRepository
-from app.modules.writing.application.chat import SendChatMessageUseCase, StartConversationUseCase
-from app.modules.writing.application.memory_inspection import ListMemoryUseCase, SupersedeMemoryRecordUseCase
+from app.modules.writing.application.chat import (
+    SendChatMessageUseCase,
+    StartConversationUseCase,
+)
+from app.modules.writing.application.memory_inspection import (
+    ListMemoryUseCase,
+    SupersedeMemoryRecordUseCase,
+)
 from app.modules.writing.domain.conversation_context import CONVERSATION_SUMMARY_ORIGIN
 from app.modules.writing.domain.entities import MemoryRecord
-from app.modules.writing.domain.enums import CreatedBy, MemoryRecordType, MessageDirection
+from app.modules.writing.domain.enums import (
+    CreatedBy,
+    MemoryRecordType,
+    MessageDirection,
+)
 from app.modules.writing.domain.exceptions import MemoryRecordNotFoundError
+from app.modules.writing.infrastructure.models import Conversation as ConversationModel
 from app.modules.writing.infrastructure.repositories import (
     SqlAlchemyConversationRepository,
     SqlAlchemyMemoryProvenanceLinkRepository,
@@ -41,7 +54,6 @@ from app.modules.writing.infrastructure.repositories import (
     SqlAlchemyProfileCharacteristicRepository,
     SqlAlchemyWritingProfileRepository,
 )
-from app.modules.writing.infrastructure.models import Conversation as ConversationModel
 from app.storage.filesystem import FilesystemStorage
 from app.workers.executor import process_one_work_item
 from app.workers.repository import WorkItemRepository

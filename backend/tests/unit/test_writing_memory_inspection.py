@@ -2,7 +2,10 @@ import pytest
 
 from app.modules.agent.domain.entities import Agent
 from app.modules.agent.domain.exceptions import AgentNotFoundForUserError
-from app.modules.writing.application.memory_inspection import ListMemoryUseCase, SupersedeMemoryRecordUseCase
+from app.modules.writing.application.memory_inspection import (
+    ListMemoryUseCase,
+    SupersedeMemoryRecordUseCase,
+)
 from app.modules.writing.domain.entities import MemoryProvenanceLink, MemoryRecord
 from app.modules.writing.domain.enums import (
     CreatedBy,
@@ -10,7 +13,10 @@ from app.modules.writing.domain.enums import (
     MemoryRecordStatus,
     MemoryRecordType,
 )
-from app.modules.writing.domain.exceptions import MemoryRecordAlreadySupersededError, MemoryRecordNotFoundError
+from app.modules.writing.domain.exceptions import (
+    MemoryRecordAlreadySupersededError,
+    MemoryRecordNotFoundError,
+)
 
 
 class FakeUnitOfWork:

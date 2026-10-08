@@ -6,8 +6,16 @@ from app.modules.agent.domain.exceptions import AgentNotFoundForUserError
 from app.modules.agent.domain.repositories import AgentRepository
 from app.modules.document.domain.entities import ResearchDocument
 from app.modules.document.domain.repositories import DocumentRepository
-from app.modules.knowledge.application.retrieval import MAX_TOP_K, SearchKnowledgeUseCase, SearchResultEvidence
-from app.modules.knowledge.domain.entities import ChunkEmbedding, ChunkEvidenceLink, KnowledgeChunk
+from app.modules.knowledge.application.retrieval import (
+    MAX_TOP_K,
+    SearchKnowledgeUseCase,
+    SearchResultEvidence,
+)
+from app.modules.knowledge.domain.entities import (
+    ChunkEmbedding,
+    ChunkEvidenceLink,
+    KnowledgeChunk,
+)
 from app.modules.knowledge.domain.repositories import (
     ChunkEvidenceLinkRepository,
     KnowledgeChunkEmbeddingRepository,

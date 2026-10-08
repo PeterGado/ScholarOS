@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.modules.agent.domain.enums import AgentStatus
 
@@ -15,7 +15,7 @@ class Agent:
     user_id: int
     agent_id: int | None = None
     status: AgentStatus = AgentStatus.ACTIVE
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = None
     deleted_at: datetime | None = None
 

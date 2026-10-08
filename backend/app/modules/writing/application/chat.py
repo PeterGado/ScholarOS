@@ -1,12 +1,13 @@
 import logging
 from collections.abc import Callable
 from dataclasses import replace
+from datetime import UTC, datetime
 
 from app.ai.providers.base import TextGenerationProvider
 from app.ai.token_estimate import estimate_tokens
 from app.ai.usage_guard import AiUsageGuard
-from app.auth.email_verification_guard import EmailVerificationGuard
 from app.ai.wikipedia import fetch_wikipedia_background
+from app.auth.email_verification_guard import EmailVerificationGuard
 from app.core.pagination import DEFAULT_LIST_LIMIT
 from app.core.unit_of_work import UnitOfWork
 from app.modules.agent.domain.exceptions import AgentNotFoundForUserError
@@ -14,10 +15,6 @@ from app.modules.agent.domain.repositories import AgentRepository
 from app.modules.document.domain.ports import ContentStore
 from app.modules.knowledge.application.retrieval import SearchKnowledgeUseCase
 from app.modules.project.domain.repositories import ProjectRepository
-from datetime import datetime, timezone
-
-logger = logging.getLogger(__name__)
-
 from app.modules.writing.domain.context_assembly import (
     DEFAULT_MAX_CONVERSATION_MESSAGES,
     ContextAssemblyInput,
@@ -39,8 +36,17 @@ from app.modules.writing.domain.conversation_summarization import (
     build_conversation_summary_prompt,
     select_messages_to_summarize,
 )
-from app.modules.writing.domain.entities import Conversation, MemoryProvenanceLink, MemoryRecord, Message
-from app.modules.writing.domain.enums import CreatedBy, MemoryProvenanceSourceType, MessageDirection
+from app.modules.writing.domain.entities import (
+    Conversation,
+    MemoryProvenanceLink,
+    MemoryRecord,
+    Message,
+)
+from app.modules.writing.domain.enums import (
+    CreatedBy,
+    MemoryProvenanceSourceType,
+    MessageDirection,
+)
 from app.modules.writing.domain.exceptions import (
     ChatReplyCannotBeRetriedError,
     ChatReplyWorkItemNotFoundError,
@@ -62,14 +68,19 @@ from app.modules.writing.domain.repositories import (
     WritingProfileRepository,
     WritingSegmentRepository,
 )
-from app.workers.enums import WorkItemKind, WorkItemState
 from app.workers.entities import WorkItem
+from app.workers.enums import WorkItemKind, WorkItemState
 from app.workers.payloads import (
     build_generate_chat_reply_payload_reference,
     build_generate_chat_reply_payload_reference_prefix,
     parse_generate_chat_reply_conversation_id,
 )
 from app.workers.ports import WorkItemEnqueuer, WorkItemOutcomeLookup
+
+# Module logger, defined after every import so the import block stays one contiguous, sorted
+# block (ruff's E402 fired on the original placement, mid-block, which also made the imports
+# below it read as if they were conditional).
+logger = logging.getLogger(__name__)
 
 
 class StartConversationUseCase:
@@ -206,7 +217,7 @@ class DeleteConversationUseCase:
                 build_generate_chat_reply_payload_reference_prefix(conversation_id)
             )
             self._conversations.mark_deleted(
-                conversation_id, deleted_at=datetime.now(timezone.utc))
+                conversation_id, deleted_at=datetime.now(UTC))
             self._uow.commit()
         except Exception:
             self._uow.rollback()
@@ -645,7 +656,7 @@ class GenerateConversationReplyUseCase:
                 )
             )
             self._conversations.mark_summarized(
-                conversation_id, summarized_at=datetime.now(timezone.utc))
+                conversation_id, summarized_at=datetime.now(UTC))
             self._uow.commit()
         except Exception:
             self._uow.rollback()

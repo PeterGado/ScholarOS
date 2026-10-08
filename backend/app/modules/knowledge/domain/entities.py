@@ -1,7 +1,11 @@
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from app.modules.knowledge.domain.enums import CreatedBy, KnowledgeElementStatus, KnowledgeElementType
+from app.modules.knowledge.domain.enums import (
+    CreatedBy,
+    KnowledgeElementStatus,
+    KnowledgeElementType,
+)
 
 
 @dataclass
@@ -17,7 +21,7 @@ class KnowledgeElement:
     element_id: int | None = None
     description: str | None = None
     status: KnowledgeElementStatus = KnowledgeElementStatus.CURRENT
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     created_by: CreatedBy = CreatedBy.SYSTEM
     superseded_element_id: int | None = None
     superseded_at: datetime | None = None
@@ -35,7 +39,7 @@ class KnowledgeChunk:
     chunk_id: int | None = None
     summary: str | None = None
     status: KnowledgeElementStatus = KnowledgeElementStatus.CURRENT
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = None
 
 
@@ -48,7 +52,7 @@ class ChunkEvidenceLink:
     chunk_id: int
     document_id: int
     link_id: int | None = None
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     created_by: CreatedBy = CreatedBy.SYSTEM
 
 
@@ -62,7 +66,7 @@ class ChunkEmbedding:
     chunk_id: int
     embedding_vector: list[float]
     embedding_model_version: str
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 @dataclass(frozen=True)

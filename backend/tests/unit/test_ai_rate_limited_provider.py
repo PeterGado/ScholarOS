@@ -95,7 +95,6 @@ def test_calls_older_than_60_seconds_fall_out_of_the_window():
 
 def test_concurrent_threads_sharing_one_instance_never_exceed_the_limit():
     import threading
-
     import time as real_time
 
     provider = RateLimitedProvider(FakeProvider(), max_calls_per_minute=1000)

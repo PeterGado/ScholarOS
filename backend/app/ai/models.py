@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column
@@ -22,6 +22,6 @@ class AiUsageRecord(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"), nullable=False)
     tokens: Mapped[int] = mapped_column(nullable=False)
-    recorded_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
 
     __table_args__ = (Index("ix_ai_usage_records_user_id_recorded_at", "user_id", "recorded_at"),)

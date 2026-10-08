@@ -1,6 +1,8 @@
 from app.ai.exceptions import ProviderConfigurationError
 from app.ai.providers.google_genai import create_google_genai_provider
-from app.ai.providers.openai_compatible import create_default_provider as create_openai_compatible_provider
+from app.ai.providers.openai_compatible import (
+    create_default_provider as create_openai_compatible_provider,
+)
 
 __all__ = ["create_provider"]
 

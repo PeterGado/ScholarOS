@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.modules.writing.domain.enums import (
     ConversationStatus,
@@ -37,7 +37,7 @@ class WritingProfile:
     name: str
     profile_id: int | None = None
     status: WritingProfileStatus = WritingProfileStatus.ACTIVE
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = None
     deleted_at: datetime | None = None
 
@@ -55,7 +55,7 @@ class ProfileCharacteristic:
     signal: str
     characteristic_id: int | None = None
     confidence: float | None = None
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def __post_init__(self) -> None:
         if not self.signal or not self.signal.strip():
@@ -71,7 +71,7 @@ class ProfileCharacteristicSource:
     characteristic_id: int
     document_id: int
     link_id: int | None = None
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 @dataclass
@@ -92,7 +92,7 @@ class MemoryRecord:
     record_id: int | None = None
     rationale: str | None = None
     status: MemoryRecordStatus = MemoryRecordStatus.CURRENT
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     created_by: CreatedBy = CreatedBy.USER
     superseded_record_id: int | None = None
     superseded_at: datetime | None = None
@@ -124,7 +124,7 @@ class MemoryProvenanceLink:
     conversation_id: int | None = None
     element_id: int | None = None
     document_id: int | None = None
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def __post_init__(self) -> None:
         targets = (self.conversation_id, self.element_id, self.document_id)
@@ -158,7 +158,7 @@ class Conversation:
     conversation_id: int | None = None
     title: str | None = None
     status: ConversationStatus = ConversationStatus.ACTIVE
-    started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     summarized_at: datetime | None = None
     deleted_at: datetime | None = None
 
@@ -176,7 +176,7 @@ class Message:
     content: str
     message_id: int | None = None
     origin: str | None = None
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def __post_init__(self) -> None:
         if not self.content or not self.content.strip():
@@ -204,7 +204,7 @@ class MessageContextLink:
     element_id: int | None = None
     chunk_id: int | None = None
     memory_record_id: int | None = None
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def __post_init__(self) -> None:
         targets = (self.document_id, self.element_id, self.chunk_id, self.memory_record_id)
@@ -241,7 +241,7 @@ class WritingSegment:
     name: str
     instructions: str
     segment_id: int | None = None
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = None
 
     def __post_init__(self) -> None:

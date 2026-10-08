@@ -1,12 +1,16 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import Enum, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
-from app.modules.knowledge.domain.enums import CreatedBy, KnowledgeElementStatus, KnowledgeElementType
+from app.modules.knowledge.domain.enums import (
+    CreatedBy,
+    KnowledgeElementStatus,
+    KnowledgeElementType,
+)
 
-__all__ = ["KnowledgeElement", "KnowledgeChunk", "ChunkEvidenceLink"]
+__all__ = ["ChunkEvidenceLink", "KnowledgeChunk", "KnowledgeElement"]
 
 
 class KnowledgeElement(Base):
@@ -28,7 +32,7 @@ class KnowledgeElement(Base):
         nullable=False,
         default=KnowledgeElementStatus.CURRENT,
     )
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
     created_by: Mapped[CreatedBy] = mapped_column(Enum(CreatedBy, native_enum=False, length=16), nullable=False)
     superseded_element_id: Mapped[int | None] = mapped_column(
         ForeignKey("knowledge_elements.element_id"), nullable=True
@@ -54,7 +58,7 @@ class KnowledgeChunk(Base):
         nullable=False,
         default=KnowledgeElementStatus.CURRENT,
     )
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
     updated_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
     # 2026-09-21: real-traffic audit - the hottest missing index found. Every search request and
@@ -82,5 +86,5 @@ class ChunkEvidenceLink(Base):
     link_id: Mapped[int] = mapped_column(primary_key=True)
     chunk_id: Mapped[int] = mapped_column(ForeignKey("knowledge_chunks.chunk_id"), nullable=False)
     document_id: Mapped[int] = mapped_column(ForeignKey("research_documents.document_id"), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
     created_by: Mapped[CreatedBy] = mapped_column(Enum(CreatedBy, native_enum=False, length=16), nullable=False)

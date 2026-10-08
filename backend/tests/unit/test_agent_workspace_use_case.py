@@ -1,8 +1,14 @@
 import pytest
 
-from app.modules.agent.application.use_cases import CreateAgentWorkspaceUseCase, GetAgentWorkspaceUseCase
+from app.modules.agent.application.use_cases import (
+    CreateAgentWorkspaceUseCase,
+    GetAgentWorkspaceUseCase,
+)
 from app.modules.agent.domain.entities import Agent
-from app.modules.agent.domain.exceptions import AgentAlreadyExistsForUserError, AgentNotFoundForUserError
+from app.modules.agent.domain.exceptions import (
+    AgentAlreadyExistsForUserError,
+    AgentNotFoundForUserError,
+)
 from app.modules.agent.domain.repositories import AgentRepository
 from app.modules.project.application.use_cases import CreateProjectUseCase
 from app.modules.project.domain.entities import Project

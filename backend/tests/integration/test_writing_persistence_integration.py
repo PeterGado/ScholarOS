@@ -22,8 +22,12 @@ from app.modules.writing.domain.enums import (
     MemoryRecordType,
     ProfileCharacteristicType,
 )
-from app.modules.writing.infrastructure.models import MemoryProvenanceLink as MemoryProvenanceLinkModel
-from app.modules.writing.infrastructure.models import WritingProfile as WritingProfileModel
+from app.modules.writing.infrastructure.models import (
+    MemoryProvenanceLink as MemoryProvenanceLinkModel,
+)
+from app.modules.writing.infrastructure.models import (
+    WritingProfile as WritingProfileModel,
+)
 from app.modules.writing.infrastructure.repositories import (
     SqlAlchemyConversationRepository,
     SqlAlchemyMemoryProvenanceLinkRepository,
@@ -177,7 +181,7 @@ def test_memory_provenance_link_traces_to_conversation(session):
     session.commit()
 
     links = SqlAlchemyMemoryProvenanceLinkRepository(session)
-    link = links.add(
+    links.add(
         MemoryProvenanceLink(
             record_id=record.record_id,
             source_type=MemoryProvenanceSourceType.CONVERSATION,

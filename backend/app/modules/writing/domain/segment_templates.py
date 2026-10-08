@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-__all__ = ["SegmentTemplate", "SegmentTemplateEntry", "SEGMENT_TEMPLATES", "get_segment_template"]
+__all__ = ["SEGMENT_TEMPLATES", "SegmentTemplate", "SegmentTemplateEntry", "get_segment_template"]
 
 
 @dataclass(frozen=True)

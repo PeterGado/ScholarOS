@@ -109,7 +109,7 @@ def test_document_upload_under_the_cap_succeeds(client, auth_headers, monkeypatc
 
 
 def test_sending_a_chat_message_over_the_cap_returns_429(client, auth_headers, monkeypatch):
-    workspace = _create_workspace(client, auth_headers)
+    _create_workspace(client, auth_headers)
     conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
     monkeypatch.setattr(get_settings(), "ai_daily_token_cap_per_user", 5)
 
@@ -125,7 +125,7 @@ def test_sending_a_chat_message_over_the_cap_returns_429(client, auth_headers, m
 
 def test_sending_a_chat_message_under_the_cap_succeeds(client, auth_headers, monkeypatch):
     monkeypatch.setattr(get_settings(), "ai_daily_token_cap_per_user", 1_000_000)
-    workspace = _create_workspace(client, auth_headers)
+    _create_workspace(client, auth_headers)
     conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
 
     response = client.post(

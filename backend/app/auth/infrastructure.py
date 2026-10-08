@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -30,7 +30,7 @@ def _as_utc(value: datetime | None) -> datetime | None:
     """
     if value is None or value.tzinfo is not None:
         return value
-    return value.replace(tzinfo=timezone.utc)
+    return value.replace(tzinfo=UTC)
 
 
 class SqlAlchemyAuthSessionRepository(AuthSessionRepository):
@@ -53,18 +53,18 @@ class SqlAlchemyAuthSessionRepository(AuthSessionRepository):
 
     def end(self, session: AuthSession) -> None:
         row = self._session.get(AuthSessionModel, session.session_id)
-        row.ended_at = datetime.now(timezone.utc)
+        row.ended_at = datetime.now(UTC)
         self._session.flush()
         session.ended_at = row.ended_at
 
     def touch(self, session: AuthSession) -> None:
         row = self._session.get(AuthSessionModel, session.session_id)
-        row.last_active_at = datetime.now(timezone.utc)
+        row.last_active_at = datetime.now(UTC)
         self._session.flush()
         session.last_active_at = row.last_active_at
 
     def end_all_for_user(self, user_id: int) -> None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         self._session.query(AuthSessionModel).filter_by(user_id=user_id, ended_at=None).update(
             {"ended_at": now}
         )
@@ -192,7 +192,7 @@ class SqlAlchemyPasswordResetTokenRepository(PasswordResetTokenRepository):
 
     def mark_used(self, token: PasswordResetToken) -> None:
         row = self._session.get(PasswordResetTokenModel, token.token_id)
-        row.used_at = datetime.now(timezone.utc)
+        row.used_at = datetime.now(UTC)
         self._session.flush()
         token.used_at = row.used_at
 
@@ -228,7 +228,7 @@ class SqlAlchemyEmailVerificationTokenRepository(EmailVerificationTokenRepositor
 
     def mark_used(self, token: EmailVerificationToken) -> None:
         row = self._session.get(EmailVerificationTokenModel, token.token_id)
-        row.used_at = datetime.now(timezone.utc)
+        row.used_at = datetime.now(UTC)
         self._session.flush()
         token.used_at = row.used_at
 

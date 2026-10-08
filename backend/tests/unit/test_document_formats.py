@@ -2,7 +2,7 @@ from app.core.document_formats import looks_like_a_supported_document
 
 
 def test_plain_utf8_text_is_supported():
-    assert looks_like_a_supported_document("Some real text content.".encode("utf-8")) is True
+    assert looks_like_a_supported_document(b"Some real text content.") is True
 
 
 def test_docx_magic_bytes_are_supported():

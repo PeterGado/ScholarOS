@@ -1,13 +1,25 @@
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.auth.entities import AuthSession, PasswordResetToken
-from app.auth.exceptions import InvalidResetTokenError, PasswordCompromisedError, WeakPasswordError
-from app.auth.hashing import hash_password, verify_password
-from app.auth.password_reset import ConfirmPasswordResetUseCase, RequestPasswordResetUseCase
-from app.auth.repository import AuthSessionRepository, PasswordResetTokenRepository, UserAccountRepository, UserCredentialLookup
+from app.auth.entities import PasswordResetToken
+from app.auth.exceptions import (
+    InvalidResetTokenError,
+    PasswordCompromisedError,
+    WeakPasswordError,
+)
+from app.auth.hashing import verify_password
+from app.auth.password_reset import (
+    ConfirmPasswordResetUseCase,
+    RequestPasswordResetUseCase,
+)
+from app.auth.repository import (
+    AuthSessionRepository,
+    PasswordResetTokenRepository,
+    UserAccountRepository,
+    UserCredentialLookup,
+)
 from app.auth.tokens import hash_session_token
 from app.email.exceptions import EmailSendError
 
@@ -45,7 +57,7 @@ class FakePasswordResetTokenRepository(PasswordResetTokenRepository):
     def create(self, *, user_id, token_hash, expires_at):
         token = PasswordResetToken(
             token_id=self._next_id, user_id=user_id, token_hash=token_hash,
-            created_at=datetime.now(timezone.utc), expires_at=expires_at,
+            created_at=datetime.now(UTC), expires_at=expires_at,
         )
         self._next_id += 1
         self._by_hash[token_hash] = token
@@ -55,7 +67,7 @@ class FakePasswordResetTokenRepository(PasswordResetTokenRepository):
         return self._by_hash.get(token_hash)
 
     def mark_used(self, token):
-        token.used_at = datetime.now(timezone.utc)
+        token.used_at = datetime.now(UTC)
 
 
 class FakeUserAccountRepository(UserAccountRepository):
@@ -174,7 +186,7 @@ def test_a_valid_token_resets_the_password_and_ends_all_sessions():
     use_case, reset_tokens, user_account, sessions, uow = _build_confirm_use_case()
     token = reset_tokens.create(
         user_id=7, token_hash=hash_session_token("raw-token"),
-        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
     )
 
     use_case.execute(raw_token="raw-token", new_password="a-new-strong-password")
@@ -196,7 +208,7 @@ def test_an_expired_token_is_rejected():
     use_case, reset_tokens, *_ = _build_confirm_use_case()
     reset_tokens.create(
         user_id=7, token_hash=hash_session_token("raw-token"),
-        expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+        expires_at=datetime.now(UTC) - timedelta(minutes=1),
     )
 
     with pytest.raises(InvalidResetTokenError):
@@ -207,7 +219,7 @@ def test_an_already_used_token_cannot_be_replayed():
     use_case, reset_tokens, *_ = _build_confirm_use_case()
     token = reset_tokens.create(
         user_id=7, token_hash=hash_session_token("raw-token"),
-        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
     )
     reset_tokens.mark_used(token)
 
@@ -219,7 +231,7 @@ def test_a_weak_new_password_is_rejected():
     use_case, reset_tokens, *_ = _build_confirm_use_case()
     reset_tokens.create(
         user_id=7, token_hash=hash_session_token("raw-token"),
-        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
     )
 
     with pytest.raises(WeakPasswordError):
@@ -230,7 +242,7 @@ def test_a_breached_new_password_is_rejected():
     use_case, reset_tokens, *_ = _build_confirm_use_case(is_breached=lambda password: True)
     reset_tokens.create(
         user_id=7, token_hash=hash_session_token("raw-token"),
-        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
     )
 
     with pytest.raises(PasswordCompromisedError):

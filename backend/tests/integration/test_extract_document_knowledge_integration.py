@@ -11,11 +11,20 @@ from app.database.unit_of_work import SqlAlchemyUnitOfWork
 from app.modules.agent.application.use_cases import CreateAgentWorkspaceUseCase
 from app.modules.agent.infrastructure.repositories import SqlAlchemyAgentRepository
 from app.modules.document.application.use_cases import UploadResearchDocumentUseCase
-from app.modules.document.infrastructure.repositories import SqlAlchemyDocumentRepository
-from app.modules.knowledge.application.use_cases import ExtractDocumentKnowledgeUseCase, ProcessDocumentUseCase
+from app.modules.document.infrastructure.repositories import (
+    SqlAlchemyDocumentRepository,
+)
+from app.modules.knowledge.application.use_cases import (
+    ExtractDocumentKnowledgeUseCase,
+    ProcessDocumentUseCase,
+)
 from app.modules.knowledge.domain.exceptions import SemanticExtractionError
 from app.modules.knowledge.domain.text_extraction import PlainTextExtractor
-from app.modules.knowledge.infrastructure.models import ChunkEvidenceLink, KnowledgeChunk, KnowledgeElement
+from app.modules.knowledge.infrastructure.models import (
+    ChunkEvidenceLink,
+    KnowledgeChunk,
+    KnowledgeElement,
+)
 from app.modules.knowledge.infrastructure.repositories import (
     SqlAlchemyChunkEvidenceLinkRepository,
     SqlAlchemyKnowledgeChunkEmbeddingRepository,
@@ -189,8 +198,12 @@ def test_multiple_documents_produce_independently_evidence_linked_knowledge(sess
 
     # A second document under the SAME agent (same project, since one Agent owns one Project
     # permanently - ADR-009) - upload a second document into the same project instead.
-    from app.modules.document.application.use_cases import UploadResearchDocumentUseCase as UploadUseCase
-    from app.modules.project.infrastructure.repositories import SqlAlchemyProjectRepository as ProjectsRepo
+    from app.modules.document.application.use_cases import (
+        UploadResearchDocumentUseCase as UploadUseCase,
+    )
+    from app.modules.project.infrastructure.repositories import (
+        SqlAlchemyProjectRepository as ProjectsRepo,
+    )
 
     projects = ProjectsRepo(session)
     documents = SqlAlchemyDocumentRepository(session)

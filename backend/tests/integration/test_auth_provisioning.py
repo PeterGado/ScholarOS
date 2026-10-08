@@ -1,8 +1,13 @@
+import contextlib
+
 import pytest
 
 from app.auth.exceptions import InvalidAuthConfigurationError, InvalidCredentialsError
 from app.auth.hashing import hash_password
-from app.auth.infrastructure import SqlAlchemyAuthSessionRepository, SqlAlchemyUserCredentialLookup
+from app.auth.infrastructure import (
+    SqlAlchemyAuthSessionRepository,
+    SqlAlchemyUserCredentialLookup,
+)
 from app.auth.provisioning import sync_configured_user
 from app.auth.service import AuthService
 from app.database.session import build_engine, build_sessionmaker, init_db
@@ -69,10 +74,8 @@ def test_rejection_does_not_leak_the_invalid_hash_value(db_session):
 
 def test_none_of_the_rejected_cases_leave_a_user_behind(db_session):
     for username, password_hash in [("   ", VALID_HASH), ("researcher", "   "), ("researcher", "garbage")]:
-        try:
+        with contextlib.suppress(InvalidAuthConfigurationError):
             sync_configured_user(db_session, username=username, password_hash=password_hash)
-        except InvalidAuthConfigurationError:
-            pass
     assert db_session.query(User).count() == 0
 
 

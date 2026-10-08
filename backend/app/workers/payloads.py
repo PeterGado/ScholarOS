@@ -26,7 +26,11 @@ from app.modules.writing.domain.context_assembly import (
     ContextMemory,
     ContextStyleSignal,
 )
-from app.modules.writing.domain.enums import MemoryRecordType, MessageDirection, ProfileCharacteristicType
+from app.modules.writing.domain.enums import (
+    MemoryRecordType,
+    MessageDirection,
+    ProfileCharacteristicType,
+)
 
 _PROCESS_DOCUMENT_PREFIX = "process_document:"
 _GENERATE_CHAT_REPLY_PREFIX = "generate_chat_reply:"

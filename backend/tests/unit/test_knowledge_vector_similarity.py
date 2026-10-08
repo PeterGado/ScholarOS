@@ -3,7 +3,10 @@ import math
 import pytest
 
 from app.modules.knowledge.domain.entities import ChunkEmbedding
-from app.modules.knowledge.domain.vector_similarity import cosine_similarity, rank_by_similarity
+from app.modules.knowledge.domain.vector_similarity import (
+    cosine_similarity,
+    rank_by_similarity,
+)
 
 
 def test_identical_vectors_have_similarity_one():

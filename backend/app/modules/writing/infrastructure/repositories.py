@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -32,14 +32,26 @@ from app.modules.writing.domain.repositories import (
     WritingSegmentRepository,
 )
 from app.modules.writing.infrastructure.models import Conversation as ConversationModel
-from app.modules.writing.infrastructure.models import MemoryProvenanceLink as MemoryProvenanceLinkModel
+from app.modules.writing.infrastructure.models import (
+    MemoryProvenanceLink as MemoryProvenanceLinkModel,
+)
 from app.modules.writing.infrastructure.models import MemoryRecord as MemoryRecordModel
 from app.modules.writing.infrastructure.models import Message as MessageModel
-from app.modules.writing.infrastructure.models import MessageContextLink as MessageContextLinkModel
-from app.modules.writing.infrastructure.models import ProfileCharacteristic as ProfileCharacteristicModel
-from app.modules.writing.infrastructure.models import ProfileCharacteristicSource as ProfileCharacteristicSourceModel
-from app.modules.writing.infrastructure.models import WritingProfile as WritingProfileModel
-from app.modules.writing.infrastructure.models import WritingSegment as WritingSegmentModel
+from app.modules.writing.infrastructure.models import (
+    MessageContextLink as MessageContextLinkModel,
+)
+from app.modules.writing.infrastructure.models import (
+    ProfileCharacteristic as ProfileCharacteristicModel,
+)
+from app.modules.writing.infrastructure.models import (
+    ProfileCharacteristicSource as ProfileCharacteristicSourceModel,
+)
+from app.modules.writing.infrastructure.models import (
+    WritingProfile as WritingProfileModel,
+)
+from app.modules.writing.infrastructure.models import (
+    WritingSegment as WritingSegmentModel,
+)
 
 
 class SqlAlchemyWritingProfileRepository(WritingProfileRepository):

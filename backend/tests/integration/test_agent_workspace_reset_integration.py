@@ -17,20 +17,42 @@ from app.modules.agent.application.reset_workspace import ResetAgentWorkspaceUse
 from app.modules.agent.application.use_cases import CreateAgentWorkspaceUseCase
 from app.modules.agent.domain.exceptions import AgentNotFoundForUserError
 from app.modules.agent.infrastructure.repositories import SqlAlchemyAgentRepository
-from app.modules.document.infrastructure.models import ResearchDocument as ResearchDocumentModel
-from app.modules.document.infrastructure.repositories import SqlAlchemyDocumentRepository
+from app.modules.document.infrastructure.models import (
+    ResearchDocument as ResearchDocumentModel,
+)
+from app.modules.document.infrastructure.repositories import (
+    SqlAlchemyDocumentRepository,
+)
 from app.modules.knowledge.domain.enums import CreatedBy as KnowledgeCreatedBy
 from app.modules.knowledge.domain.enums import KnowledgeElementType
-from app.modules.knowledge.infrastructure.models import ChunkEvidenceLink, KnowledgeChunk, KnowledgeElement
+from app.modules.knowledge.infrastructure.models import (
+    ChunkEvidenceLink,
+    KnowledgeChunk,
+    KnowledgeElement,
+)
 from app.modules.knowledge.infrastructure.vector_models import KnowledgeChunkEmbedding
 from app.modules.project.application.use_cases import CreateProjectUseCase
 from app.modules.project.infrastructure.repositories import SqlAlchemyProjectRepository
 from app.modules.writing.application.chat import StartConversationUseCase
 from app.modules.writing.application.segments import CreateWritingSegmentUseCase
-from app.modules.writing.application.style_extraction import ExtractWritingStyleProfileUseCase
-from app.modules.writing.application.style_ingestion import UploadWritingStyleDocumentUseCase
-from app.modules.writing.domain.entities import MemoryProvenanceLink, MemoryRecord, Message, MessageContextLink
-from app.modules.writing.domain.enums import MemoryProvenanceSourceType, MemoryRecordType, MessageContextTargetType, MessageDirection
+from app.modules.writing.application.style_extraction import (
+    ExtractWritingStyleProfileUseCase,
+)
+from app.modules.writing.application.style_ingestion import (
+    UploadWritingStyleDocumentUseCase,
+)
+from app.modules.writing.domain.entities import (
+    MemoryProvenanceLink,
+    MemoryRecord,
+    Message,
+    MessageContextLink,
+)
+from app.modules.writing.domain.enums import (
+    MemoryProvenanceSourceType,
+    MemoryRecordType,
+    MessageContextTargetType,
+    MessageDirection,
+)
 from app.modules.writing.infrastructure.repositories import (
     SqlAlchemyConversationRepository,
     SqlAlchemyMemoryProvenanceLinkRepository,
@@ -283,8 +305,12 @@ def test_a_new_chunk_created_after_reset_does_not_collide_with_an_orphaned_fts_r
     row still held, failing the insert with a unique-constraint violation. Exercised via the
     real repository (not a raw insert) so this proves the actual write path, not just the SQL.
     """
-    from app.modules.knowledge.domain.entities import KnowledgeChunk as KnowledgeChunkDomain
-    from app.modules.knowledge.infrastructure.repositories import SqlAlchemyKnowledgeChunkRepository
+    from app.modules.knowledge.domain.entities import (
+        KnowledgeChunk as KnowledgeChunkDomain,
+    )
+    from app.modules.knowledge.infrastructure.repositories import (
+        SqlAlchemyKnowledgeChunkRepository,
+    )
 
     user_id, agent_id = _fully_populate_a_workspace(session, storage, username="researcher")
     first_chunk_id = session.execute(

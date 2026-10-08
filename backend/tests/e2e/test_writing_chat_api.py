@@ -11,8 +11,8 @@ from app.database.session import build_sessionmaker
 from app.database.shared_models import User
 from app.main import app
 from app.storage.filesystem import FilesystemStorage
-from app.workers.executor import process_one_work_item
 from app.workers.enums import WorkItemState
+from app.workers.executor import process_one_work_item
 from app.workers.models import WorkItem as WorkItemModel
 
 

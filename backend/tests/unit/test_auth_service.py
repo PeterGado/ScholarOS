@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy.exc import OperationalError
@@ -46,7 +46,7 @@ class FakeAuthSessionRepository(AuthSessionRepository):
             session_id=self._next_id,
             user_id=user_id,
             token_hash=token_hash,
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
         )
         self._next_id += 1
         self._by_hash[token_hash] = session
@@ -56,14 +56,14 @@ class FakeAuthSessionRepository(AuthSessionRepository):
         return self._by_hash.get(token_hash)
 
     def end(self, session: AuthSession) -> None:
-        session.ended_at = datetime.now(timezone.utc)
+        session.ended_at = datetime.now(UTC)
 
     def touch(self, session: AuthSession) -> None:
         self.touch_calls += 1
-        session.last_active_at = datetime.now(timezone.utc)
+        session.last_active_at = datetime.now(UTC)
 
     def end_all_for_user(self, user_id: int) -> None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for session in self._by_hash.values():
             if session.user_id == user_id and session.ended_at is None:
                 session.ended_at = now
@@ -255,8 +255,8 @@ def test_a_session_with_a_very_stale_last_active_at_is_still_valid():
     token = service.login(username="researcher", password="s3cret")
 
     stored_session = next(iter(sessions._by_hash.values()))
-    stored_session.last_active_at = datetime.now(timezone.utc) - timedelta(days=365)
-    stored_session.started_at = datetime.now(timezone.utc) - timedelta(days=365)
+    stored_session.last_active_at = datetime.now(UTC) - timedelta(days=365)
+    stored_session.started_at = datetime.now(UTC) - timedelta(days=365)
 
     identity = service.verify_token(token)
     assert identity.user_id == 7

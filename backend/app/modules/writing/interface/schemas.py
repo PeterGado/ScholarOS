@@ -3,11 +3,13 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from app.modules.document.domain.entities import ResearchDocument
+from app.modules.writing.application.memory_inspection import MemoryRecordWithProvenance
 from app.modules.writing.application.profile_view import WritingProfileView
 from app.modules.writing.application.segment_templates import ApplySegmentTemplateResult
-from app.modules.writing.application.style_extraction import WritingStyleProfileExtraction
+from app.modules.writing.application.style_extraction import (
+    WritingStyleProfileExtraction,
+)
 from app.modules.writing.application.style_ingestion import WritingStyleDocumentUpload
-from app.modules.writing.application.memory_inspection import MemoryRecordWithProvenance
 from app.modules.writing.domain.entities import Conversation, Message, WritingSegment
 from app.modules.writing.domain.segment_templates import SegmentTemplate
 from app.workers.entities import WorkItem

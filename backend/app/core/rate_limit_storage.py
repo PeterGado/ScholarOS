@@ -1,4 +1,5 @@
 import time
+from typing import ClassVar
 
 from limits.storage.base import Storage
 from sqlalchemy import text
@@ -30,7 +31,7 @@ class PostgresRateLimitStorage(Storage):
     or read a stale expiry. `key` is always a bound parameter, never interpolated into SQL.
     """
 
-    STORAGE_SCHEME = ["scholaros-sql"]
+    STORAGE_SCHEME: ClassVar[list[str]] = ["scholaros-sql"]
 
     @property
     def base_exceptions(self) -> type[Exception] | tuple[type[Exception], ...]:
@@ -84,7 +85,12 @@ class PostgresRateLimitStorage(Storage):
             with db_session.engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
             return True
-        except Exception:
+        # Deliberately broad: this method's whole contract is "answer whether the store is
+        # currently usable", and every failure mode - uninitialized table, locked database,
+        # refused connection, a driver-level error - has the same correct answer (False).
+        # Narrowing this would risk an unforeseen failure escaping as a crash inside limits'
+        # own health handling instead of a clean "unavailable".
+        except Exception:  # noqa: BLE001
             return False
 
     def reset(self) -> int | None:

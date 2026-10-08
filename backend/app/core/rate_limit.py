@@ -1,7 +1,9 @@
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from app.core.rate_limit_storage import PostgresRateLimitStorage  # noqa: F401 - registers "scholaros-sql"
+from app.core.rate_limit_storage import (
+    PostgresRateLimitStorage,  # noqa: F401 - registers "scholaros-sql"
+)
 
 # Shared instance (2026-09-19 production security pass): a single Limiter, imported by both
 # app.main (to install the middleware/state) and each rate-limited route module (to decorate
