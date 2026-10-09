@@ -3,17 +3,22 @@ import { test, expect } from "@playwright/test";
 // Real manual verification for the new upload limits: 20 research documents per project, 5
 // writing-style samples, both enforced server-side and reflected proactively in the UI. Real
 // backend, a fresh throwaway user/database. No AI provider call needed - the limit is checked
-// before a document is ever enqueued for processing.
+// before a document is ever enqueued for processing - and in CI (DISABLE_WORK_ITEM_EXECUTOR=1,
+// see .github/workflows/ci.yml) the real background executor never even starts, since this
+// spec genuinely never needs anything processed: running it alongside 25 uploads in quick
+// succession raced its own foreground requests against the executor's writes for the throwaway
+// SQLite database's single writer lock, reproducing consistently as hung/timed-out requests.
 
 const USERNAME = process.env.PLAYWRIGHT_AUTH_USERNAME ?? "manual-verify-user";
 const PASSWORD = process.env.PLAYWRIGHT_AUTH_PASSWORD ?? "ManualVerify-Pass-1";
 
 test.setTimeout(300_000);
 
-// Waits on the real upload response rather than intermediate UI text: the throwaway backend
-// runs a real background executor that may process (and hide, per the "vanishes on success"
-// design) earlier documents while this loop is still uploading more, so the visible count can
-// legitimately lag a step behind - only the final aggregate state is worth asserting on.
+// Waits on the real upload response rather than intermediate UI text: run locally without
+// DISABLE_WORK_ITEM_EXECUTOR, the throwaway backend's real background executor may process (and
+// hide, per the "vanishes on success" design) earlier documents while this loop is still
+// uploading more, so the visible count can legitimately lag a step behind - only the final
+// aggregate state is worth asserting on.
 async function uploadTextFile(page: import("@playwright/test").Page, name: string, buttonName: string) {
   await page.locator('input[type="file"]').setInputFiles({
     name,
@@ -62,10 +67,7 @@ test("writing style sample upload is blocked at the 5-sample limit, and deleting
   await page.getByLabel("Username").fill(USERNAME);
   await page.getByLabel("Password").fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
-  // A more generous timeout than the other test's: this test runs right after 20 real
-  // documents' worth of background AI processing was enqueued, which can leave the throwaway
-  // backend busy long enough to slow down an unrelated login request too.
-  await expect(page).toHaveURL(/\/chat/, { timeout: 45_000 });
+  await expect(page).toHaveURL(/\/chat/, { timeout: 20_000 });
 
   await page.getByRole("link", { name: "Writing Style" }).click();
   for (let i = 0; i < 5; i++) {
@@ -76,11 +78,16 @@ test("writing style sample upload is blocked at the 5-sample limit, and deleting
   await expect(page.getByRole("button", { name: "Upload sample" })).toBeDisabled();
   await expect(page.getByText("You've reached the 5-sample limit")).toBeVisible();
 
-  // Deleting one sample makes room for another.
+  // Deleting one sample makes room for another. exact: true matters here - without it,
+  // getByRole's default substring match also matches the sidebar's own "Delete conversation"
+  // icon button (aria-label contains "Delete" too, and the sidebar renders before this list in
+  // the DOM), so .first() silently clicked that instead: it only opens that row's own "delete
+  // this chat?" confirmation, firing no network request at all, which left this test waiting
+  // on a response that was never coming.
   const deleteResponse = page.waitForResponse(
     (r) => r.url().includes("/documents/") && r.request().method() === "DELETE",
   );
-  await page.getByRole("button", { name: "Delete" }).first().click();
+  await page.getByRole("button", { name: "Delete", exact: true }).first().click();
   const response = await deleteResponse;
   expect(response.status()).toBe(204);
   await expect(page.getByText("(4/5 used)")).toBeVisible({ timeout: 15_000 });

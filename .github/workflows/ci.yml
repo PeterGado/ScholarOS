@@ -117,6 +117,19 @@ jobs:
       # here is a real secret. AI_API_KEY is deliberately left unset so the app runs its
       # UnavailableAIProvider: both hermetic specs are provider-free by design, and the
       # provider-dependent specs live in the `manual` project instead.
+      #
+      # 2026-10-09: upload-limits.spec.ts sets DISABLE_WORK_ITEM_EXECUTOR=1 for its own backend
+      # process, and only its own - it uploads 20+5 documents in quick succession and, by its
+      # own header comment, never needs them actually processed ("the limit is checked before a
+      # document is ever enqueued for processing"). Running the real executor alongside it on
+      # this spec's throwaway SQLite database raced the executor's own writes against the
+      # spec's foreground requests for SQLite's single writer lock, reproducing consistently
+      # (confirmed locally, not a flake) as hung/timed-out requests - a failure mode already
+      # documented once before in app/main.py's lifespan function (see its get_content_store
+      # comment) for a related incident, and never a concern in real (Postgres) production,
+      # which has no single-writer limitation. ui-redesign-and-document-retry.spec.ts needs the
+      # real executor - it asserts on an actual extraction failure - so it deliberately leaves
+      # this unset.
       - name: Run hermetic e2e specs
         working-directory: frontend
         env:
@@ -134,6 +147,11 @@ jobs:
             export STORAGE_ROOT="$RUNNER_TEMP/e2e-$spec-storage"
             rm -f "$RUNNER_TEMP/e2e-$spec.db"
             rm -rf "$STORAGE_ROOT"
+            if [ "$spec" = "upload-limits" ]; then
+              export DISABLE_WORK_ITEM_EXECUTOR=1
+            else
+              unset DISABLE_WORK_ITEM_EXECUTOR
+            fi
             npx playwright test --project=hermetic "e2e/$spec.spec.ts"
             echo "::endgroup::"
           done

@@ -155,6 +155,17 @@ class Settings(BaseSettings):
     # existing /health/queue check and Sentry are what this deploy is watched against before
     # ever raising it further.
     work_item_worker_count: int = 3
+    # Test-infrastructure-only escape hatch (2026-10-09): lets a specific test process opt out
+    # of starting the real executor entirely, for a spec that genuinely doesn't need background
+    # processing at all (see e.g. frontend/e2e/upload-limits.spec.ts's own header: "No AI
+    # provider call needed - the limit is checked before a document is ever enqueued for
+    # processing"). Running the real executor against the throwaway SQLite database such a spec
+    # uses races its own foreground requests for SQLite's single writer lock - a known, already
+    # -documented failure mode (see app.main's lifespan function, the comment on its
+    # get_content_store call, for a related prior incident) - not something a busier Postgres
+    # production database ever hits, since Postgres has no such single-writer limitation.
+    # Defaults False: production and every other test always start the real executor, unchanged.
+    disable_work_item_executor: bool = False
     # Connection pool sizing (2026-09-30, concurrent-load planning): both engines previously
     # relied on SQLAlchemy's own defaults (pool_size=5, max_overflow=10 - up to 15 connections
     # each, ~30 total from one process) - never deliberately chosen. The app connects through

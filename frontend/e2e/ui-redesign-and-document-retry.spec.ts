@@ -39,9 +39,12 @@ test("sidebar is simplified, chat messages are visually distinguished, and a fai
   await expect(sidebar.getByRole("link", { name: "Drafts" })).toHaveCount(0);
 
   // Document upload: a corrupted PDF fails at extraction (no AI call needed), surfaces a real
-  // error message, and can be retried back to pending.
+  // error message, and can be retried back to pending. Must start with the real `%PDF-` magic
+  // bytes (app/modules/knowledge/domain/text_extraction.py's own sniff) - bytes that don't were
+  // instead rejected at the cheap upload-time format check (app/core/document_formats.py),
+  // which never reaches pypdf at all and shows a different message than this test asserts on.
   await page.getByRole("link", { name: "Research Documents" }).click();
-  const corruptPdf = Buffer.from("\xff\xfebinary garbage".repeat(5), "binary");
+  const corruptPdf = Buffer.from("%PDF-1.4\nbinary garbage".repeat(5), "binary");
   await page.locator('input[type="file"]').setInputFiles({
     name: "corrupt.pdf",
     mimeType: "application/pdf",

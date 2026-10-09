@@ -45,7 +45,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # queued documents reach a visible terminal failure instead of remaining pending forever.
     # session_factory is a closure over the module, not a bound SessionLocal reference, for
     # the same stale-binding reason init_db()/sync_configured_user's db access already avoid it.
+    #
+    # Settings.disable_work_item_executor (2026-10-09) is the one exception, and only ever set
+    # by a specific test process that doesn't need background processing at all - see that
+    # setting's own docstring. Every other caller, including every other test, is unaffected.
     executor_loop: WorkItemExecutorLoop | None = None
+    if settings.disable_work_item_executor:
+        yield
+        return
+
     if settings.ai_api_key:
         text_provider = create_provider(settings)
     else:
