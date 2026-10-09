@@ -1,11 +1,11 @@
 import { test, expect } from "@playwright/test";
 
-// Real manual verification for Frontend Stage 8's chat-reply failure/retry UX: before this,
-// a genuinely failed reply was indistinguishable from a slow one, with a fixed client-side
-// timeout and no explanation or recovery path. Run against a real backend configured with a
-// deliberately invalid AI_API_KEY, so every generation attempt genuinely fails through the
-// real Gemini provider code path (a real ProviderRequestError, not a mock) - not part of the
-// automated CI suite.
+// Verification for Frontend Stage 8's chat-reply failure/retry UX: before this, a genuinely
+// failed reply was indistinguishable from a slow one, with a fixed client-side timeout and no
+// explanation or recovery path. Runs in CI (2026-10-09) against AI_PROVIDER=fake with
+// AI_FAKE_PROVIDER_FAIL=1 (app.ai.providers.fake), which raises the same ProviderRequestError
+// a real provider failure would, through the same code path - manually, run against a real
+// backend configured with a deliberately invalid AI_API_KEY for the same effect.
 
 const USERNAME = process.env.PLAYWRIGHT_AUTH_USERNAME ?? "manual-verify-user";
 const PASSWORD = process.env.PLAYWRIGHT_AUTH_PASSWORD ?? "ManualVerify-Pass-1";
@@ -48,6 +48,10 @@ test("a genuinely failed reply shows a real error and can be retried", async ({ 
   // Retrying re-enters the same real failure path - proving the retry endpoint genuinely
   // re-queues the same Work Item rather than just resetting UI state.
   await retryButton.click();
-  await expect(page.getByText("Thinking...")).toBeVisible({ timeout: 10_000 });
+  // The label was a static "Thinking..." string when this assertion was first written;
+  // ThinkingIndicator (2026-10-06) replaced it with a staged, ellipsis-free "Thinking" label -
+  // this spec's text went stale and was never caught since it ran manually only (found while
+  // adding this spec to automated CI).
+  await expect(page.getByText("Thinking")).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText("Reply failed")).toBeVisible({ timeout: 60_000 });
 });

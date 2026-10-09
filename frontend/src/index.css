@@ -223,9 +223,14 @@
   margin: 1em 0 0.5em;
 }
 .markdown-content table {
+  display: block;
+  overflow-x: auto;
   border-collapse: collapse;
   margin: 0.75em 0;
   font-size: 0.9em;
+  /* A wide table in an AI reply (e.g. a comparison table) otherwise forces the whole message
+     column to scroll horizontally at phone width - found during a mobile-responsiveness audit,
+     2026-10-09. `pre` above already gets the same treatment; `table` never did. */
 }
 .markdown-content th,
 .markdown-content td {

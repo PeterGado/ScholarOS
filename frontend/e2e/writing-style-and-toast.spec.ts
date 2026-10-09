@@ -2,10 +2,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, expect } from "@playwright/test";
 
-// Real manual verification for: writing-style samples no longer polluting the Research
-// Documents page, the Writing Style page remembering uploads across a reload, real style
-// extraction, and the new "finished processing" toast on the Research Documents page. Real
-// backend, a fresh throwaway user/database, real (small) AI provider calls.
+// Verification for: writing-style samples no longer polluting the Research Documents page,
+// the Writing Style page remembering uploads across a reload, style extraction, and the
+// "finished processing" toast on the Research Documents page. Real backend, a fresh throwaway
+// user/database. Runs in CI (2026-10-09) against AI_PROVIDER=fake (app.ai.providers.fake) -
+// this spec only checks that extraction returns a non-empty, well-shaped characteristics list
+// and that processing completes, never specific AI-generated content.
 
 const USERNAME = process.env.PLAYWRIGHT_AUTH_USERNAME ?? "manual-verify-user";
 const PASSWORD = process.env.PLAYWRIGHT_AUTH_PASSWORD ?? "ManualVerify-Pass-1";
@@ -36,9 +38,13 @@ test("writing style samples stay off Research Documents, persist across reload, 
   await page.getByRole("button", { name: "Upload sample" }).click();
   await expect(page.getByText("sample.docx")).toBeVisible({ timeout: 10_000 });
 
-  // It must never appear on Research Documents, stuck at pending.
+  // It must never appear on Research Documents, stuck at pending. This spec never uploads
+  // anything to Research Documents itself, so the empty state here is "No documents yet" (zero
+  // documents total) rather than "Nothing pending" (which other specs see once they already
+  // have at least one processed document) - found while verifying this still matches current
+  // copy.
   await page.getByRole("link", { name: "Research Documents" }).click();
-  await expect(page.getByText("Nothing pending")).toBeVisible();
+  await expect(page.getByText("No documents yet")).toBeVisible();
   await expect(page.getByText("sample.docx")).toHaveCount(0);
 
   // Reload the Writing Style page - the upload must still be listed (not lost local state).
@@ -75,5 +81,12 @@ test("a document that finishes processing shows a confirmation toast", async ({ 
   });
   await page.getByRole("button", { name: "Upload" }).click();
 
-  await expect(page.getByRole("status")).toContainText(/finished processing/i, { timeout: 30_000 });
+  // getByRole("status") can resolve to two stacked toasts at once (the initial "uploaded,
+  // queued" one plus this "finished processing" one, if processing finishes before the first
+  // one's own auto-dismiss) - found while verifying this spec against a fast fake AI provider
+  // in CI, a timing this spec's original real-provider latency likely never triggered. Scoping
+  // to the specific text avoids the ambiguity regardless of how many toasts are visible.
+  await expect(page.getByRole("status").filter({ hasText: /finished processing/i })).toBeVisible({
+    timeout: 30_000,
+  });
 });

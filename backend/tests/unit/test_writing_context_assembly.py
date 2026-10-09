@@ -157,17 +157,17 @@ def test_truncation_prefers_sentence_boundaries():
     # sections all fit in full, leaving just enough room for WRITING INSTRUCTIONS to be
     # truncated - at a sentence boundary - after its first sentence. (Recalibrated repeatedly as
     # these grew over 2026-09-30/2026-10-02 - see git history for each prior reason - most
-    # recently when GROUNDING RULES and RESPONSE TASK were strengthened against a real citation-
-    # fabrication defect.)
+    # recently when BUILTIN_SYSTEM_GUIDANCE grew a prompt-injection-defense paragraph
+    # (untrusted_document_excerpt tags) in the same reserved tail.
     context = ContextAssemblyInput(
         topic="Topic",
         instructions="First instruction sentence. Second instruction sentence.",
-        max_characters=4636,
+        max_characters=5132,
     )
 
     assembled = assemble_context(context)
 
-    assert len(assembled.prompt) <= 4636
+    assert len(assembled.prompt) <= 5132
     assert "First instruction sentence." in assembled.prompt
     assert "Second instruction sentence" not in assembled.prompt
 

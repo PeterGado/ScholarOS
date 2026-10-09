@@ -1,9 +1,10 @@
 import { test, expect } from "@playwright/test";
 
-// Real manual verification for the Persistent Brain milestone's Agent Workspace chat
-// (Decision 3) and the ChatGPT/Claude-style onboarding wizard: a real backend, a real (small,
-// deliberate) AI provider call, a fresh throwaway user/database - not part of the automated
-// CI suite.
+// Verification for the Persistent Brain milestone's Agent Workspace chat (Decision 3) and the
+// ChatGPT/Claude-style onboarding wizard: a real backend, a fresh throwaway user/database.
+// Runs in CI (2026-10-09) against AI_PROVIDER=fake (app.ai.providers.fake) - this spec only
+// checks that an Assistant-labeled reply row appears, never the reply's actual content, so a
+// deterministic fake response satisfies it identically to a real one.
 
 const USERNAME = process.env.PLAYWRIGHT_AUTH_USERNAME ?? "manual-verify-user";
 const PASSWORD = process.env.PLAYWRIGHT_AUTH_PASSWORD ?? "ManualVerify-Pass-1";

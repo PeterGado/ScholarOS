@@ -2,6 +2,7 @@ import pytest
 
 from app.ai.exceptions import ProviderConfigurationError
 from app.ai.providers.factory import create_provider
+from app.ai.providers.fake import FakeAIProvider
 from app.ai.providers.google_genai import GoogleGenAIProvider
 from app.ai.providers.openai_compatible import OpenAICompatibleProvider
 from app.core.config import Settings
@@ -12,6 +13,12 @@ def test_dispatches_to_google_genai_by_default():
     assert settings.ai_provider == "google_genai"
     provider = create_provider(settings)
     assert isinstance(provider, GoogleGenAIProvider)
+
+
+def test_dispatches_to_fake_when_selected():
+    settings = Settings(ai_provider="fake")
+    provider = create_provider(settings)
+    assert isinstance(provider, FakeAIProvider)
 
 
 def test_dispatches_to_openai_compatible_when_selected():

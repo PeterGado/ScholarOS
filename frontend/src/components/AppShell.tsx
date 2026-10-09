@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate, useOutletContext, useParams } from "react-router-dom";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -52,6 +52,22 @@ export function AppShell() {
   const { conversationId: activeConversationId } = useParams<{ conversationId: string }>();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<number | null>(null);
+  const closeMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const deleteTriggerRefs = useRef<Record<number, HTMLButtonElement | null>>({});
+  const previousConfirmingDeleteIdRef = useRef<number | null>(null);
+
+  // Accessibility (found during an audit, 2026-10-09, and corrected after an actual browser
+  // check caught it): focusing the trigger button synchronously inside Cancel's onClick looked
+  // right but didn't work - at that point React hasn't re-rendered yet, so the ref still holds
+  // null from the confirm block's own mount (the trigger button was unmounted when it opened).
+  // Running this after commit, in an effect keyed on confirmingDeleteId, means the trigger
+  // button has already been freshly (re)mounted and its ref populated by the time this runs.
+  useEffect(() => {
+    if (confirmingDeleteId === null && previousConfirmingDeleteIdRef.current !== null) {
+      deleteTriggerRefs.current[previousConfirmingDeleteIdRef.current]?.focus();
+    }
+    previousConfirmingDeleteIdRef.current = confirmingDeleteId;
+  }, [confirmingDeleteId]);
 
   // A route change (tapping a nav item, a conversation, or "New chat") means the user is done
   // with the sidebar on mobile - closing it automatically is what makes a phone/tablet sidebar
@@ -60,6 +76,19 @@ export function AppShell() {
   useEffect(() => {
     setIsSidebarOpen(false);
   }, [location.pathname]);
+
+  // Accessibility (found during an audit, 2026-10-09): the mobile drawer previously had no
+  // Escape-to-close and never moved focus into itself on open, so a keyboard user tabbing from
+  // the hamburger button landed straight in the hidden main content behind the backdrop.
+  useEffect(() => {
+    if (!isSidebarOpen) return;
+    closeMenuButtonRef.current?.focus();
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setIsSidebarOpen(false);
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isSidebarOpen]);
 
   const conversationsQuery = useInfiniteQuery({
     queryKey: ["conversations"],
@@ -141,6 +170,7 @@ export function AppShell() {
         <div className="flex items-center justify-between p-3 lg:block">
           <span className="block px-2 py-1 text-sm font-semibold">ScholarOS</span>
           <Button
+            ref={closeMenuButtonRef}
             variant="ghost"
             size="sm"
             aria-label="Close menu"
@@ -230,6 +260,13 @@ export function AppShell() {
                         Delete
                       </Button>
                       <Button
+                        // Accessibility (found during an audit, 2026-10-09): replacing the
+                        // trigger button with this confirmation block used to drop keyboard
+                        // focus to <body> with no follow-up. Autofocusing Cancel (the
+                        // non-destructive default) here, and the effect above returning focus
+                        // to the original trigger button once it's remounted, keeps focus
+                        // somewhere meaningful throughout.
+                        autoFocus
                         size="xs"
                         variant="ghost"
                         className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -255,6 +292,9 @@ export function AppShell() {
                       {conversation.title ?? "Untitled conversation"}
                     </NavLink>
                     <button
+                      ref={(el) => {
+                        deleteTriggerRefs.current[conversation.conversation_id] = el;
+                      }}
                       type="button"
                       aria-label="Delete conversation"
                       onClick={(event) => {

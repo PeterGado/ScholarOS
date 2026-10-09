@@ -4,6 +4,7 @@ import threading
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
+import sentry_sdk
 from sqlalchemy.orm import Session
 
 from app.ai.crossref import CrossrefWork, fetch_crossref_work
@@ -126,6 +127,10 @@ def process_one_work_item(
             uow.commit()
             logger.warning("Work item %s failed (attempt %d): %s",
                            item.work_item_id, updated_item.attempts, exc)
+            # capture_exception is a no-op before sentry_sdk.init() (app.main) - this is the
+            # first place a worker failure actually reaches Sentry; previously only logged,
+            # which is easy to miss since nothing currently polls for it (see /health/queue).
+            sentry_sdk.capture_exception(exc)
             return True
 
         work_items.mark_succeeded(item.work_item_id)
@@ -200,6 +205,7 @@ def process_one_work_item(
         uow.commit()
         logger.warning("Work item %s failed (attempt %d): %s",
                        item.work_item_id, updated_item.attempts, exc)
+        sentry_sdk.capture_exception(exc)
         return True
 
     work_items.mark_succeeded(item.work_item_id)
@@ -317,9 +323,14 @@ class WorkItemExecutorLoop:
                 background_knowledge_provider=self._background_knowledge_provider,
                 enable_multi_pass_generation=self._enable_multi_pass_generation,
             )
-        except Exception:
+        except Exception as exc:
             logger.exception(
                 "Work item executor encountered an unexpected error")
+            # Unlike the two handlers above, an exception here means the failure happened
+            # outside the normal claim/execute/retry path (e.g. a DB error raised by
+            # claim_next_queued itself) and was never routed through mark_failed. This is the
+            # only place that class of failure would reach Sentry today.
+            sentry_sdk.capture_exception(exc)
             return False
         finally:
             session.close()

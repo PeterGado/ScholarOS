@@ -1,4 +1,5 @@
 from app.ai.exceptions import ProviderConfigurationError
+from app.ai.providers.fake import create_fake_provider
 from app.ai.providers.google_genai import create_google_genai_provider
 from app.ai.providers.openai_compatible import (
     create_default_provider as create_openai_compatible_provider,
@@ -9,6 +10,10 @@ __all__ = ["create_provider"]
 _FACTORIES = {
     "google_genai": create_google_genai_provider,
     "openai_compatible": create_openai_compatible_provider,
+    # Test-infrastructure-only (2026-10-09): no API key, no network call - see app.ai.
+    # providers.fake. Never selected in production; exists so e2e specs needing a provider
+    # response can run in CI (see frontend/playwright.config.ts's HERMETIC_SPECS).
+    "fake": create_fake_provider,
 }
 
 

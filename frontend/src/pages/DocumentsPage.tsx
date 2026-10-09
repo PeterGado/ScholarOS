@@ -168,9 +168,14 @@ export function DocumentsPage() {
           </p>
         </div>
         <form onSubmit={handleUpload} className="flex flex-wrap items-end gap-3">
+          {/* Accessibility (found during an audit, 2026-10-09): these labels had no htmlFor/id
+              pairing to their inputs, so a screen reader wouldn't announce the field name. */}
           <div className="space-y-1">
-            <label className="text-sm font-medium">Title (optional)</label>
+            <label htmlFor="document-title" className="text-sm font-medium">
+              Title (optional)
+            </label>
             <Input
+              id="document-title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder={selectedFileCount > 1 ? "Each file keeps its filename" : "Document title"}
@@ -178,8 +183,11 @@ export function DocumentsPage() {
             />
           </div>
           <div className="space-y-1">
-            <label className="text-sm font-medium">Author (optional)</label>
+            <label htmlFor="document-author" className="text-sm font-medium">
+              Author (optional)
+            </label>
             <Input
+              id="document-author"
               value={author}
               onChange={(e) => setAuthor(e.target.value)}
               placeholder="e.g. Uadiale, O."
@@ -188,8 +196,11 @@ export function DocumentsPage() {
             />
           </div>
           <div className="space-y-1">
-            <label className="text-sm font-medium">Year (optional)</label>
+            <label htmlFor="document-year" className="text-sm font-medium">
+              Year (optional)
+            </label>
             <Input
+              id="document-year"
               type="number"
               value={year}
               onChange={(e) => setYear(e.target.value)}
@@ -199,8 +210,11 @@ export function DocumentsPage() {
             />
           </div>
           <div className="space-y-1">
-            <label className="text-sm font-medium">DOI (optional)</label>
+            <label htmlFor="document-doi" className="text-sm font-medium">
+              DOI (optional)
+            </label>
             <Input
+              id="document-doi"
               value={doi}
               onChange={(e) => setDoi(e.target.value)}
               placeholder="e.g. 10.1038/nphys1170"

@@ -166,6 +166,14 @@ class Settings(BaseSettings):
     # production database ever hits, since Postgres has no such single-writer limitation.
     # Defaults False: production and every other test always start the real executor, unchanged.
     disable_work_item_executor: bool = False
+    # Test-infrastructure-only fake AI provider (2026-10-09): selected via ai_provider="fake",
+    # same configuration-only selection as every other provider (ADR-002). Lets CI run e2e specs
+    # that need *a* provider response (chat replies, document knowledge extraction, style
+    # extraction) without a real API key or a live billable call - see app.ai.providers.fake.
+    # ai_fake_provider_fail flips it to always raise instead of succeeding, for the one spec
+    # that specifically tests the failure/retry path (chat-reply-failure.spec.ts). Never set in
+    # production; mirrors disable_work_item_executor's own "test-only, defaults off" pattern.
+    ai_fake_provider_fail: bool = False
     # Connection pool sizing (2026-09-30, concurrent-load planning): both engines previously
     # relied on SQLAlchemy's own defaults (pool_size=5, max_overflow=10 - up to 15 connections
     # each, ~30 total from one process) - never deliberately chosen. The app connects through

@@ -13,6 +13,10 @@ name: CI
 # the `e2e` job runs the subset of browser specs that need no live AI provider, each against its
 # own fresh throwaway database. See backend/pyproject.toml for the rule set and the documented
 # type-check baseline, and frontend/playwright.config.ts for which specs are hermetic.
+#
+# 2026-10-09: grew from 2 of 8 specs to 7 of 8 - app.ai.providers.fake (backend-only, no
+# network/API key) lets the five specs that merely need *a* provider response, not a real one,
+# run in CI too. Only persistent-brain-memory.spec.ts remains manual-only now.
 
 on:
   push:
@@ -114,9 +118,7 @@ jobs:
       # AUTH_PASSWORD_HASH is generated here rather than committed, matching the repo's own
       # "no credential literals in source or config" rule (backend/README.md documents the same
       # generation step for local manual verification). The password is a throwaway; nothing
-      # here is a real secret. AI_API_KEY is deliberately left unset so the app runs its
-      # UnavailableAIProvider: both hermetic specs are provider-free by design, and the
-      # provider-dependent specs live in the `manual` project instead.
+      # here is a real secret.
       #
       # 2026-10-09: upload-limits.spec.ts sets DISABLE_WORK_ITEM_EXECUTOR=1 for its own backend
       # process, and only its own - it uploads 20+5 documents in quick succession and, by its
@@ -127,9 +129,21 @@ jobs:
       # (confirmed locally, not a flake) as hung/timed-out requests - a failure mode already
       # documented once before in app/main.py's lifespan function (see its get_content_store
       # comment) for a related incident, and never a concern in real (Postgres) production,
-      # which has no single-writer limitation. ui-redesign-and-document-retry.spec.ts needs the
-      # real executor - it asserts on an actual extraction failure - so it deliberately leaves
+      # which has no single-writer limitation. Every other spec here needs the real executor -
+      # several assert on actual extraction/generation outcomes - so they deliberately leave
       # this unset.
+      #
+      # AI_API_KEY is deliberately left unset throughout: upload-limits and
+      # ui-redesign-and-document-retry need no provider at all (UnavailableAIProvider is never
+      # called on either path), and the other five run with AI_PROVIDER=fake
+      # (app.ai.providers.fake, no network/API key) instead of a real provider, closing an
+      # external audit finding that only 2 of 8 specs ran in CI because the rest assumed a real
+      # AI provider was required - none of them actually assert on real AI response content,
+      # only on structural/UI outcomes a deterministic fake response satisfies identically.
+      # chat-reply-failure.spec.ts additionally sets AI_FAKE_PROVIDER_FAIL=1, since it
+      # specifically tests the failure/retry path. persistent-brain-memory.spec.ts stays in the
+      # manual-only project - it depends on memory records seeded by an earlier real
+      # conversation, a setup step with no automated equivalent yet.
       - name: Run hermetic e2e specs
         working-directory: frontend
         env:
@@ -141,17 +155,30 @@ jobs:
           AUTH_PASSWORD_HASH="$(python -c 'import bcrypt; print(bcrypt.hashpw(b"ManualVerify-Pass-1", bcrypt.gensalt()).decode())')"
           export AUTH_PASSWORD_HASH
 
-          for spec in upload-limits ui-redesign-and-document-retry; do
+          for spec in upload-limits ui-redesign-and-document-retry chat-reply-failure persistent-brain-chat persistent-brain-documents persistent-brain-reset-and-formats writing-style-and-toast; do
             echo "::group::e2e / $spec (fresh database)"
             export DATABASE_URL="sqlite:///$RUNNER_TEMP/e2e-$spec.db"
             export STORAGE_ROOT="$RUNNER_TEMP/e2e-$spec-storage"
             rm -f "$RUNNER_TEMP/e2e-$spec.db"
             rm -rf "$STORAGE_ROOT"
+
             if [ "$spec" = "upload-limits" ]; then
               export DISABLE_WORK_ITEM_EXECUTOR=1
             else
               unset DISABLE_WORK_ITEM_EXECUTOR
             fi
+
+            if [ "$spec" = "upload-limits" ] || [ "$spec" = "ui-redesign-and-document-retry" ]; then
+              unset AI_PROVIDER AI_FAKE_PROVIDER_FAIL
+            else
+              export AI_PROVIDER=fake
+              if [ "$spec" = "chat-reply-failure" ]; then
+                export AI_FAKE_PROVIDER_FAIL=1
+              else
+                unset AI_FAKE_PROVIDER_FAIL
+              fi
+            fi
+
             npx playwright test --project=hermetic "e2e/$spec.spec.ts"
             echo "::endgroup::"
           done
