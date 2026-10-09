@@ -51,6 +51,8 @@ How should ScholarOS allow multiple real people to create their own accounts, in
 
 5. **Rate limiting on `POST /auth/login` and `POST /auth/register` remains an open item**, carried forward from ADR-010's own Future Considerations (which already flagged this "worth revisiting before any non-local/non-personal deployment"). Now that a real non-local deployment is in scope, this is flagged again, explicitly, as not resolved by this ADR — a real gap once the app is reachable by anyone with the invite code (or, later, by anyone at all).
 
+   **Resolved 2026-09-19** (production security pass, preserved here as a correction note, not a rewrite of the above): rate limiting shipped via `slowapi` — `@limiter.limit("10/minute")` on `/auth/login`, `"5/minute"` on `/auth/register`, with the same pattern later extended to `/auth/google`, `/auth/password-reset/request`, `/auth/password-reset/confirm`, and the email-verification endpoints (`backend/app/auth/routes.py`). This item is no longer open.
+
 ---
 
 ## Rationale
@@ -88,7 +90,7 @@ How should ScholarOS allow multiple real people to create their own accounts, in
 ### Negative
 
 * The `users` table now has no upper bound on account creation while ungated (post-invite-code-removal) — no housekeeping/cleanup is built for abandoned or abusive accounts. Acceptable for now; revisit before a genuinely public launch.
-* No rate limiting on registration or login (carried forward from ADR-010, restated here) — a real gap once the app is reachable outside this machine, regardless of the invite-code gate.
+* No rate limiting on registration or login (carried forward from ADR-010, restated here) — a real gap once the app is reachable outside this machine, regardless of the invite-code gate. **Resolved 2026-09-19** — see the correction note under Decision item 5 above.
 
 ### Neutral
 
@@ -132,10 +134,10 @@ How should ScholarOS allow multiple real people to create their own accounts, in
 
 ## Future Considerations
 
-* **Removing the invite-code gate** for a fully public launch: a configuration change (clear `REGISTRATION_INVITE_CODE`), not a code change — record the transition in the journal when it happens.
-* **Rate limiting** on `/auth/login` and `/auth/register`: still not addressed, carried forward from ADR-010 and restated here as more urgent now that real external deployment is in scope.
-* **Billing/monetization and per-user quotas**: explicitly out of scope for this ADR; a future decision for whenever the fully public phase is actually scoped.
-* **Password reset / email verification**: not built; revisit if/when they become load-bearing for the public phase.
+* **Removing the invite-code gate** for a fully public launch: a configuration change (clear `REGISTRATION_INVITE_CODE`), not a code change — record the transition in the journal when it happens. **Done** — `REGISTRATION_INVITE_CODE` is unset in production; registration has been fully open since.
+* **Rate limiting** on `/auth/login` and `/auth/register`: still not addressed, carried forward from ADR-010 and restated here as more urgent now that real external deployment is in scope. **Resolved 2026-09-19** — see the correction note under Decision item 5 above.
+* **Billing/monetization and per-user quotas**: explicitly out of scope for this ADR; a future decision for whenever the fully public phase is actually scoped. Still open.
+* **Password reset / email verification**: not built; revisit if/when they become load-bearing for the public phase. **Built** — password reset (2026-10-06) and email verification gating document upload/chat for password accounts (2026-10-09); both additive, both documented in their own code (`backend/app/auth/password_reset.py`, `backend/app/auth/email_verification.py`). No ADR was written for either; they followed the same "additive to `app/auth/`, no domain-model change" shape this ADR already established, per `Database_Human_Review_Materials.md`'s own observation about undocumented-but-legitimate deviations.
 
 ---
 

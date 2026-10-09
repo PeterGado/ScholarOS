@@ -23,9 +23,14 @@ from app.workers.executor import WorkItemExecutorLoop
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    # Schema bootstrap for the current SQLite/dev-test scope (ADR-004); create_all is
-    # idempotent, so this is safe on every startup. Superseded by real migrations (Alembic)
-    # before any PostgreSQL cutover - not needed for this stage (Stage 3's open item).
+    # Schema bootstrap (ADR-004). The PostgreSQL cutover this comment used to describe as
+    # future has happened: Alembic (14 revisions) now owns schema changes in every real
+    # deployment, run via `alembic upgrade head` before this process ever starts (see
+    # backend/Dockerfile's CMD). create_all() here is harmless and idempotent against an
+    # already-migrated Postgres database (it only creates tables that don't already exist, and
+    # Alembic already created all of them) - this call now exists mainly for local SQLite
+    # dev/test setups that never run Alembic at all, not as this app's real schema-management
+    # mechanism.
     init_db()
 
     # Single-user credential provisioning (ADR-010 Decision item 1; Stage 4). A no-op if

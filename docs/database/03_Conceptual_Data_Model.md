@@ -47,17 +47,17 @@ Each domain of [02_Domain_Model.md](02_Domain_Model.md) is realized as one or mo
 | 11 | **Profile Characteristic** | Writing Profile | A single preserved stylistic attribute (structure preference, terminology tendency, citation habit). |
 | 12 | **Capability** | Capability | A registered intelligence capability (renamed from "Agent"; ADR-009). |
 | 13 | **Capability Entry** | Capability | A registered capability entry of the capability registry (04 §14). (Renamed from "Agent Capability"; ADR-009.) |
-| 14 | **Draft** | Draft | Generated or refined academic content, existing as a series of versions. |
-| 15 | **Draft Version** | Draft | An immutable state of a draft produced by one writing or revision cycle. |
-| 16 | **Review** | Review | An evaluation round applied to a draft version. |
-| 17 | **Review Decision** | Review | The recorded outcome of a review (approve, revise, reject). |
+| 14 | ~~**Draft**~~ | ~~Draft~~ | **REMOVED by ADR-012** (2026-10-09, see `08` §25) — number preserved, not reused. Replaced by Conversation/Message as the primary writing-generation entity. |
+| 15 | ~~**Draft Version**~~ | ~~Draft~~ | **REMOVED by ADR-012** alongside Draft. |
+| 16 | ~~**Review**~~ | ~~Review~~ | **REMOVED by ADR-012** — no successor entity. |
+| 17 | ~~**Review Decision**~~ | ~~Review~~ | **REMOVED by ADR-012** alongside Review; its memory-provenance role is carried by Memory Record directly. |
 | 18 | **Configuration Item** | Configuration | A single governed operational setting. |
 | 19 | **Work Item** | (system-managed, ADR-006) | A unit of asynchronous work recorded durably before execution (the outbox). |
 | 20 | **Agent** | Agent | The user's permanent, specialized research workspace, owning exactly one Project (added by ADR-009). |
 
 The following cross-cutting concepts appear as **relationships and rules**, not as standalone entities:
 
-* **Evidence Link** — the association between interpreted/generated content and its source material (ADR-005; 04 §18). It connects chunks and drafts to research documents and knowledge.
+* **Evidence Link** — the association between interpreted/generated content and its source material (ADR-005; 04 §18). It connects knowledge chunks and conversations (via Message Context Link, ADR-012 — previously drafts, via Draft Evidence Link) to research documents and knowledge.
 * **Supersession** — the replacement of an earlier record by a newer one with history retained (DR-014; 07 §3.3). It connects a memory record (or knowledge element) to the record it supersedes.
 
 ---
@@ -94,19 +94,19 @@ The Project entity itself is now owned by exactly one Agent — see **Agent — 
 ### 3.5 Memory Relationships
 
 * **Memory Record — Memory Record: 0..1 : N (supersession).** A memory record may supersede an earlier record; a record may be superseded by at most one newer record (at any time), and may be superseded again over time. History is retained (DR-014; 04 §8.2).
-* **Memory Record — Knowledge Element / Research Document / Draft Version / Review Decision: N : M (provenance).** A memory record traces to the activities and artifacts that produced it (DR-015).
+* **Memory Record — Knowledge Element / Research Document / Conversation: N : M (provenance).** A memory record traces to the activities and artifacts that produced it (DR-015). (Draft Version and Review Decision were provenance sources before ADR-012 removed both — see `08` §25.)
 
 ### 3.6 Conversation Relationships
 
 * **Conversation — Message: 1 : N (composition).** A conversation is composed of an ordered series of messages; a message cannot exist outside its conversation.
-* **Message — Project artifacts (Reference): N : M.** A message may reference research documents, knowledge elements, knowledge chunks, drafts, or memory records (04 §10.2). The structural realization of this polymorphic association is resolved in the logical model.
+* **Message — Project artifacts (Reference): N : M.** A message may reference research documents, knowledge elements, knowledge chunks, or memory records (04 §10.2 — drafts were a reference target before ADR-012 removed Draft; see `08` §25). The structural realization of this polymorphic association is resolved in the logical model.
 * **Conversation — Memory Record: N : M (approved outcomes).** Approved conversation outcomes enter memory only with user awareness (MVP-011; 04 §10.3).
 
 ### 3.7 Writing Profile Relationships
 
 * **Writing Profile — Profile Characteristic: 1 : N (composition).** A profile is composed of its preserved characteristics; a characteristic cannot exist outside its profile (DR-010, DR-012).
 * **Profile Characteristic — Research Document (provenance): N : M.** Profile characteristics trace to the authored samples that informed them (DR-012).
-* **Writing Profile — Draft: N : M.** A profile shapes the drafting of many drafts; a draft is styled by the active profile of its project.
+* **Writing Profile — Conversation: N : M.** A profile shapes writing generated within many conversations; generation is styled by the active profile of its Agent. (Previously "Writing Profile — Draft" — ADR-012, see `08` §25.)
 
 ### 3.8 Capability Relationships
 
@@ -115,18 +115,13 @@ The Project entity itself is now owned by exactly one Agent — see **Agent — 
 * **Capability — Capability Entry: 1 : N (composition).** A capability registration is described by its registered entries; an entry cannot exist without its capability (04 §14.1).
 * **Capability — Configuration Item: N : M.** Capabilities and their entry sets are configuration-governed and reviewable (AIR-055 to AIR-057).
 
-### 3.9 Draft Relationships
+### 3.9 Draft Relationships — REMOVED (ADR-012, see `08` §25)
 
-* **Draft — Draft Version: 1 : N (composition).** A draft exists as an ordered series of versions; a version cannot exist without its draft (DR-017; MVP-021; AIR-035).
-* **Draft Version — Knowledge Chunk / Research Document (Evidence Link): N : M.** Draft content is annotated with the evidence that supports it (DR-018; AIR-027; 04 §18.1 stage 4).
-* **Draft Version — Memory Record: N : M.** A draft version draws on persistent context from memory (04 §20.1).
-* **Draft Version — Writing Profile: N : M.** Drafting applies the project's active profile (AIR-016).
+Removed 2026-10-09 (decision made and implemented earlier, 2026-09-16–2026-09-18). The relationships this section described (Draft composing Draft Versions; Draft Version evidence-grounded in Knowledge Chunk/Research Document; Draft Version drawing on Memory Record; Draft Version styled by Writing Profile) are now served by Conversation/Message in the equivalent relationships recorded in §3.5–§3.7 above. Section number preserved, not reused. See `ADR-012`.
 
-### 3.10 Review Relationships
+### 3.10 Review Relationships — REMOVED (ADR-012, see `08` §25)
 
-* **Draft Version — Review: 1 : N.** A draft version is evaluated by one or more review rounds; each review applies to exactly one draft version (WR-022 to WR-025).
-* **Review — Review Decision: 1 : 1.** Each review produces one recorded decision (approve, revise, reject) with rationale (DR-019; AIR-054).
-* **Review Decision — Memory Record: N : M (outcome).** Review outcomes inform memory with user awareness (04 §19.3).
+Removed alongside Draft Relationships (§3.9); no successor — see `ADR-012` Decision item 2.
 
 ### 3.11 Agent Relationships
 
@@ -137,8 +132,7 @@ The Project entity itself is now owned by exactly one Agent — see **Agent — 
 * **Agent — Knowledge Chunk: 1 : N.** An Agent hosts its retrievable chunks. **Moved from Project by ADR-009.**
 * **Agent — Memory Record: 1 : N.** An Agent accumulates many memory records. **Moved from Project by ADR-009.**
 * **Agent — Conversation: 1 : N.** An Agent scopes many conversations. **Moved from Project by ADR-009.**
-* **Agent — Draft: 1 : N.** An Agent produces many drafts. **Moved from Project by ADR-009.**
-* **Agent — Writing Profile: 1 : N.** An Agent is associated with the profiles that inform its drafting; in the MVP an Agent has at most one active profile, but the relationship is modeled as one-to-many to allow evolution (03 §3.7). **Moved from Project by ADR-009.**
+* **Agent — Writing Profile: 1 : N.** An Agent is associated with the profiles that inform its writing generation; in the MVP an Agent has at most one active profile, but the relationship is modeled as one-to-many to allow evolution (03 §3.7). **Moved from Project by ADR-009.** (The sibling "Agent — Draft" relationship this list previously included here was removed by ADR-012; see `08` §25.)
 * **Agent — Configuration Item: 1 : N.** An Agent may override system defaults with agent-level settings (DR-003). **Moved from Project by ADR-009; Configuration Item scope value renamed from `project` to `agent`.**
 
 ---
@@ -156,7 +150,6 @@ The Project entity itself is now owned by exactly one Agent — see **Agent — 
 | Agent | Knowledge Chunk | 1 : N | Hosts *(moved from Project by ADR-009)* |
 | Agent | Memory Record | 1 : N | Accumulates *(moved from Project by ADR-009)* |
 | Agent | Conversation | 1 : N | Scopes *(moved from Project by ADR-009)* |
-| Agent | Draft | 1 : N | Produces *(moved from Project by ADR-009)* |
 | Agent | Writing Profile | 1 : N | Associates *(moved from Project by ADR-009)* |
 | Agent | Configuration Item | 1 : N | Configures *(moved from Project by ADR-009)* |
 | Research Document | Knowledge Element | 1 : N | Informs (derivation) |
@@ -170,15 +163,11 @@ The Project entity itself is now owned by exactly one Agent — see **Agent — 
 | Conversation | Memory Record | N : M | Contributes (approved) |
 | Writing Profile | Profile Characteristic | 1 : N | Composes |
 | Profile Characteristic | Research Document | N : M | Traces to (provenance) |
-| Writing Profile | Draft | N : M | Styles |
+| Writing Profile | Conversation | N : M | Styles *(previously Writing Profile—Draft; ADR-012, see `08` §25)* |
 | Capability | Capability Entry | 1 : N | Composes *(renamed from Agent/Agent Capability by ADR-009)* |
 | Capability | Configuration Item | N : M | Is governed by |
-| Draft | Draft Version | 1 : N | Composes (ordered) |
-| Draft Version | Knowledge Chunk / Research Document | N : M | Is evidence-grounded by |
-| Draft Version | Memory Record | N : M | Draws on |
-| Draft Version | Writing Profile | N : M | Is styled by |
-| Draft Version | Review | 1 : N | Is evaluated by |
-| Review | Review Decision | 1 : 1 | Produces |
+
+*Rows removed by ADR-012 (2026-10-09, see `08` §25): Draft—Draft Version (Composes), Draft Version—Knowledge Chunk/Research Document (Is evidence-grounded by), Draft Version—Memory Record (Draws on), Draft Version—Writing Profile (Is styled by), Draft Version—Review (Is evaluated by), Review—Review Decision (Produces). The equivalent relationships are now carried by Conversation/Message — see §3.5–§3.7 above.*
 
 ---
 
@@ -189,7 +178,6 @@ The model distinguishes two kinds of whole–part relationships:
 **Composition** (the part cannot exist without the whole; the whole owns the part's lifecycle):
 
 * **Conversation — Message**: deleting a conversation removes its messages; messages are meaningless outside their conversation.
-* **Draft — Draft Version**: versions are states of a draft; a version cannot exist without its draft.
 * **Writing Profile — Profile Characteristic**: characteristics are attributes of a profile; they exist only within it.
 * **Capability — Capability Entry**: entries exist only within their capability. *(Renamed from Agent/Agent Capability by ADR-009.)*
 * **Agent — Project**: the Project cannot exist without its owning Agent, and the pairing is permanent (ADR-009) — this is composition, not aggregation, distinguishing it from Project's own (aggregation) relationship to Research Document below.
@@ -198,7 +186,7 @@ The model distinguishes two kinds of whole–part relationships:
 
 * **Project — Research Document**: documents are removed independently (explicit removal, DR-025); the project aggregates them.
 * **Agent — Knowledge Element / Knowledge Chunk**: knowledge is derived and can be removed or superseded independently of the Agent's own lifecycle. *(Moved from Project by ADR-009.)*
-* **Draft Version — Knowledge Chunk**: evidence links reference chunks that exist independently of the draft.
+* **Conversation — Knowledge Chunk**: evidence links (Message Context Link) reference chunks that exist independently of the conversation. *(Previously "Draft Version — Knowledge Chunk" — ADR-012, see `08` §25.)*
 
 This distinction directly informs the delete semantics of the logical model (04 §9).
 
@@ -208,7 +196,7 @@ This distinction directly informs the delete semantics of the logical model (04 
 
 The conceptual model uses one deliberate generalization and one subtyping:
 
-**Generalization — "Traceable Record".** Knowledge Elements, Knowledge Chunks, Memory Records, Draft Versions, and Review Decisions all share the property of *carrying provenance*: each is created by a system activity or user action, references the source that produced it, and participates in the evidence chain (ADR-005; 04 §18). Conceptually, these are **Traceable Records**. This is a conceptual generalization only — it is not intended to be implemented as table inheritance (the logical model flattens the shared attributes; see 04 §14).
+**Generalization — "Traceable Record".** Knowledge Elements, Knowledge Chunks, and Memory Records all share the property of *carrying provenance*: each is created by a system activity or user action, references the source that produced it, and participates in the evidence chain (ADR-005; 04 §18). Conceptually, these are **Traceable Records**. (Draft Versions and Review Decisions were also Traceable Records before ADR-012 removed both — see `08` §25.) This is a conceptual generalization only — it is not intended to be implemented as table inheritance (the logical model flattens the shared attributes; see 04 §14).
 
 **Subtyping — Message Direction.** Messages within a conversation are either *user requests* or *system responses* (03 §3.6; AIR-006). This is a role distinction on one entity, realized in the logical model as an enumerated discriminator, not as separate entities.
 
@@ -231,7 +219,7 @@ Each domain of the logical backend ([05_Backend_Architecture.md](../architecture
 | Memory | Memory Record |
 | Conversation | Conversation, Message |
 | Capability | Capability, Capability Entry *(renamed from Agent/Agent Capability by ADR-009)* |
-| Review | Review, Review Decision |
+| ~~Review~~ | ~~Review, Review Decision~~ *(bounded context removed by ADR-012, see `08` §25 — no successor)* |
 | Author Profile | Writing Profile, Profile Characteristic |
 | Configuration | Configuration Item |
 | Authentication (05 §15) | User, Session |
@@ -239,7 +227,7 @@ Each domain of the logical backend ([05_Backend_Architecture.md](../architecture
 Context rules (from 05 §18 and ADR-003):
 
 * Each context owns its data and behavior; no context reaches into another context's state.
-* Cross-context relationships (e.g., a Draft Version referencing Knowledge Chunks; a Memory Record referencing Review outcomes) are realized through the orchestration layer and the data access layer — never through direct access to another context's internals.
+* Cross-context relationships (e.g., a Conversation referencing Knowledge Chunks via Message Context Link; a Memory Record referencing Conversation outcomes) are realized through the orchestration layer and the data access layer — never through direct access to another context's internals.
 * The **data access layer** (05 §16, API-032, API-033) is the single boundary through which all contexts persist; per-module data ownership follows 03 §4 (Data Ownership Model).
 
 ---
@@ -248,11 +236,11 @@ Context rules (from 05 §18 and ADR-003):
 
 The conceptual model is governed by the following business rules, each grounded in the approved baseline:
 
-1. **Understand before generate.** A draft is produced only after the assembled context is sufficient; the model records context assembly as a precondition, not an assumption (AIR-031; 04 §20.1).
-2. **Evidence before assertion.** Every knowledge element, knowledge chunk, and draft version carries evidence links to source material; content without an evidence path is not retrievable as supported (AIR-024, AIR-027; ADR-005).
-3. **Artifact distinction.** Raw input (messages), interpreted knowledge (knowledge elements/chunks), stored memory (memory records), and approved output (draft versions) remain distinguishable at all times (AIR-006).
+1. **Understand before generate.** A reply is generated only after the assembled context is sufficient; the model records context assembly as a precondition, not an assumption (AIR-031; 04 §20.1). *(Previously stated in terms of "draft" — ADR-012, see `08` §25.)*
+2. **Evidence before assertion.** Every knowledge element and knowledge chunk carries evidence links to source material; content without an evidence path is not retrievable as supported (AIR-024, AIR-027; ADR-005). *(Draft versions carried this too before ADR-012 removed Draft.)*
+3. **Artifact distinction.** Raw input (messages), interpreted knowledge (knowledge elements/chunks), and stored memory (memory records) remain distinguishable at all times (AIR-006). *(Approved output, previously "draft versions," has no successor category since ADR-012 — generated writing is Message content within Conversation, not a separately-approved artifact.)*
 4. **Memory is user-aware.** Memory records are populated through user input and system-derived context; the system does not infer memory without user awareness (MVP-011; 04 §8.2).
-5. **Review is user-owned.** Approval, revision, and rejection are the researcher's decisions; review decisions are preserved for audit and never overridden by the system (AIR-003, AIR-038, AIR-054).
+5. ~~**Review is user-owned.** Approval, revision, and rejection are the researcher's decisions; review decisions are preserved for audit and never overridden by the system (AIR-003, AIR-038, AIR-054).~~ **REMOVED by ADR-012** (2026-10-09, see `08` §25) — no successor rule; the single-researcher use case has no distinct reviewer role or approval gate to govern.
 6. **Supersession retains history.** When a memory record or knowledge element is superseded, the earlier record remains traceable (DR-014; 07 §3.3).
 7. **Evidence is retained.** Research documents are retained for the life of the project or until explicitly removed; removal preserves the integrity of referencing data (07 §3.4; 05 §10; DR-025).
 8. **Conversation outcomes require approval.** Conversation content is a continuity record, not memory, until approved and entered with user awareness (03 §3.6; AIR-006).
@@ -280,14 +268,14 @@ Conversations (Conversation: created → active → summarized/retained)
     ↓
 Capability registration (Capability: registered → configured → updated)
     ↓
-Writing (Draft: drafted → revised → superseded)
-    ↓
-Review (Review: created → decision → preserved; Review Decision: recorded)
+Writing (Message: sent → reply generated, within a Conversation)
     ↓
 Approved outcome enters Memory with user awareness
 ```
 
 **Corrected by ADR-009:** the lifecycle previously began "Project creation" and referred to "Agent registration" for the capability registry. It now begins "Agent creation, with its one permanent Project," and the capability-registry step is relabeled "Capability registration" to avoid ambiguity.
+
+**Corrected by ADR-012 (2026-10-09, see `08` §25):** the "Writing" stage previously read "Draft: drafted → revised → superseded," followed by a separate "Review" stage ("Review: created → decision → preserved; Review Decision: recorded"). Both are replaced by chat-based generation within Conversation/Message — no separate review stage exists, since the single-researcher use case has no distinct reviewer role.
 
 Data lifecycle stages (SRS Ch7 §4; DR-023 to DR-025) apply uniformly: **ingestion → storage/persistence → retrieval → archival/deletion**, with provenance preserved across the lifecycle.
 
@@ -314,6 +302,6 @@ This conceptual data model is traceable to the approved baseline as follows:
 
 ## 11. Summary
 
-The conceptual data model, as corrected by ADR-009, transforms the thirteen domains of Document 02 into twenty conceptual entities and the relationships among them: ownership (User → Agent → Project), containment (Agent → knowledge, memory, conversations, drafts, writing profile; Project → research documents), derivation (documents → knowledge → chunks), evidence grounding (chunks → drafts), context (memory → drafting), oversight (draft versions → reviews → decisions), and configuration governance. Composition, aggregation, one generalization (Traceable Record), two subtypings, bounded contexts aligned to the backend domains, and ten business rules complete the model.
+The conceptual data model, as corrected by ADR-009 and ADR-012 (2026-10-09, see `08` §25), transforms the eleven live domains of Document 02 into sixteen conceptual entities and the relationships among them: ownership (User → Agent → Project), containment (Agent → knowledge, memory, conversations, writing profile; Project → research documents), derivation (documents → knowledge → chunks), evidence grounding (chunks → conversations, via Message Context Link), and configuration governance. (Draft, Draft Version, Review, and Review Decision — four of the original twenty entities — were removed by ADR-012; their "oversight" relationships have no successor — see `ADR-012` Decision item 2.) Composition, aggregation, one generalization (Traceable Record), two subtypings, bounded contexts aligned to the backend domains, and nine business rules complete the model.
 
 This document expresses the language of the business and its relationships. The next document, [04_Logical_Data_Model.md](04_Logical_Data_Model.md), refines this model into the logical relational structure — entities, attributes, keys, and integrity rules — still without implementation details.
