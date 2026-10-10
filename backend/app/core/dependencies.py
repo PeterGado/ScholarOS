@@ -300,6 +300,10 @@ def get_request_email_verification_use_case(
     )
 
 
+def get_user_account_repository(db: Session = Depends(get_db)) -> SqlAlchemyUserAccountRepository:
+    return SqlAlchemyUserAccountRepository(db)
+
+
 def get_register_user_use_case(
     user_lookup: SqlAlchemyUserCredentialLookup = Depends(get_user_credential_lookup),
     user_registration: SqlAlchemyUserRegistrationRepository = Depends(get_user_registration_repository),
@@ -307,6 +311,7 @@ def get_register_user_use_case(
     unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
     is_breached=Depends(get_password_breach_checker),
     email_verification: RequestEmailVerificationUseCase = Depends(get_request_email_verification_use_case),
+    user_accounts: SqlAlchemyUserAccountRepository = Depends(get_user_account_repository),
 ) -> RegisterUserUseCase:
     return RegisterUserUseCase(
         user_lookup,
@@ -316,6 +321,8 @@ def get_register_user_use_case(
         required_invite_code=get_settings().registration_invite_code,
         is_breached=is_breached,
         email_verification=email_verification,
+        user_accounts=user_accounts,
+        unverified_email_reap_after_hours=get_settings().unverified_email_reap_after_hours,
     )
 
 
@@ -334,6 +341,7 @@ def get_google_sign_in_use_case(
     auth_service: AuthService = Depends(get_auth_service),
     unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
     verify_id_token=Depends(get_google_token_verifier),
+    user_accounts: SqlAlchemyUserAccountRepository = Depends(get_user_account_repository),
 ) -> GoogleSignInUseCase:
     return GoogleSignInUseCase(
         user_lookup,
@@ -343,11 +351,9 @@ def get_google_sign_in_use_case(
         verify_id_token,
         required_invite_code=get_settings().registration_invite_code,
         google_client_id=get_settings().google_oauth_client_id,
+        user_accounts=user_accounts,
+        unverified_email_reap_after_hours=get_settings().unverified_email_reap_after_hours,
     )
-
-
-def get_user_account_repository(db: Session = Depends(get_db)) -> SqlAlchemyUserAccountRepository:
-    return SqlAlchemyUserAccountRepository(db)
 
 
 def get_confirm_email_verification_use_case(

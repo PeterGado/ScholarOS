@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from datetime import UTC, datetime
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -15,6 +15,7 @@ from app.auth.hashing import hash_password, verify_password
 from app.auth.registration import MINIMUM_PASSWORD_LENGTH, RegisterUserUseCase
 from app.auth.repository import (
     AuthSessionRepository,
+    UserAccountRepository,
     UserCredentialLookup,
     UserRegistrationRepository,
 )
@@ -28,6 +29,8 @@ class FakeUserCredential:
     password_hash: str
     email: str | None = None
     email_verified: bool = True
+    google_subject: str | None = None
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 class FakeUserCredentialLookup(UserCredentialLookup):
@@ -64,6 +67,28 @@ class FakeUserRegistrationRepository(UserRegistrationRepository):
             self._lookup._by_email[email] = user
         self.created.append(user)
         return user
+
+
+class FakeUserAccountRepository(UserAccountRepository):
+    def __init__(self, lookup: FakeUserCredentialLookup) -> None:
+        self._lookup = lookup
+
+    def update_password_hash(self, user_id: int, password_hash: str) -> None:
+        raise NotImplementedError("not exercised by these tests")
+
+    def update_email(self, user_id: int, email: str | None) -> None:
+        user = next(u for u in self._lookup._by_username.values() if u.user_id == user_id)
+        if user.email is not None:
+            self._lookup._by_email.pop(user.email, None)
+        user.email = email
+        if email is not None:
+            self._lookup._by_email[email] = user
+
+    def mark_email_verified(self, user_id: int) -> None:
+        raise NotImplementedError("not exercised by these tests")
+
+    def set_google_subject(self, user_id: int, google_subject: str) -> None:
+        raise NotImplementedError("not exercised by these tests")
 
 
 class FakeAuthSessionRepository(AuthSessionRepository):
@@ -106,11 +131,18 @@ class FakeUnitOfWork:
 
 
 def _build_use_case(
-    *, existing_users=(), required_invite_code=None, raise_integrity_error=False, is_breached=lambda password: False
+    *,
+    existing_users=(),
+    required_invite_code=None,
+    raise_integrity_error=False,
+    is_breached=lambda password: False,
+    unverified_email_reap_after_hours=48,
+    wire_user_accounts=True,
 ):
     lookup = FakeUserCredentialLookup(*existing_users)
     registration = FakeUserRegistrationRepository(lookup, raise_integrity_error=raise_integrity_error)
     auth_service = AuthService(FakeAuthSessionRepository(), lookup, FakeUnitOfWork())
+    user_accounts = FakeUserAccountRepository(lookup) if wire_user_accounts else None
     use_case = RegisterUserUseCase(
         lookup,
         registration,
@@ -118,6 +150,8 @@ def _build_use_case(
         FakeUnitOfWork(),
         required_invite_code=required_invite_code,
         is_breached=is_breached,
+        user_accounts=user_accounts,
+        unverified_email_reap_after_hours=unverified_email_reap_after_hours,
     )
     return use_case, lookup, registration
 
@@ -169,6 +203,82 @@ def test_registering_an_already_registered_email_is_rejected():
 
     with pytest.raises(EmailAlreadyInUseError):
         use_case.execute(email="taken@example.com", password="a-real-password", invite_code=None)
+
+
+def test_a_recently_squatted_unverified_email_is_still_rejected():
+    """The whole point of the reap TTL: a brand-new unverified registration (someone who just
+    hasn't checked their inbox yet) must not be bumped by a second registration attempt."""
+    squatter = FakeUserCredential(
+        user_id=1,
+        username="squatter",
+        password_hash=hash_password("whatever123"),
+        email="victim@example.com",
+        email_verified=False,
+        created_at=datetime.now(UTC),
+    )
+    use_case, _, _ = _build_use_case(existing_users=[squatter])
+
+    with pytest.raises(EmailAlreadyInUseError):
+        use_case.execute(email="victim@example.com", password="a-real-password", invite_code=None)
+
+
+def test_a_verified_email_is_never_reclaimed_no_matter_how_old():
+    old_but_verified = FakeUserCredential(
+        user_id=1,
+        username="real-owner",
+        password_hash=hash_password("whatever123"),
+        email="owner@example.com",
+        email_verified=True,
+        created_at=datetime.now(UTC) - timedelta(days=365),
+    )
+    use_case, _, _ = _build_use_case(existing_users=[old_but_verified])
+
+    with pytest.raises(EmailAlreadyInUseError):
+        use_case.execute(email="owner@example.com", password="a-real-password", invite_code=None)
+
+
+def test_an_abandoned_unverified_email_claim_past_the_ttl_is_reclaimed():
+    """The email-squatting fix (2026-10-10): an unverified registration that never verified
+    within the reap window no longer permanently blocks the real owner from registering."""
+    squatter = FakeUserCredential(
+        user_id=1,
+        username="squatter",
+        password_hash=hash_password("whatever123"),
+        email="victim@example.com",
+        email_verified=False,
+        created_at=datetime.now(UTC) - timedelta(hours=49),
+    )
+    use_case, lookup, registration = _build_use_case(
+        existing_users=[squatter], unverified_email_reap_after_hours=48
+    )
+
+    token = use_case.execute(email="victim@example.com", password="a-real-password", invite_code=None)
+
+    assert isinstance(token, str) and token
+    # The real registration now owns the email.
+    new_owner = lookup.get_by_email("victim@example.com")
+    assert new_owner is not None
+    assert new_owner.user_id != squatter.user_id
+    # The squatter's old account still exists (not deleted) but no longer holds the email.
+    assert squatter.email is None
+    assert squatter.user_id in [u.user_id for u in lookup._by_username.values()]
+
+
+def test_reclaim_is_skipped_entirely_when_no_user_accounts_repository_is_wired():
+    """Matches email_verification's own opt-in-by-omission shape: a test that doesn't care
+    about this feature should see the pre-fix behavior unchanged, not a crash."""
+    squatter = FakeUserCredential(
+        user_id=1,
+        username="squatter",
+        password_hash=hash_password("whatever123"),
+        email="victim@example.com",
+        email_verified=False,
+        created_at=datetime.now(UTC) - timedelta(hours=100),
+    )
+    use_case, _, _ = _build_use_case(existing_users=[squatter], wire_user_accounts=False)
+
+    with pytest.raises(EmailAlreadyInUseError):
+        use_case.execute(email="victim@example.com", password="a-real-password", invite_code=None)
 
 
 def test_a_password_shorter_than_the_minimum_is_rejected():

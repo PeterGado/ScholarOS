@@ -1,7 +1,9 @@
 from collections.abc import Callable
+from datetime import timedelta
 
 from sqlalchemy.exc import IntegrityError
 
+from app.auth.abandoned_account import reclaim_if_abandoned
 from app.auth.email_verification import RequestEmailVerificationUseCase
 from app.auth.exceptions import (
     EmailAlreadyInUseError,
@@ -11,7 +13,11 @@ from app.auth.exceptions import (
 )
 from app.auth.hashing import hash_password
 from app.auth.password_strength import is_breached_password
-from app.auth.repository import UserCredentialLookup, UserRegistrationRepository
+from app.auth.repository import (
+    UserAccountRepository,
+    UserCredentialLookup,
+    UserRegistrationRepository,
+)
 from app.auth.service import AuthService
 from app.auth.username import derive_unique_username
 from app.core.unit_of_work import UnitOfWork
@@ -43,6 +49,8 @@ class RegisterUserUseCase:
         required_invite_code: str | None,
         is_breached: Callable[[str], bool] = is_breached_password,
         email_verification: RequestEmailVerificationUseCase | None = None,
+        user_accounts: UserAccountRepository | None = None,
+        unverified_email_reap_after_hours: int = 48,
     ) -> None:
         self._users = user_lookup
         self._registration = user_registration
@@ -53,6 +61,11 @@ class RegisterUserUseCase:
         # None in tests that don't care about email verification (most registration unit
         # tests); DI (get_register_user_use_case) always wires a real instance in production.
         self._email_verification = email_verification
+        # None in tests that don't exercise the email-squatting reap path (reclaim_if_abandoned
+        # is simply never reachable without it, same opt-in-by-omission shape as
+        # email_verification above); DI always wires a real instance in production.
+        self._user_accounts = user_accounts
+        self._reap_after = timedelta(hours=unverified_email_reap_after_hours)
 
     def execute(self, *, email: str, password: str, invite_code: str | None) -> str:
         """Returns a raw session token, exactly like `AuthService.login` - the caller is
@@ -72,8 +85,13 @@ class RegisterUserUseCase:
         if self._is_breached(password):
             raise PasswordCompromisedError()
 
-        if self._users.get_by_email(email) is not None:
-            raise EmailAlreadyInUseError()
+        existing = self._users.get_by_email(email)
+        if existing is not None:
+            reclaimed = self._user_accounts is not None and reclaim_if_abandoned(
+                existing, accounts=self._user_accounts, unit_of_work=self._uow, reap_after=self._reap_after
+            )
+            if not reclaimed:
+                raise EmailAlreadyInUseError()
 
         username = derive_unique_username(email, users=self._users)
         try:

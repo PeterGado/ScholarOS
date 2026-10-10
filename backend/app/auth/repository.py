@@ -94,6 +94,9 @@ class UserCredential(Protocol):
     # (app.auth.service.py:110, "UserCredential has no attribute google_subject") sit silently
     # suppressed under that module's blanket `ignore_errors` override instead of being caught.
     google_subject: str | None
+    # Added (email-squatting fix, 2026-10-10): app.auth.abandoned_account.reclaim_if_abandoned
+    # needs this to decide whether an unverified email claim has aged past the reap threshold.
+    created_at: datetime
 
 
 class UserCredentialLookup(Protocol):

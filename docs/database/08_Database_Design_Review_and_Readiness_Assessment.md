@@ -357,3 +357,27 @@ This section is appended after §24 to record a third correction, per `04_Reposi
 **Outstanding technical debt and deferred decisions (§10–§11) are unaffected**, with one addition: the `02`/`03`/`05` follow-up correction named above joins §11's deferred-decisions list.
 
 **Governance record:** no journal entry exists for the original 2026-09-16–2026-09-18 decision (the gap `ADR-012`'s own Context and Consequences sections name directly). This correction itself is recorded in `docs/Baseline_Register.md` and `ADR-012`, per `04_Repository_Governance.md` §4.4 and §5.3.
+
+---
+
+## 26. Post-Freeze Correction: ADR-013 (2026-10-10, Row-Level Security and schema growth)
+
+This section is appended after §25 to record a fourth correction, per `04_Repository_Governance.md` §4.4. Sections 1–25 above remain the historical record and are not rewritten. Like §25, most of what this section records was already true of the running system before it was written down — Row-Level Security shipped 2026-09-21, the schema growth below accumulated progressively through 2026-10-06 — with no ADR or correction section covering any of it until `ADR-013`.
+
+**What changed:**
+- **Row-Level Security** is adopted as a second, independent tenant-isolation enforcement layer on top of the application-level ownership checks the Database Baseline already assumed. Sixteen tables carry a policy walking their foreign-key chain back to `agents.user_id`; the running application connects through a restricted, non-superuser role (`scholaros_app`) rather than the table-owner role migrations run as; `users`, the pre-identity token tables, `work_items`, and `rate_limit_counters` are deliberately excluded. Full policy inventory: `docs/Backend_Schema_Reference.md` §6.
+- **Schema growth beyond §23–§25's corrections:** `User` gained `email`, `email_verified`, `google_subject` (the schema-level consequence of ADR-011's registration/Google Sign-In/password reset/email verification work); `ResearchDocument` gained `publication_year`, `doi`, `doi_verification_status`, `purpose`; five new tables with no prior baseline entity — `writing_segments`, `password_reset_tokens`, `email_verification_tokens`, `ai_usage_records`, `rate_limit_counters`. None required redesigning a frozen entity. Full current detail: `docs/Backend_Schema_Reference.md` §2–§3.
+
+**Why:** Row-Level Security realizes the "per-tenant isolation decision" `ADR-007` Decision item 5 itself said would get a future ADR — `ADR-013` is that ADR. The schema growth is normal additive evolution of already-approved feature work (ADR-011's registration expansion; the rate limiter and AI usage guard built alongside it), recorded here in aggregate per the same "additive, not every similarly-shaped change needs its own ADR" discipline `ADR-011`/`ADR-012` already established. Full rationale: `ADR-013`.
+
+**Documents corrected, and the honest extent of correction:**
+- `docs/adr/ADR-004_Storage_and_Memory_Strategy.md`, `docs/adr/ADR-007_Deployment_Strategy.md`: cross-reference additions only — `ADR-013` as the realization/multi-tenant-isolation record either anticipated; neither document's Decision text is rewritten.
+- `docs/architecture/07_Operational_Architecture.md`: one Traceability-section line extended to name `ADR-013` alongside `ADR-004`/`ADR-007`.
+- `docs/Baseline_Register.md`: new correction line for Architecture Baseline v1 (its third) and Database Baseline v1 (its fourth).
+- **Not separately corrected in this pass:** `02_Domain_Model.md` through `07_Database_Validation_and_Quality_Assurance.md`'s own prose is not individually amended for every new table/column named above — `docs/Backend_Schema_Reference.md` is the authoritative, current, practical schema reference going forward for this kind of additive growth (per its own Purpose section), rather than every addition triggering a fresh correction pass through the conceptual/logical model documents. This is a deliberate choice about where incremental schema-growth detail lives, not an oversight — see `ADR-013` Alternatives Considered.
+
+**Updated readiness verdict:** unaffected. As with §25, this corrects the record of an already-running, already-validated production system, not a forward-looking design.
+
+**Outstanding technical debt and deferred decisions (§10–§11) are unaffected**, with one addition: the pgvector migration `ADR-004` Decision item 3 named remains open, now explicitly re-flagged by `ADR-013` rather than silently left to be inferred.
+
+**Governance record:** this correction is recorded in `docs/Baseline_Register.md` and `ADR-013`, per `04_Repository_Governance.md` §4.4 and §5.3.

@@ -147,6 +147,6 @@ This operational architecture is traceable to the approved requirements as follo
 * Storage strategy: DR-001 to DR-025, API-032, API-033, NFR-023, NFR-024, NFR-027, NFR-028.
 * Deployment assumptions: NFR-003 to NFR-006, NFR-009, NFR-010, NFR-031 to NFR-034, API-035 to API-037, API-040, AIR-040 to AIR-042, AIR-055 to AIR-057.
 * Scalability evolution: NFR-001, NFR-002, NFR-007, NFR-008, API-038, API-039, RDM-001 to RDM-010, SRS Chapter 11 roadmap phases.
-* ADR traceability: ADR-004 (Storage and Memory Strategy), ADR-007 (Deployment Strategy).
+* ADR traceability: ADR-004 (Storage and Memory Strategy), ADR-007 (Deployment Strategy), ADR-013 (Production Deployment Cutover and Schema Growth — records the realization of this document's own §5.3 item 5 "Persistence swap" and item 3 "Stateless API tier" levers: the cloud-stage managed-services deployment, 2026-10-10).
 
 These traceability links keep the operational architecture accountable to the approved product requirements rather than to implementation convenience.

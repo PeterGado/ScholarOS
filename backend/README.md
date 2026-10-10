@@ -10,9 +10,24 @@ See [`docs/Backend_Implementation_Plan.md`](../docs/Backend_Implementation_Plan.
 cd backend
 python -m venv .venv
 .venv/Scripts/activate   # Windows
-pip install -e ".[dev]"
+pip install -r requirements-dev.lock
+pip install --no-deps -e .
 cp .env.example .env
 ```
+
+`requirements-dev.lock` pins every dependency (direct and transitive) to the exact version CI
+and production install (2026-10-10, closing a "no dependency lockfile" gap - what's installed
+used to drift silently between environments). It's generated from `pyproject.toml`, not hand
+edited - regenerate it after changing `pyproject.toml`'s dependencies:
+
+```bash
+pip install pip-tools
+pip-compile --output-file=requirements.lock pyproject.toml              # production deps only
+pip-compile --extra=dev --output-file=requirements-dev.lock pyproject.toml  # + dev/test tooling
+```
+
+`pip install -e ".[dev]"` directly against `pyproject.toml` (unpinned) still works for a quick
+local setup when you don't need reproducibility guarantees.
 
 ## Run
 

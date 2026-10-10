@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -214,6 +215,33 @@ class Settings(BaseSettings):
     # has no reason to otherwise know where its frontend is deployed, so this must be set
     # explicitly per environment rather than guessed from a request header.
     frontend_base_url: str = "http://localhost:5173"
+    # Email-squatting fix (2026-10-10): how long an unverified email claim (password
+    # registration or - rare, since Google's own claim is normally authoritative immediately -
+    # a Google account somehow left unverified) is held exclusively before
+    # app.auth.abandoned_account.reclaim_if_abandoned treats it as abandoned and frees the
+    # email for the real owner to register or sign in with. Long enough that a real user who
+    # just hasn't checked their inbox yet is never bumped (email_verification_token_ttl_minutes
+    # above is only 24h itself, so this is double that), short enough that an attacker's
+    # squatted claim is not a practically-permanent block.
+    unverified_email_reap_after_hours: int = 48
+
+    @model_validator(mode="after")
+    def _forbid_fake_ai_provider_in_production(self) -> "Settings":
+        """Production-readiness guard (2026-10-10): nothing previously stopped
+        `AI_PROVIDER=fake` (app.ai.providers.fake, test-infrastructure-only - see its own
+        docstring) from being accidentally set on a real `ENVIRONMENT=production` deploy,
+        which would silently serve every user a canned response instead of a real AI reply.
+        Fails fast at settings construction (process startup) rather than letting it run
+        and only be noticed from user reports - the same fail-closed instinct as every other
+        test-only escape hatch in this file (ai_fake_provider_fail, disable_work_item_executor)
+        being scoped tightly, just enforced instead of merely documented.
+        """
+        if self.environment == "production" and self.ai_provider == "fake":
+            raise ValueError(
+                "AI_PROVIDER=fake is test-infrastructure-only and must never be set when "
+                "ENVIRONMENT=production - it would silently serve canned responses to real users."
+            )
+        return self
 
 
 @lru_cache
