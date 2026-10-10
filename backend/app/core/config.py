@@ -22,6 +22,22 @@ class Settings(BaseSettings):
     # 20MB comfortably covers real research documents/PDFs/docx writing samples at this
     # project's scale without inviting a trivial memory/storage-cost abuse vector.
     max_upload_size_bytes: int = 20 * 1024 * 1024
+    # Global request body-size ceiling (2026-10-10, production-readiness pass): applied to
+    # every request by MaxBodySizeMiddleware (app.core.middleware), before CORS/rate
+    # limiting/routes run. 25MB is deliberately just above max_upload_size_bytes plus
+    # multipart overhead, so the one real route that needs up to 20MB still passes through
+    # untouched while a pathologically large body to any other route (which should never see
+    # more than a few KB) is rejected before it reaches anything else.
+    max_request_body_bytes: int = 25 * 1024 * 1024
+    # Data retention (2026-10-10, production-readiness pass): how long purely operational
+    # bookkeeping rows survive before DataRetentionJob (app.workers.retention) deletes them.
+    # Scoped deliberately narrow - ai_usage_records and rate_limit_counters are billing/abuse
+    # ledgers, not content; work_items is transient queue bookkeeping, not an audit trail.
+    # Never applies to KnowledgeChunk, MemoryRecord, Message, or any other content table - the
+    # AI's actual knowledge and conversation history stay permanent and unbounded.
+    data_retention_usage_days: int = 90
+    data_retention_work_item_days: int = 30
+    data_retention_check_interval_seconds: float = 86400.0
     # Object storage backend (ADR-004 §5's content-addressed store, now provider-agnostic):
     # "filesystem" (default, unchanged) or "s3" - any S3-compatible endpoint (MinIO, Cloudflare
     # R2, AWS S3 itself), selected by configuration exactly like the AI provider gateway

@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import timedelta
 
 import sentry_sdk
 from fastapi import FastAPI, Request
@@ -15,11 +16,13 @@ from app.api.router import api_router
 from app.auth.provisioning import sync_configured_user
 from app.core.config import get_settings
 from app.core.dependencies import get_content_store
+from app.core.middleware import MaxBodySizeMiddleware
 from app.core.rate_limit import limiter
 from app.database import session as db_session_module
 from app.database.session import init_db
 from app.workers.executor import WorkItemExecutorLoop
 from app.workers.health import QueueHealthMonitor
+from app.workers.retention import DataRetentionJob
 
 
 @asynccontextmanager
@@ -107,11 +110,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     health_monitor.start()
 
+    # Started alongside the executor and health monitor (2026-10-10) - see DataRetentionJob's
+    # own docstring for exactly which tables this touches (never knowledge/memory/conversation
+    # content, only operational bookkeeping).
+    retention_job = DataRetentionJob(
+        lambda: db_session_module.WorkerSessionLocal(),
+        usage_retention=timedelta(days=settings.data_retention_usage_days),
+        work_item_retention=timedelta(days=settings.data_retention_work_item_days),
+        check_interval_seconds=settings.data_retention_check_interval_seconds,
+    )
+    retention_job.start()
+
     yield
 
     if executor_loop is not None:
         await executor_loop.stop()
     await health_monitor.stop()
+    await retention_job.stop()
 
 
 # Sentry (2026-09-21): a no-op if SENTRY_DSN isn't configured - init() is simply never called,
@@ -164,3 +179,11 @@ async def add_security_headers(request: Request, call_next):
     # browsers' hardcoded preload lists and is hard to reverse if ever needed.
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
+
+
+# Registered last (2026-10-10, production-readiness pass) - Starlette's middleware stack runs
+# the most-recently-added middleware outermost, so this must be added after every other
+# add_middleware/@app.middleware call to actually run first, rejecting an oversized request
+# before CORS, rate limiting, or any route sees it. See MaxBodySizeMiddleware's own docstring
+# for what it does and does not catch.
+app.add_middleware(MaxBodySizeMiddleware, max_bytes=get_settings().max_request_body_bytes)
