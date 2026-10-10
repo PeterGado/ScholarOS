@@ -6,11 +6,13 @@ import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 import { ApiError } from "@/lib/apiClient";
 import { useAuth } from "@/lib/AuthContext";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { useMetaDescription } from "@/hooks/useMetaDescription";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export function LoginPage() {
   useDocumentTitle("Sign in");
+  useMetaDescription("Sign in to ScholarOS, your AI research and writing workspace.");
   const { isAuthenticated, setToken } = useAuth();
   const location = useLocation();
   const passwordWasReset = Boolean((location.state as { passwordWasReset?: boolean } | null)?.passwordWasReset);

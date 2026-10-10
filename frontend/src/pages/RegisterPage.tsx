@@ -6,6 +6,7 @@ import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 import { ApiError } from "@/lib/apiClient";
 import { useAuth } from "@/lib/AuthContext";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { useMetaDescription } from "@/hooks/useMetaDescription";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -19,6 +20,9 @@ import { Input } from "@/components/ui/input";
 // unset in production.
 export function RegisterPage() {
   useDocumentTitle("Create account");
+  useMetaDescription(
+    "Create a free ScholarOS account and start writing with AI grounded in your own research and style.",
+  );
   const { isAuthenticated, setToken } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

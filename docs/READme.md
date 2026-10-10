@@ -1,8 +1,8 @@
 # ScholarOS Documentation
 
-**Version:** 1.9.0  
+**Version:** 1.10.0  
 **Status:** Active  
-**Last Updated:** 2026-10-09  
+**Last Updated:** 2026-10-10  
 **Latest ADR:** ADR-012 — Chat/Memory Model Replaces the Draft/Review Pipeline
 **Governance Framework:** Engineering Governance Framework v2.0 — Active
 
@@ -257,6 +257,23 @@ These files identify:
 * Current task
 * Completed work
 * Upcoming work
+
+---
+
+## Synthesis References (2026-10-10)
+
+Six practical, concise entry-point documents, added 2026-10-10 to orient a reader quickly without reading the full requirements/architecture/database document sets first. Per `09_Documentation_Standards.md` §2, each cross-references its authoritative sources rather than duplicating them — where any of them disagrees with a source listed below, the source governs.
+
+| File | Purpose | Builds on |
+| ---- | ------- | --------- |
+| `docs/Product_Requirements_Document.md` | What ScholarOS is, who it's for, MVP vs. future scope, where the live product has evolved past the original SRS | `vision/Vision.md`, `srs/02`, `srs/10`, `srs/11` |
+| `docs/Design_Brief.md` | The design language, visual system, and UI patterns actually in use | `vision/Vision.md`, the shipped `frontend/src` code |
+| `docs/Technical_Design_Document.md` | System architecture, tech stack, module boundaries, and known current architectural limitations | `architecture/01`–`07`, the ADR set |
+| `docs/Backend_Schema_Reference.md` | A practical, current view of the real live database schema — explicitly a living companion to the frozen Database Baseline v1, not a revision of it | `database/04`, `database/08` §23–§25, the real SQLAlchemy models and Alembic history |
+| `docs/User_Flow_Diagrams.md` | Mermaid flowcharts of the real core user flows (auth, onboarding→chat, document processing, password reset), with explicit notes on where they diverge from the original SRS workflow description | `srs/08`, the real frontend routes and pages |
+| `docs/roadmaps/Engineering_Plan.md` | A forward-looking near/medium/longer-term engineering plan, grounded in `Project_Status.md`'s recorded open items | `Project_Status.md`, `srs/11`, ADR-012 |
+
+All six were produced by reading the underlying governance/architecture/database/SRS documents together with the real current code (SQLAlchemy models, Alembic migrations, frontend routes) — each flags, rather than silently smooths over, any place the frozen baseline or an ADR has fallen behind the live implementation.
 
 ---
 

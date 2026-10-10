@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ArrowLeftIcon } from "@phosphor-icons/react";
 import { requestPasswordReset } from "@/api/auth";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { useMetaDescription } from "@/hooks/useMetaDescription";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -11,6 +12,7 @@ import { Input } from "@/components/ui/input";
 // either way, by design, so it can never be used to check which emails have an account here.
 export function ForgotPasswordPage() {
   useDocumentTitle("Reset your password");
+  useMetaDescription("Reset the password for your ScholarOS account.");
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);

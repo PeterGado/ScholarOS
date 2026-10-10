@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { ArrowLeftIcon } from "@phosphor-icons/react";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { useMetaDescription } from "@/hooks/useMetaDescription";
 
 const LAST_UPDATED = "October 6, 2026";
 const CONTACT_EMAIL = "peter.favour.gado@gmail.com";
@@ -11,6 +12,7 @@ const CONTACT_EMAIL = "peter.favour.gado@gmail.com";
 // for review by a qualified lawyer before relying on it commercially.
 export function TermsPage() {
   useDocumentTitle("Terms of Service");
+  useMetaDescription("The terms governing your use of ScholarOS.");
   return (
     <div className="mx-auto max-w-2xl px-6 py-16">
       <Link to="/" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">

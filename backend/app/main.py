@@ -19,6 +19,7 @@ from app.core.rate_limit import limiter
 from app.database import session as db_session_module
 from app.database.session import init_db
 from app.workers.executor import WorkItemExecutorLoop
+from app.workers.health import QueueHealthMonitor
 
 
 @asynccontextmanager
@@ -98,10 +99,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     executor_loop.start()
 
+    # Started alongside the executor, stopped alongside it (2026-10-10) - see
+    # QueueHealthMonitor's own docstring for what this does and does not catch.
+    health_monitor = QueueHealthMonitor(
+        lambda: db_session_module.WorkerSessionLocal(),
+        stale_threshold_seconds=settings.queue_stale_threshold_seconds,
+    )
+    health_monitor.start()
+
     yield
 
     if executor_loop is not None:
         await executor_loop.stop()
+    await health_monitor.stop()
 
 
 # Sentry (2026-09-21): a no-op if SENTRY_DSN isn't configured - init() is simply never called,
