@@ -9,6 +9,7 @@ import {
   updateWritingSegment,
 } from "@/api/writing";
 import { ApiError } from "@/lib/apiClient";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -26,6 +27,7 @@ const WRITING_SEGMENT_LIMIT = 50;
 export const WRITING_SEGMENTS_QUERY_KEY = ["writing-segments"];
 
 export function SegmentsPage() {
+  useDocumentTitle("Project Segments");
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [instructions, setInstructions] = useState("");
@@ -134,7 +136,7 @@ export function SegmentsPage() {
             ))}
           </ul>
           {applyTemplateMutation.isError && (
-            <p className="text-sm text-destructive">
+            <p role="alert" className="text-sm text-destructive">
               {applyTemplateMutation.error instanceof ApiError
                 ? applyTemplateMutation.error.message
                 : "Could not apply template."}
@@ -193,7 +195,7 @@ export function SegmentsPage() {
           </p>
         )}
         {createMutation.isError && (
-          <p className="text-sm text-destructive">
+          <p role="alert" className="text-sm text-destructive">
             {createMutation.error instanceof ApiError ? createMutation.error.message : "Could not add segment."}
           </p>
         )}
@@ -247,7 +249,7 @@ export function SegmentsPage() {
                       </Button>
                     </div>
                     {updateMutation.isError && (
-                      <p className="text-sm text-destructive">
+                      <p role="alert" className="text-sm text-destructive">
                         {updateMutation.error instanceof ApiError ? updateMutation.error.message : "Could not save."}
                       </p>
                     )}
@@ -285,7 +287,7 @@ export function SegmentsPage() {
           )}
         </ul>
         {deleteMutation.isError && (
-          <p className="text-sm text-destructive">
+          <p role="alert" className="text-sm text-destructive">
             {deleteMutation.error instanceof ApiError ? deleteMutation.error.message : "Could not delete segment."}
           </p>
         )}

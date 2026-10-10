@@ -1,11 +1,13 @@
 import { Link } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { Button } from "@/components/ui/button";
 
 // Replaces the previous silent redirect-to-/chat catch-all (2026-10-06) - a dead link used to
 // bounce an unauthenticated visitor straight to the login page with no explanation of what
 // happened.
 export function NotFoundPage() {
+  useDocumentTitle("Page not found");
   const { isAuthenticated } = useAuth();
 
   return (

@@ -5,6 +5,7 @@ import { getChatReplyStatus, listConversationMessages, listWritingSegments, retr
 import { WRITING_SEGMENTS_QUERY_KEY } from "@/pages/SegmentsPage";
 import { DEFAULT_LIST_LIMIT } from "@/api/pagination";
 import { ApiError } from "@/lib/apiClient";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { EmailVerificationNotice } from "@/components/EmailVerificationNotice";
@@ -68,6 +69,7 @@ export function ChatDetailPage() {
 }
 
 function ChatConversation({ conversationId }: { conversationId: number }) {
+  useDocumentTitle("Chat");
   const queryClient = useQueryClient();
   const [content, setContent] = useState("");
   const [selectedSegmentId, setSelectedSegmentId] = useState<number | null>(null);
@@ -318,7 +320,7 @@ function ChatConversation({ conversationId }: { conversationId: number }) {
               <EmailVerificationNotice />
             </div>
           ) : (
-            <p className="mx-auto mt-2 max-w-2xl text-sm text-destructive">
+            <p role="alert" className="mx-auto mt-2 max-w-2xl text-sm text-destructive">
               {sendMutation.error instanceof ApiError ? sendMutation.error.message : "Could not send message."}
             </p>
           ))}

@@ -11,6 +11,7 @@ import {
 import { searchKnowledge } from "@/api/knowledge";
 import { ApiError } from "@/lib/apiClient";
 import { useToast } from "@/lib/ToastContext";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { EmailVerificationNotice } from "@/components/EmailVerificationNotice";
 import { useWorkspaceContext } from "@/components/WorkspaceGate";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ const DELETABLE_STATUSES = new Set(["pending", "failed"]);
 const RESEARCH_DOCUMENT_LIMIT = 20;
 
 export function DocumentsPage() {
+  useDocumentTitle("Research Documents");
   const workspace = useWorkspaceContext();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -258,7 +260,7 @@ export function DocumentsPage() {
           (uploadMutation.error instanceof ApiError && uploadMutation.error.errorType === "EmailNotVerifiedError" ? (
             <EmailVerificationNotice />
           ) : (
-            <p className="text-sm text-destructive">
+            <p role="alert" className="text-sm text-destructive">
               {uploadMutation.error instanceof ApiError ? uploadMutation.error.message : "Upload failed."}
             </p>
           ))}
@@ -313,7 +315,7 @@ export function DocumentsPage() {
                   )}
                 </div>
               </div>
-              {doc.error_message && <p className="text-sm text-destructive">{doc.error_message}</p>}
+              {doc.error_message && <p role="alert" className="text-sm text-destructive">{doc.error_message}</p>}
             </li>
           ))}
         </ul>
@@ -328,12 +330,12 @@ export function DocumentsPage() {
           </Button>
         )}
         {retryMutation.isError && (
-          <p className="text-sm text-destructive">
+          <p role="alert" className="text-sm text-destructive">
             {retryMutation.error instanceof ApiError ? retryMutation.error.message : "Could not retry document."}
           </p>
         )}
         {deleteMutation.isError && (
-          <p className="text-sm text-destructive">
+          <p role="alert" className="text-sm text-destructive">
             {deleteMutation.error instanceof ApiError ? deleteMutation.error.message : "Could not delete document."}
           </p>
         )}

@@ -156,6 +156,21 @@
   }
 }
 
+/* Respect the user's reduced-motion preference (WCAG 2.3.3) - found missing during the
+   2026-10-09 accessibility/best-practices audit. Without this, the mobile sidebar's slide
+   transition (AppShell.tsx), skeleton pulse (skeleton.tsx), and any Radix/tw-animate-css
+   open/close animations all ignore prefers-reduced-motion entirely. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* Minimal markdown styling for chat messages (MarkdownMessage.tsx) - deliberately small and
    scoped rather than a full typography plugin, since chat content only ever uses a handful of
    these element types. */

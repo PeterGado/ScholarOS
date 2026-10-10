@@ -107,7 +107,6 @@ module = [
     "app.ai.providers.unavailable",           # 3
     "app.api.exception_handlers",             # 2
     "app.auth.infrastructure",                # 16
-    "app.auth.service",                       # 1
     "app.core.rate_limit_storage",            # 1
     "app.modules.agent.application.use_cases",        # 2
     "app.modules.agent.interface.schemas",            # 2

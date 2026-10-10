@@ -5,6 +5,7 @@ import { register, loginWithGoogle } from "@/api/auth";
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 import { ApiError } from "@/lib/apiClient";
 import { useAuth } from "@/lib/AuthContext";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -17,6 +18,7 @@ import { Input } from "@/components/ui/input";
 // is fully open either way - no invite code anywhere in this flow; REGISTRATION_INVITE_CODE is
 // unset in production.
 export function RegisterPage() {
+  useDocumentTitle("Create account");
   const { isAuthenticated, setToken } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -122,7 +124,7 @@ export function RegisterPage() {
               required
             />
           </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
           <Button type="submit" disabled={isSubmitting} className="w-full">
             {isSubmitting ? "Creating account..." : "Create account"}
           </Button>

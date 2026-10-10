@@ -4,6 +4,7 @@ import { BrainIcon } from "@phosphor-icons/react";
 import { listMemory, supersedeMemoryRecord } from "@/api/writing";
 import { ApiError } from "@/lib/apiClient";
 import { useToast } from "@/lib/ToastContext";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,6 +26,7 @@ const PROVENANCE_LABELS: Record<string, string> = {
 // allow correction". Read-only listing plus a per-record "Correct this" action that supersedes
 // a record rather than editing it in place - the old content is preserved, not rewritten.
 export function MemoryPage() {
+  useDocumentTitle("Memory");
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const memoryQuery = useInfiniteQuery({
@@ -123,7 +125,7 @@ export function MemoryPage() {
                     </Button>
                   </div>
                   {supersedeMutation.isError && (
-                    <p className="text-sm text-destructive">
+                    <p role="alert" className="text-sm text-destructive">
                       {supersedeMutation.error instanceof ApiError
                         ? supersedeMutation.error.message
                         : "Could not save correction."}

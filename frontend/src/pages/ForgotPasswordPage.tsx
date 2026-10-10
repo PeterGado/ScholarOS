@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeftIcon } from "@phosphor-icons/react";
 import { requestPasswordReset } from "@/api/auth";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -9,6 +10,7 @@ import { Input } from "@/components/ui/input";
 // account (app/auth/password_reset.py's own docstring) - this page shows the same message
 // either way, by design, so it can never be used to check which emails have an account here.
 export function ForgotPasswordPage() {
+  useDocumentTitle("Reset your password");
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);

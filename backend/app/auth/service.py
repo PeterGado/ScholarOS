@@ -47,6 +47,11 @@ class AuthService:
         """
         user = self._users.get_by_username(username) or self._users.get_by_email(username)
         if user is None or not verify_password(password, user.password_hash):
+            # Security-event logging (skill-audit finding, 2026-10-09): the identifier only,
+            # never the password - rate limiting (10/minute, see app.auth.routes) already bounds
+            # the volume of a brute-force attempt, but nothing previously left a trace of *which*
+            # identifiers were being guessed for anyone reviewing logs after the fact.
+            logger.warning("Failed login attempt for identifier %r", username)
             raise InvalidCredentialsError()
         return self._create_session(user.user_id)
 
