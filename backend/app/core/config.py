@@ -191,22 +191,25 @@ class Settings(BaseSettings):
     # that specifically tests the failure/retry path (chat-reply-failure.spec.ts). Never set in
     # production; mirrors disable_work_item_executor's own "test-only, defaults off" pattern.
     ai_fake_provider_fail: bool = False
-    # Connection pool sizing (2026-09-30, concurrent-load planning): both engines previously
-    # relied on SQLAlchemy's own defaults (pool_size=5, max_overflow=10 - up to 15 connections
-    # each, ~30 total from one process) - never deliberately chosen. The app connects through
-    # Neon's pooled (PgBouncer transaction-mode) endpoint, whose own client-connection ceiling is
-    # documented as being far above what this app needs at its target scale (~100-300 concurrent
-    # users, a handful of worker threads) regardless of compute size - these values are picked to
-    # be comfortably conservative for that scale, not measured against an exact confirmed number
-    # (checking the dashboard for compute size alone didn't surface a hard connection-count
-    # figure, and hunting further wasn't worth it at this scale - see the RLS incident memory/
-    # this session's own discussion for that judgment call). Revisit if the pool is ever
-    # genuinely observed to be a bottleneck (connections timing out waiting for the pool, not a
-    # symptom this app has seen).
+    # Connection pool sizing (2026-09-30, concurrent-load planning; retightened 2026-10-11 against
+    # a real confirmed ceiling). The original 2026-09-30 values (web 10+15, worker 10+10) were
+    # picked as "comfortably conservative" against an unknown ceiling - checking Neon's dashboard
+    # at the time didn't surface a hard connection-count figure. The project owner has since
+    # confirmed the real number directly from Neon: this project's direct/backend connection
+    # ceiling is 104 total, 7 reserved for the Neon superuser, 97 usable. At the old settings,
+    # worst-case simultaneous overflow across this app's 2 Fly machines was up to 90 connections
+    # (45/machine: web 10+15=25, worker 10+10=20) - only ~7 of headroom against 97, before
+    # counting the release_command migration connection, any direct psql/dashboard session, or
+    # headroom for a future third machine. Retightened to a worst-case ceiling of 60 across 2
+    # machines (30/machine: web 10+10=20, worker 5+5=10), leaving ~37 of real headroom. The app
+    # connects through Neon's pooled (PgBouncer transaction-mode) endpoint, but the pooler's own
+    # backend connections to Postgres are themselves bounded by this same project-wide ceiling -
+    # it is not a separate, larger number. Revisit if the pool is ever genuinely observed to be a
+    # bottleneck (connections timing out waiting for the pool, not a symptom this app has seen).
     web_engine_pool_size: int = 10
-    web_engine_max_overflow: int = 15
-    worker_engine_pool_size: int = 10
-    worker_engine_max_overflow: int = 10
+    web_engine_max_overflow: int = 10
+    worker_engine_pool_size: int = 5
+    worker_engine_max_overflow: int = 5
     # Password reset (2026-10-06): unset means the feature fails closed with EmailSendError
     # rather than silently pretending to send (app.email.resend.send_email's own docstring) -
     # same "missing config fails the same way a bad call would" precedent as ai_api_key/
