@@ -138,6 +138,17 @@ class GoogleAccountAlreadyLinkedError(AuthDomainError):
         super().__init__("This Google account is already connected to a different ScholarOS account.")
 
 
+class BotVerificationFailedError(AuthDomainError):
+    """Raised by registration (2026-10-11, production-readiness pass) when Cloudflare Turnstile
+    verification is configured (`turnstile_secret_key` set) and the supplied token is missing,
+    invalid, expired, or fails Cloudflare's own siteverify check. Never raised at all when
+    Turnstile isn't configured - see RegisterUserUseCase's own docstring.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("Bot verification failed. Please try again.")
+
+
 class EmailAlreadyInUseError(AuthDomainError):
     """Raised when registering, or when updating an account's email (Settings), with an email
     already registered to a different account - the `users.email` UNIQUE constraint's

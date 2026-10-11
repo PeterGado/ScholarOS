@@ -291,6 +291,52 @@ def test_uploading_an_unsupported_file_type_returns_422(client, auth_headers):
     assert listing == []  # rejected before ever being stored or queued
 
 
+def test_uploading_a_known_malicious_file_is_rejected_when_virustotal_is_configured(
+    client, auth_headers, monkeypatch
+):
+    import app.modules.document.interface.routes as document_routes
+
+    monkeypatch.setenv("VIRUSTOTAL_API_KEY", "fake-key-for-test")
+    get_settings.cache_clear()
+    monkeypatch.setattr(document_routes, "is_known_malicious", lambda content, *, api_key: True)
+
+    workspace = _create_workspace(client, auth_headers)
+    project_id = workspace["project"]["project_id"]
+
+    response = client.post(
+        f"/projects/{project_id}/documents",
+        files={"file": ("source.pdf", io.BytesIO(b"pdf bytes"), "application/pdf")},
+        data={"title": "Malicious", "format": "pdf"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error_type"] == "MaliciousUploadError"
+    listing = client.get(f"/projects/{project_id}/documents", headers=auth_headers).json()["documents"]
+    assert listing == []  # rejected before ever being stored or queued
+
+
+def test_upload_is_unaffected_when_virustotal_is_not_configured(client, auth_headers, monkeypatch):
+    import app.modules.document.interface.routes as document_routes
+
+    # No VIRUSTOTAL_API_KEY set - is_known_malicious must never even be called.
+    calls = []
+    monkeypatch.setattr(document_routes, "is_known_malicious", lambda content, *, api_key: calls.append(1) or True)
+
+    workspace = _create_workspace(client, auth_headers)
+    project_id = workspace["project"]["project_id"]
+
+    response = client.post(
+        f"/projects/{project_id}/documents",
+        files={"file": ("source.pdf", io.BytesIO(b"pdf bytes"), "application/pdf")},
+        data={"title": "Harmless", "format": "pdf"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 201
+    assert calls == []
+
+
 def test_upload_missing_required_form_field_is_rejected(client, auth_headers):
     workspace = _create_workspace(client, auth_headers)
     project_id = workspace["project"]["project_id"]

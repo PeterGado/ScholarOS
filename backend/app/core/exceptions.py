@@ -24,3 +24,16 @@ class UnsupportedUploadFormatError(ScholarOSError):
 
     def __init__(self) -> None:
         super().__init__("Unsupported file format. Only plain text, .docx, and PDF are supported.")
+
+
+class MaliciousUploadError(ScholarOSError):
+    """Raised by any file-upload route (research documents, writing-style samples) when
+    `app.core.virus_scan.is_known_malicious` confirms the uploaded content's hash matches a
+    file VirusTotal already has a multi-engine malicious verdict for (2026-10-11,
+    production-readiness pass). Only ever raised when `virustotal_api_key` is configured - see
+    that setting's own docstring for the "missing config disables the feature" shape every
+    optional integration in this app uses.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("This file matches a known malicious file and cannot be uploaded.")

@@ -17,6 +17,12 @@ name: CI
 # 2026-10-09: grew from 2 of 8 specs to 7 of 8 - app.ai.providers.fake (backend-only, no
 # network/API key) lets the five specs that merely need *a* provider response, not a real one,
 # run in CI too. Only persistent-brain-memory.spec.ts remains manual-only now.
+#
+# 2026-10-11: dependency-installation steps (pip/npm/Playwright browser downloads) now retry up
+# to 3 times via nick-fields/retry - these hit an external registry/CDN over the network and can
+# fail on a transient blip unrelated to this repo's own code. Deliberately scoped to installation
+# only, never to the actual lint/type-check/test/e2e steps themselves - those must fail loudly on
+# a real regression, not get silently retried into passing.
 
 on:
   push:
@@ -52,9 +58,14 @@ jobs:
         # reason backend/Dockerfile's does: the lockfile already pins every transitive
         # dependency, so the editable install of this package itself must not let pip re-resolve
         # them.
-        run: |
-          pip install --no-cache-dir -r requirements-dev.lock
-          pip install --no-cache-dir --no-deps -e .
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          command: |
+            cd backend
+            pip install --no-cache-dir -r requirements-dev.lock
+            pip install --no-cache-dir --no-deps -e .
 
       - name: Lint
         run: ruff check app tests alembic
@@ -81,7 +92,11 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          command: cd frontend && npm ci
 
       - name: Lint
         run: npm run lint
@@ -105,8 +120,11 @@ jobs:
           cache-dependency-path: backend/pyproject.toml
 
       - name: Install backend dependencies
-        working-directory: backend
-        run: pip install -e ".[dev]"
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          command: cd backend && pip install -e ".[dev]"
 
       - uses: actions/setup-node@v4
         with:
@@ -115,12 +133,18 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          command: cd frontend && npm ci
 
       - name: Install Chromium
-        working-directory: frontend
-        run: npx playwright install --with-deps chromium
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          command: cd frontend && npx playwright install --with-deps chromium
 
       # Each spec is run against its own fresh database, storage root, and pre-provisioned user,
       # in its own Playwright invocation - several of these specs assert on onboarding state

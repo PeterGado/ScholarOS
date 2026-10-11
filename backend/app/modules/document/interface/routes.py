@@ -12,10 +12,11 @@ from app.core.dependencies import (
     get_upload_research_document_use_case,
 )
 from app.core.document_formats import looks_like_a_supported_document
-from app.core.exceptions import UnsupportedUploadFormatError
+from app.core.exceptions import MaliciousUploadError, UnsupportedUploadFormatError
 from app.core.pagination import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT
 from app.core.rate_limit import limiter
 from app.core.uploads import read_upload_within_limit
+from app.core.virus_scan import is_known_malicious
 from app.modules.document.application.use_cases import (
     DeleteResearchDocumentUseCase,
     ListProjectDocumentsUseCase,
@@ -43,7 +44,7 @@ router = APIRouter(prefix="/projects", tags=["documents"])
         413: {"model": ErrorResponse, "description": "The uploaded file exceeds the server's maximum allowed size."},
         422: {
             "model": ErrorResponse,
-            "description": "Invalid title/format/content, or a file that isn't plain text/.docx/PDF. Malformed request bodies use FastAPI's own validation error shape instead.",
+            "description": "Invalid title/format/content, a file that isn't plain text/.docx/PDF, or (only when VirusTotal scanning is configured) a known-malicious file. Malformed request bodies use FastAPI's own validation error shape instead.",
         },
         429: {"model": ErrorResponse, "description": "Too many uploads from this client."},
         500: {"model": ErrorResponse, "description": "Storage failure or unexpected internal failure."},
@@ -81,6 +82,9 @@ async def upload_research_document(
     content = await read_upload_within_limit(file, max_bytes=get_settings().max_upload_size_bytes)
     if not looks_like_a_supported_document(content):
         raise UnsupportedUploadFormatError()
+    settings = get_settings()
+    if settings.virustotal_api_key and is_known_malicious(content, api_key=settings.virustotal_api_key):
+        raise MaliciousUploadError()
     extension = Path(file.filename).suffix.lstrip(".") if file.filename else ""
 
     document = use_case.execute(

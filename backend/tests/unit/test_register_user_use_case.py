@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.auth.entities import AuthSession
 from app.auth.exceptions import (
+    BotVerificationFailedError,
     EmailAlreadyInUseError,
     InvalidInviteCodeError,
     PasswordCompromisedError,
@@ -138,6 +139,8 @@ def _build_use_case(
     is_breached=lambda password: False,
     unverified_email_reap_after_hours=48,
     wire_user_accounts=True,
+    turnstile_secret_key=None,
+    verify_turnstile=lambda token, *, secret_key: True,
 ):
     lookup = FakeUserCredentialLookup(*existing_users)
     registration = FakeUserRegistrationRepository(lookup, raise_integrity_error=raise_integrity_error)
@@ -152,6 +155,8 @@ def _build_use_case(
         is_breached=is_breached,
         user_accounts=user_accounts,
         unverified_email_reap_after_hours=unverified_email_reap_after_hours,
+        turnstile_secret_key=turnstile_secret_key,
+        verify_turnstile=verify_turnstile,
     )
     return use_case, lookup, registration
 
@@ -307,6 +312,66 @@ def test_a_breached_password_is_rejected():
         use_case.execute(email="new-researcher@example.com", password="a-real-password", invite_code=None)
 
     assert lookup.get_by_email("new-researcher@example.com") is None  # nothing was created
+
+
+def test_turnstile_unconfigured_skips_verification_entirely():
+    # No turnstile_secret_key wired - verify_turnstile must never even be called, exactly
+    # like registration_invite_code being unset skips the invite-code check above.
+    calls = []
+    use_case, lookup, _ = _build_use_case(
+        turnstile_secret_key=None, verify_turnstile=lambda token, *, secret_key: calls.append(token) or True
+    )
+
+    token = use_case.execute(
+        email="new-researcher@example.com", password="a-real-password", invite_code=None, turnstile_token=None
+    )
+
+    assert isinstance(token, str) and token
+    assert calls == []
+
+
+def test_turnstile_configured_and_token_valid_succeeds():
+    use_case, lookup, _ = _build_use_case(
+        turnstile_secret_key="a-real-secret", verify_turnstile=lambda token, *, secret_key: token == "good-token"
+    )
+
+    token = use_case.execute(
+        email="new-researcher@example.com",
+        password="a-real-password",
+        invite_code=None,
+        turnstile_token="good-token",
+    )
+
+    assert isinstance(token, str) and token
+
+
+def test_turnstile_configured_and_token_invalid_is_rejected():
+    use_case, lookup, _ = _build_use_case(
+        turnstile_secret_key="a-real-secret", verify_turnstile=lambda token, *, secret_key: False
+    )
+
+    with pytest.raises(BotVerificationFailedError):
+        use_case.execute(
+            email="new-researcher@example.com",
+            password="a-real-password",
+            invite_code=None,
+            turnstile_token="bad-token",
+        )
+
+    assert lookup.get_by_email("new-researcher@example.com") is None  # nothing was created
+
+
+def test_turnstile_configured_and_token_missing_is_rejected():
+    use_case, lookup, _ = _build_use_case(
+        turnstile_secret_key="a-real-secret", verify_turnstile=lambda token, *, secret_key: bool(token)
+    )
+
+    with pytest.raises(BotVerificationFailedError):
+        use_case.execute(
+            email="new-researcher@example.com", password="a-real-password", invite_code=None, turnstile_token=None
+        )
+
+    assert lookup.get_by_email("new-researcher@example.com") is None
 
 
 def test_registration_with_no_invite_code_configured_ignores_a_supplied_code():

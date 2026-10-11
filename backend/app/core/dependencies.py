@@ -323,6 +323,7 @@ def get_register_user_use_case(
         email_verification=email_verification,
         user_accounts=user_accounts,
         unverified_email_reap_after_hours=get_settings().unverified_email_reap_after_hours,
+        turnstile_secret_key=get_settings().turnstile_secret_key,
     )
 
 

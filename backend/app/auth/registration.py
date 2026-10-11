@@ -4,8 +4,10 @@ from datetime import timedelta
 from sqlalchemy.exc import IntegrityError
 
 from app.auth.abandoned_account import reclaim_if_abandoned
+from app.auth.bot_protection import verify_turnstile_token
 from app.auth.email_verification import RequestEmailVerificationUseCase
 from app.auth.exceptions import (
+    BotVerificationFailedError,
     EmailAlreadyInUseError,
     InvalidInviteCodeError,
     PasswordCompromisedError,
@@ -51,6 +53,8 @@ class RegisterUserUseCase:
         email_verification: RequestEmailVerificationUseCase | None = None,
         user_accounts: UserAccountRepository | None = None,
         unverified_email_reap_after_hours: int = 48,
+        turnstile_secret_key: str | None = None,
+        verify_turnstile: Callable[..., bool] = verify_turnstile_token,
     ) -> None:
         self._users = user_lookup
         self._registration = user_registration
@@ -58,6 +62,10 @@ class RegisterUserUseCase:
         self._uow = unit_of_work
         self._required_invite_code = required_invite_code
         self._is_breached = is_breached
+        # None skips verification entirely (feature off) - see turnstile_secret_key's own
+        # docstring in app.core.config. DI (get_register_user_use_case) wires the real setting.
+        self._turnstile_secret_key = turnstile_secret_key
+        self._verify_turnstile = verify_turnstile
         # None in tests that don't care about email verification (most registration unit
         # tests); DI (get_register_user_use_case) always wires a real instance in production.
         self._email_verification = email_verification
@@ -67,7 +75,9 @@ class RegisterUserUseCase:
         self._user_accounts = user_accounts
         self._reap_after = timedelta(hours=unverified_email_reap_after_hours)
 
-    def execute(self, *, email: str, password: str, invite_code: str | None) -> str:
+    def execute(
+        self, *, email: str, password: str, invite_code: str | None, turnstile_token: str | None = None
+    ) -> str:
         """Returns a raw session token, exactly like `AuthService.login` - the caller is
         registered and logged in in one step, per ADR-011 Decision item 1.
 
@@ -75,9 +85,18 @@ class RegisterUserUseCase:
         is still synthesized server-side (derive_unique_username) to satisfy the `users.username`
         NOT NULL UNIQUE column, mirroring exactly what Google Sign-In already does for its own
         accounts, but it is never shown to the caller as their real identity.
+
+        turnstile_token is only ever checked when `turnstile_secret_key` is configured
+        (2026-10-11, production-readiness pass - bot protection); otherwise this parameter is
+        silently ignored, mirroring invite_code's own opt-in-by-configuration shape below.
         """
         if self._required_invite_code and invite_code != self._required_invite_code:
             raise InvalidInviteCodeError()
+
+        if self._turnstile_secret_key and not self._verify_turnstile(
+            turnstile_token or "", secret_key=self._turnstile_secret_key
+        ):
+            raise BotVerificationFailedError()
 
         if len(password) < MINIMUM_PASSWORD_LENGTH:
             raise WeakPasswordError(minimum_length=MINIMUM_PASSWORD_LENGTH)

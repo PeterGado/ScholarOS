@@ -3,6 +3,7 @@ import { Link, Navigate } from "react-router-dom";
 import { ArrowLeftIcon } from "@phosphor-icons/react";
 import { register, loginWithGoogle } from "@/api/auth";
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
+import { TurnstileWidget } from "@/components/TurnstileWidget";
 import { ApiError } from "@/lib/apiClient";
 import { useAuth } from "@/lib/AuthContext";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
@@ -29,6 +30,7 @@ export function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [googleUnavailable, setGoogleUnavailable] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
 
   if (isAuthenticated) {
     return <Navigate to="/chat" replace />;
@@ -39,7 +41,7 @@ export function RegisterPage() {
     setError(null);
     setIsSubmitting(true);
     try {
-      const { access_token } = await register(email, password);
+      const { access_token } = await register(email, password, turnstileToken);
       setToken(access_token);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Registration failed. Check the backend is running.");
@@ -128,8 +130,13 @@ export function RegisterPage() {
               required
             />
           </div>
+          <TurnstileWidget onToken={setTurnstileToken} />
           {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-          <Button type="submit" disabled={isSubmitting} className="w-full">
+          <Button
+            type="submit"
+            disabled={isSubmitting || (Boolean(import.meta.env.VITE_TURNSTILE_SITE_KEY) && !turnstileToken)}
+            className="w-full"
+          >
             {isSubmitting ? "Creating account..." : "Create account"}
           </Button>
         </form>

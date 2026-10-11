@@ -81,7 +81,7 @@ describe("RegisterPage", () => {
     await user.click(screen.getByRole("button", { name: "Create account" }));
 
     await waitFor(() =>
-      expect(authApi.register).toHaveBeenCalledWith("new-researcher@example.com", "a-real-password"),
+      expect(authApi.register).toHaveBeenCalledWith("new-researcher@example.com", "a-real-password", null),
     );
   });
 
@@ -95,7 +95,7 @@ describe("RegisterPage", () => {
     await user.click(screen.getByRole("button", { name: "Create account" }));
 
     await waitFor(() =>
-      expect(authApi.register).toHaveBeenCalledWith("new-researcher@example.com", "a-real-password"),
+      expect(authApi.register).toHaveBeenCalledWith("new-researcher@example.com", "a-real-password", null),
     );
   });
 

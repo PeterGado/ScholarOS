@@ -59,6 +59,19 @@ class Settings(BaseSettings):
     # config-only gate for a friends-testing phase, removable later (clear this var) without a
     # code change when the project owner is ready for fully public registration.
     registration_invite_code: str | None = None
+    # Bot protection on registration (2026-10-11, production-readiness pass): Cloudflare
+    # Turnstile's secret key, used server-side to verify the token the frontend's widget
+    # produces (VITE_TURNSTILE_SITE_KEY, a separate, non-secret frontend env var). Unset means
+    # the feature is off - RegisterUserUseCase skips verification entirely rather than reject
+    # every registration, the same "missing config disables the feature" shape
+    # registration_invite_code/google_oauth_client_id already use above.
+    turnstile_secret_key: str | None = None
+    # Malware hash-reputation check on uploads (2026-10-11, production-readiness pass): the
+    # VirusTotal API key. Unset means the feature is off - uploads are checked only against the
+    # existing format/size checks, the same "missing config disables the feature" shape as
+    # turnstile_secret_key above. See app.core.virus_scan.is_known_malicious's own docstring for
+    # exactly what this does and does not catch (a known hash, not a fresh scan).
+    virustotal_api_key: str | None = None
     # Google Sign-In (2026-09-20): the OAuth Client ID from Google Cloud Console, used to verify
     # the `aud` claim of every ID token. Not a secret (it's also embedded in the frontend
     # bundle as VITE_GOOGLE_CLIENT_ID) - unset means the feature is off (GoogleSignInNotConfiguredError).

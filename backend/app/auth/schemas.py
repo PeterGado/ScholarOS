@@ -23,6 +23,10 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=1)
     invite_code: str | None = None
+    # 2026-10-11: the Cloudflare Turnstile widget's response token, required only when
+    # `turnstile_secret_key` is configured server-side (RegisterUserUseCase ignores this field
+    # entirely otherwise, same opt-in-by-configuration shape invite_code already has above).
+    turnstile_token: str | None = None
 
 
 class GoogleSignInRequest(BaseModel):

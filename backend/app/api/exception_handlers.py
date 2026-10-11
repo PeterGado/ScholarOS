@@ -10,6 +10,7 @@ from app.ai.exceptions import (
     ProviderRequestError,
 )
 from app.auth.exceptions import (
+    BotVerificationFailedError,
     EmailAlreadyInUseError,
     EmailNotVerifiedError,
     GoogleAccountAlreadyLinkedError,
@@ -25,6 +26,7 @@ from app.auth.exceptions import (
     WeakPasswordError,
 )
 from app.core.exceptions import (
+    MaliciousUploadError,
     ScholarOSError,
     UnsupportedUploadFormatError,
     UploadTooLargeError,
@@ -207,6 +209,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(InvalidInviteCodeError, _handle_unauthorized)
     app.add_exception_handler(WeakPasswordError, _handle_invalid_input)
     app.add_exception_handler(PasswordCompromisedError, _handle_invalid_input)
+    app.add_exception_handler(BotVerificationFailedError, _handle_invalid_input)
     app.add_exception_handler(InvalidGoogleTokenError, _handle_unauthorized)
     app.add_exception_handler(GoogleAccountEmailConflictError, _handle_conflict)
     app.add_exception_handler(GoogleAccountAlreadyLinkedError, _handle_conflict)
@@ -218,6 +221,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(EmailSendError, _handle_service_unavailable)
     app.add_exception_handler(UploadTooLargeError, _handle_payload_too_large)
     app.add_exception_handler(UnsupportedUploadFormatError, _handle_invalid_input)
+    app.add_exception_handler(MaliciousUploadError, _handle_invalid_input)
     app.add_exception_handler(AiUsageQuotaExceededError, _handle_usage_quota_exceeded)
     app.add_exception_handler(RateLimitExceeded, _handle_rate_limit_exceeded)
     app.add_exception_handler(ProviderConfigurationError, _handle_provider_unavailable)
