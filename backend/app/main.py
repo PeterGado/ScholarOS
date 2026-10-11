@@ -145,7 +145,20 @@ if get_settings().sentry_dsn:
         traces_sample_rate=0.0,
     )
 
-app = FastAPI(title="ScholarOS Backend", version="0.1.0", lifespan=lifespan)
+# 2026-10-11, production-readiness pass: FastAPI's auto-generated /docs, /redoc, and
+# /openapi.json were reachable with no gating at all - low severity (reveals endpoint/field
+# shapes, not secrets) but unnecessary reconnaissance surface for zero real cost, since the
+# frontend never calls these routes. Disabled only in production; still available locally/in
+# dev for real use (manual API exploration, generating a client, etc.).
+_is_production = get_settings().environment == "production"
+app = FastAPI(
+    title="ScholarOS Backend",
+    version="0.1.0",
+    lifespan=lifespan,
+    docs_url=None if _is_production else "/docs",
+    redoc_url=None if _is_production else "/redoc",
+    openapi_url=None if _is_production else "/openapi.json",
+)
 app.state.limiter = limiter
 app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(
