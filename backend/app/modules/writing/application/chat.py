@@ -24,6 +24,7 @@ from app.modules.writing.domain.context_assembly import (
     ContextStyleSignal,
     assemble_context,
     build_critique_prompt,
+    build_post_generation_humanizing_prompt,
     build_revision_prompt,
     detect_likely_citations,
     find_unverified_citations,
@@ -122,7 +123,8 @@ class ListConversationsUseCase:
         agent = self._agents.get_by_user_id(user_id)
         if agent is None:
             raise AgentNotFoundForUserError(user_id=user_id)
-        conversations = self._conversations.list_by_agent_id(agent.agent_id, limit=limit, offset=offset)
+        conversations = self._conversations.list_by_agent_id(
+            agent.agent_id, limit=limit, offset=offset)
         # The repository returns up to limit + 1 rows (2026-09-23, pagination) - the extra row,
         # if present, means more exist beyond this page; trimmed before returning.
         has_more = len(conversations) > limit
@@ -158,7 +160,8 @@ class ListConversationMessagesUseCase:
             or conversation.deleted_at is not None
         ):
             raise ConversationNotFoundError(conversation_id=conversation_id)
-        rows = self._messages.list_by_conversation_id(conversation_id, limit=limit, offset=offset)
+        rows = self._messages.list_by_conversation_id(
+            conversation_id, limit=limit, offset=offset)
         # The repository returns up to limit + 1 rows, most-recent-first (2026-09-23,
         # pagination) - the extra row, if present, means more (older) messages exist beyond this
         # page. `has_more` reflects that raw row count, not the count after the summary filter
@@ -214,7 +217,8 @@ class DeleteConversationUseCase:
             # (a `running` reply is left alone: GenerateConversationReplyUseCase.execute already
             # checks for a deleted conversation itself, so it's handled correctly either way).
             self._work_items.cancel_queued_by_payload_prefix(
-                build_generate_chat_reply_payload_reference_prefix(conversation_id)
+                build_generate_chat_reply_payload_reference_prefix(
+                    conversation_id)
             )
             self._conversations.mark_deleted(
                 conversation_id, deleted_at=datetime.now(UTC))
@@ -372,7 +376,8 @@ class SendChatMessageUseCase:
         # executor makes - reused, not duplicated logic, just called one step earlier so the
         # cap can be checked before enqueueing rather than after the fact.
         self._ai_usage_guard.check_and_record(
-            user_id=user_id, estimated_tokens=estimate_tokens(assemble_context(context).prompt)
+            user_id=user_id, estimated_tokens=estimate_tokens(
+                assemble_context(context).prompt)
         )
 
         payload_reference, idempotency_key = build_generate_chat_reply_payload_reference(
@@ -542,7 +547,8 @@ class GenerateConversationReplyUseCase:
         text_provider: TextGenerationProvider,
         unit_of_work: UnitOfWork,
         *,
-        background_knowledge_provider: Callable[[str], str | None] = fetch_wikipedia_background,
+        background_knowledge_provider: Callable[[
+            str], str | None] = fetch_wikipedia_background,
         enable_multi_pass: bool = True,
     ) -> None:
         self._messages = message_repository
@@ -573,10 +579,12 @@ class GenerateConversationReplyUseCase:
         # threading rewrite exists for). assemble_context itself stays pure/I/O-free; this is
         # the one place that does the fetch and hands the result in as plain data.
         context_with_background = replace(
-            context, background_knowledge=self._background_knowledge_provider(context.topic)
+            context, background_knowledge=self._background_knowledge_provider(
+                context.topic)
         )
         assembled = assemble_context(context_with_background)
-        draft = self._require_nonempty(self._text_provider.generate(assembled.prompt))
+        draft = self._require_nonempty(
+            self._text_provider.generate(assembled.prompt))
 
         if self._enable_multi_pass:
             # Draft -> critique -> revise (2026-10-06): critique and revision each read the same
@@ -584,12 +592,23 @@ class GenerateConversationReplyUseCase:
             # one - build_critique_prompt/build_revision_prompt only ever append to it, they
             # never call assemble_context again. The guardrails below run on whichever content
             # actually gets persisted - the revision, not the draft - once this branch is taken.
-            critique = self._text_provider.generate(build_critique_prompt(assembled.prompt, draft))
+            critique = self._text_provider.generate(
+                build_critique_prompt(assembled.prompt, draft))
             content = self._require_nonempty(
-                self._text_provider.generate(build_revision_prompt(assembled.prompt, draft, critique or ""))
+                self._text_provider.generate(build_revision_prompt(
+                    assembled.prompt, draft, critique or ""))
             )
         else:
             content = draft
+
+        # Second-pass humanizing rewrite: keep the substance, but strip the most obvious AI
+        # writing patterns before persisting the final assistant reply. This is a style-rewrite
+        # layer, not an authenticity check or a proof of human authorship; it just reduces the
+        # strongest detector-visible tell patterns in a low-effort, repeatable way.
+        content = self._require_nonempty(
+            self._text_provider.generate(
+                build_post_generation_humanizing_prompt(content))
+        )
 
         if not assembled.evidence:
             if detect_likely_citations(content):
@@ -597,7 +616,8 @@ class GenerateConversationReplyUseCase:
         else:
             unverified = find_unverified_citations(content, assembled.evidence)
             if unverified:
-                content += UNVERIFIED_CITATION_WARNING.format(citations=", ".join(unverified))
+                content += UNVERIFIED_CITATION_WARNING.format(
+                    citations=", ".join(unverified))
 
         self._conversations.lock_for_message_sequence(conversation_id)
         sequence = self._messages.count_by_conversation_id(conversation_id) + 1
@@ -664,7 +684,8 @@ class GenerateConversationReplyUseCase:
             # or a DB error here was invisible. Best-effort by design (a summarization failure
             # must never fail the chat reply it's attached to), but "best-effort" must not also
             # mean "unobserved" - logged, not raised, so the reply still succeeds.
-            logger.warning("Conversation summarization failed for conversation_id=%s", conversation_id, exc_info=True)
+            logger.warning(
+                "Conversation summarization failed for conversation_id=%s", conversation_id, exc_info=True)
 
     def _extract_memory_if_needed(self, conversation_id: int, context: ContextAssemblyInput) -> None:
         try:
@@ -719,4 +740,5 @@ class GenerateConversationReplyUseCase:
             self._uow.rollback()
             # 2026-09-21 security pass: same reasoning as _summarize_if_needed's own comment
             # above - best-effort, never raised, but must not be silently unobserved either.
-            logger.warning("Memory extraction failed for conversation_id=%s", conversation_id, exc_info=True)
+            logger.warning(
+                "Memory extraction failed for conversation_id=%s", conversation_id, exc_info=True)

@@ -10,6 +10,7 @@ from app.modules.writing.domain.context_assembly import (
     ContextMemory,
     ContextStyleSignal,
     assemble_context,
+    build_post_generation_humanizing_prompt,
     detect_likely_citations,
     find_unverified_citations,
 )
@@ -88,7 +89,8 @@ def test_grounding_rules_survive_truncation_under_realistic_evidence_pressure():
         topic="Topic",
         instructions="Instructions",
         evidence=tuple(
-            ContextEvidence(chunk_id=index, content=f"Evidence paragraph {index}.", summary=None, score=1.0)
+            ContextEvidence(
+                chunk_id=index, content=f"Evidence paragraph {index}.", summary=None, score=1.0)
             for index in range(5)
         ),
         max_characters=180,
@@ -113,19 +115,32 @@ def test_human_sounding_writing_guidance_is_always_present():
     assert "not X but Y" in assembled.prompt
 
 
+def test_post_generation_humanizing_prompt_is_available():
+    draft = "This is a crucial and pivotal finding that fundamentally reshapes the landscape."
+
+    prompt = build_post_generation_humanizing_prompt(draft)
+
+    assert "Rewrite the draft below" in prompt
+    assert "Remove or reduce" in prompt
+    assert draft in prompt
+    assert "Do not add new facts" in prompt
+
+
 def test_latest_user_message_is_a_final_explicit_response_task():
     assembled = assemble_context(
         ContextAssemblyInput(
             topic="Topic",
             instructions="Answer with the methodology I selected.",
             conversation_messages=(
-                ContextConversationMessage(direction=MessageDirection.USER_REQUEST, content="Use a LIDAR survey."),
+                ContextConversationMessage(
+                    direction=MessageDirection.USER_REQUEST, content="Use a LIDAR survey."),
             ),
         )
     )
 
     assert "## RESPONSE TASK — LATEST USER MESSAGE" in assembled.prompt
-    assert assembled.prompt.rstrip().endswith("User: Answer with the methodology I selected.")
+    assert assembled.prompt.rstrip().endswith(
+        "User: Answer with the methodology I selected.")
 
 
 def test_human_sounding_writing_guidance_survives_truncation_alongside_grounding_rules():
@@ -137,7 +152,8 @@ def test_human_sounding_writing_guidance_survives_truncation_alongside_grounding
         topic="Topic",
         instructions="Instructions",
         evidence=tuple(
-            ContextEvidence(chunk_id=index, content=f"Evidence paragraph {index}.", summary=None, score=1.0)
+            ContextEvidence(
+                chunk_id=index, content=f"Evidence paragraph {index}.", summary=None, score=1.0)
             for index in range(5)
         ),
         max_characters=1500,
@@ -201,8 +217,10 @@ def test_memories_are_bounded_to_max_memories():
     expected to supply `memories` most-recent-first; this caps deterministically to the first
     `max_memories`, mirroring `max_evidence`'s own established pattern exactly.
     """
-    memories = tuple(ContextMemory(MemoryRecordType.DECISION, f"Memory {i}.") for i in range(25))
-    context = ContextAssemblyInput(topic="Topic", instructions="Instructions", memories=memories, max_memories=20)
+    memories = tuple(ContextMemory(MemoryRecordType.DECISION,
+                     f"Memory {i}.") for i in range(25))
+    context = ContextAssemblyInput(
+        topic="Topic", instructions="Instructions", memories=memories, max_memories=20)
 
     assembled = assemble_context(context)
 
@@ -213,8 +231,10 @@ def test_memories_are_bounded_to_max_memories():
 
 
 def test_default_max_memories_is_twenty():
-    memories = tuple(ContextMemory(MemoryRecordType.DECISION, f"Memory {i}.") for i in range(21))
-    context = ContextAssemblyInput(topic="Topic", instructions="Instructions", memories=memories)
+    memories = tuple(ContextMemory(MemoryRecordType.DECISION,
+                     f"Memory {i}.") for i in range(21))
+    context = ContextAssemblyInput(
+        topic="Topic", instructions="Instructions", memories=memories)
 
     assembled = assemble_context(context)
 
@@ -237,7 +257,8 @@ def test_project_description_reaches_the_assembled_prompt():
 
 
 def test_blank_project_description_renders_a_clean_placeholder():
-    context = ContextAssemblyInput(topic="Topic", instructions="Instructions", description=None)
+    context = ContextAssemblyInput(
+        topic="Topic", instructions="Instructions", description=None)
 
     assembled = assemble_context(context)
 
@@ -263,7 +284,8 @@ def test_background_knowledge_reaches_the_assembled_prompt():
 
 
 def test_absent_background_knowledge_renders_a_clean_placeholder():
-    context = ContextAssemblyInput(topic="Topic", instructions="Instructions", background_knowledge=None)
+    context = ContextAssemblyInput(
+        topic="Topic", instructions="Instructions", background_knowledge=None)
 
     assembled = assemble_context(context)
 
@@ -308,8 +330,10 @@ def test_conversation_context_reaches_the_assembled_prompt():
         topic="Topic",
         instructions="Instructions",
         conversation_messages=(
-            ContextConversationMessage(direction=MessageDirection.USER_REQUEST, content="Remember X."),
-            ContextConversationMessage(direction=MessageDirection.SYSTEM_RESPONSE, content="Understood."),
+            ContextConversationMessage(
+                direction=MessageDirection.USER_REQUEST, content="Remember X."),
+            ContextConversationMessage(
+                direction=MessageDirection.SYSTEM_RESPONSE, content="Understood."),
         ),
     )
 
@@ -330,7 +354,8 @@ def test_empty_conversation_context_renders_a_clean_placeholder():
 
 def test_conversation_context_is_bounded_to_the_most_recent_messages():
     messages = tuple(
-        ContextConversationMessage(direction=MessageDirection.USER_REQUEST, content=f"Message {i}.")
+        ContextConversationMessage(
+            direction=MessageDirection.USER_REQUEST, content=f"Message {i}.")
         for i in range(15)
     )
     context = ContextAssemblyInput(
@@ -352,7 +377,8 @@ def test_a_few_long_prior_replies_do_not_crowd_out_every_later_section():
     and BUILT-IN SYSTEM GUIDANCE) was silently dropped as a result, even under this function's
     own default, generous max_characters.
     """
-    long_reply = "Paragraph. " * 800  # ~8800 characters - realistic for a previously-written chapter
+    long_reply = "Paragraph. " * \
+        800  # ~8800 characters - realistic for a previously-written chapter
     messages = tuple(
         ContextConversationMessage(
             direction=MessageDirection.USER_REQUEST if i % 2 == 0 else MessageDirection.SYSTEM_RESPONSE,
@@ -364,8 +390,10 @@ def test_a_few_long_prior_replies_do_not_crowd_out_every_later_section():
         topic="Topic",
         instructions="Only the background section.",
         conversation_messages=messages,
-        style_signals=(ContextStyleSignal(ProfileCharacteristicType.STRUCTURE, "Short paragraphs.", 0.9),),
-        memories=(ContextMemory(MemoryRecordType.DECISION, "Use LIDAR survey data."),),
+        style_signals=(ContextStyleSignal(
+            ProfileCharacteristicType.STRUCTURE, "Short paragraphs.", 0.9),),
+        memories=(ContextMemory(MemoryRecordType.DECISION,
+                  "Use LIDAR survey data."),),
     )
 
     assembled = assemble_context(context)
@@ -384,9 +412,12 @@ def test_conversation_context_has_its_own_character_budget_independent_of_messag
     """
     long_reply = "Paragraph. " * 800  # ~8800 characters
     messages = (
-        ContextConversationMessage(direction=MessageDirection.USER_REQUEST, content="Oldest question."),
-        ContextConversationMessage(direction=MessageDirection.SYSTEM_RESPONSE, content=long_reply),
-        ContextConversationMessage(direction=MessageDirection.USER_REQUEST, content="Newest question."),
+        ContextConversationMessage(
+            direction=MessageDirection.USER_REQUEST, content="Oldest question."),
+        ContextConversationMessage(
+            direction=MessageDirection.SYSTEM_RESPONSE, content=long_reply),
+        ContextConversationMessage(
+            direction=MessageDirection.USER_REQUEST, content="Newest question."),
     )
     context = ContextAssemblyInput(
         topic="Topic",
@@ -398,7 +429,8 @@ def test_conversation_context_has_its_own_character_budget_independent_of_messag
     assembled = assemble_context(context)
 
     assert "Newest question." in assembled.prompt  # most recent survives intact
-    assert "Oldest question." not in assembled.prompt  # trimmed from the oldest end first
+    # trimmed from the oldest end first
+    assert "Oldest question." not in assembled.prompt
 
 
 def test_default_max_conversation_context_characters_is_four_thousand():
@@ -421,13 +453,15 @@ def test_user_specific_style_signals_are_layered_on_top_of_the_baseline_not_inst
     context = ContextAssemblyInput(
         topic="Topic",
         instructions="Instructions",
-        style_signals=(ContextStyleSignal(ProfileCharacteristicType.VOCABULARY, "Prefers technical terms.", 0.8),),
+        style_signals=(ContextStyleSignal(
+            ProfileCharacteristicType.VOCABULARY, "Prefers technical terms.", 0.8),),
     )
 
     assembled = assemble_context(context)
 
     assert BUILTIN_WRITING_STYLE_GUIDANCE in assembled.prompt  # baseline still present
-    assert "Prefers technical terms." in assembled.prompt  # user-specific signal layered on top
+    # user-specific signal layered on top
+    assert "Prefers technical terms." in assembled.prompt
 
 
 def test_builtin_system_guidance_is_always_present():
@@ -443,7 +477,8 @@ def test_builtin_system_guidance_is_always_present():
 
 
 def test_zero_evidence_is_valid_and_does_not_raise():
-    context = ContextAssemblyInput(topic="Topic", instructions="Instructions", evidence=())
+    context = ContextAssemblyInput(
+        topic="Topic", instructions="Instructions", evidence=())
 
     assembled = assemble_context(context)
 
@@ -452,7 +487,8 @@ def test_zero_evidence_is_valid_and_does_not_raise():
 
 
 def test_grounding_rules_warn_against_fabrication_when_no_evidence_is_present():
-    context = ContextAssemblyInput(topic="Topic", instructions="Instructions", evidence=())
+    context = ContextAssemblyInput(
+        topic="Topic", instructions="Instructions", evidence=())
 
     assembled = assemble_context(context)
 
@@ -464,7 +500,8 @@ def test_grounding_rules_reference_evidence_when_it_is_present():
     context = ContextAssemblyInput(
         topic="Topic",
         instructions="Instructions",
-        evidence=(ContextEvidence(chunk_id=1, content="Real evidence.", summary=None, score=1.0),),
+        evidence=(ContextEvidence(
+            chunk_id=1, content="Real evidence.", summary=None, score=1.0),),
     )
 
     assembled = assemble_context(context)
@@ -503,11 +540,15 @@ def test_full_section_structure_is_present_with_every_context_source_populated()
         topic="Erosion on barrier islands",
         instructions="Write the introduction.",
         description="A field report for an environmental science course.",
-        evidence=(ContextEvidence(chunk_id=1, content="Shoreline retreat data.", summary=None, score=0.9),),
-        style_signals=(ContextStyleSignal(ProfileCharacteristicType.STRUCTURE, "Short paragraphs.", 0.7),),
-        memories=(ContextMemory(MemoryRecordType.METHOD, "Uses LIDAR survey data."),),
+        evidence=(ContextEvidence(
+            chunk_id=1, content="Shoreline retreat data.", summary=None, score=0.9),),
+        style_signals=(ContextStyleSignal(
+            ProfileCharacteristicType.STRUCTURE, "Short paragraphs.", 0.7),),
+        memories=(ContextMemory(MemoryRecordType.METHOD,
+                  "Uses LIDAR survey data."),),
         conversation_messages=(
-            ContextConversationMessage(direction=MessageDirection.USER_REQUEST, content="Focus on the north end."),
+            ContextConversationMessage(
+                direction=MessageDirection.USER_REQUEST, content="Focus on the north end."),
         ),
         background_knowledge="Barrier island: a coastal landform that protects the mainland from wave action.",
         segment_name="Background of the Study",
@@ -533,7 +574,8 @@ def test_full_section_structure_is_present_with_every_context_source_populated()
         assert heading in assembled.prompt
 
     # Headings appear in the documented order (Persistent Brain §7).
-    positions = [assembled.prompt.index(heading) for heading in expected_headings]
+    positions = [assembled.prompt.index(heading)
+                 for heading in expected_headings]
     assert positions == sorted(positions)
 
 
@@ -628,7 +670,8 @@ def test_evidence_source_missing_metadata_says_so_explicitly_instead_of_hiding_t
 def test_grounding_rules_with_evidence_forbid_inventing_a_missing_author_or_year():
     context = ContextAssemblyInput(
         topic="Topic", instructions="Instructions",
-        evidence=(ContextEvidence(chunk_id=1, content="Evidence.", summary=None, score=1.0),),
+        evidence=(ContextEvidence(
+            chunk_id=1, content="Evidence.", summary=None, score=1.0),),
     )
 
     assembled = assemble_context(context)
@@ -647,7 +690,8 @@ def test_find_unverified_citations_accepts_a_citation_matching_real_evidence():
         ),
     )
 
-    unverified = find_unverified_citations("Uadiale (2012) suggests board independence matters.", evidence)
+    unverified = find_unverified_citations(
+        "Uadiale (2012) suggests board independence matters.", evidence)
 
     assert unverified == []
 
@@ -663,7 +707,8 @@ def test_find_unverified_citations_flags_a_citation_matching_no_real_source():
         ),
     )
 
-    unverified = find_unverified_citations("Smith and Jones (2019) found no such effect.", evidence)
+    unverified = find_unverified_citations(
+        "Smith and Jones (2019) found no such effect.", evidence)
 
     assert unverified == ["Smith and Jones (2019)"]
 
@@ -679,7 +724,8 @@ def test_find_unverified_citations_flags_a_real_authors_name_with_the_wrong_year
         ),
     )
 
-    unverified = find_unverified_citations("Uadiale (2005) found something different.", evidence)
+    unverified = find_unverified_citations(
+        "Uadiale (2005) found something different.", evidence)
 
     assert unverified == ["Uadiale (2005)"]
 
@@ -694,8 +740,10 @@ def test_find_unverified_citations_returns_nothing_for_text_with_no_citations():
     evidence = (
         ContextEvidence(
             chunk_id=1, content="c", summary=None, score=1.0,
-            sources=(ContextEvidenceSource(document_id=1, document_title="Doc", author="Smith", publication_year=2020),),
+            sources=(ContextEvidenceSource(
+                document_id=1, document_title="Doc", author="Smith", publication_year=2020),),
         ),
     )
 
-    assert find_unverified_citations("A plain sentence with no citations at all.", evidence) == []
+    assert find_unverified_citations(
+        "A plain sentence with no citations at all.", evidence) == []
