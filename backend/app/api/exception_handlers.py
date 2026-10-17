@@ -40,9 +40,13 @@ from app.modules.document.domain.exceptions import (
     DocumentCannotBeDeletedError,
     DocumentCannotBeRetriedError,
     EmptyDocumentContentError,
+    ExternalSourceHasNoContentError,
+    ExternalSourceNotFoundError,
     InvalidDocumentFormatError,
     InvalidDocumentTitleError,
     ResearchDocumentNotFoundError,
+    SourceSearchFailedError,
+    SourceSearchNotConfiguredError,
     TooManyResearchDocumentsError,
 )
 from app.modules.project.domain.exceptions import (
@@ -189,6 +193,10 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(DocumentCannotBeDeletedError, _handle_conflict)
     app.add_exception_handler(DocumentCannotBeRetriedError, _handle_conflict)
     app.add_exception_handler(TooManyResearchDocumentsError, _handle_conflict)
+    app.add_exception_handler(SourceSearchNotConfiguredError, _handle_service_unavailable)
+    app.add_exception_handler(SourceSearchFailedError, _handle_service_unavailable)
+    app.add_exception_handler(ExternalSourceNotFoundError, _handle_not_found)
+    app.add_exception_handler(ExternalSourceHasNoContentError, _handle_invalid_input)
     app.add_exception_handler(InvalidStyleSampleReferenceError, _handle_not_found)
     app.add_exception_handler(NoUsableWritingStyleSamplesError, _handle_invalid_input)
     app.add_exception_handler(TooManyWritingStyleSamplesError, _handle_conflict)

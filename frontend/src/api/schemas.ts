@@ -63,6 +63,23 @@ export const researchDocumentListResponseSchema = z.object({
   has_more: z.boolean(),
 });
 
+export const externalSourceResponseSchema = z.object({
+  openalex_id: z.string(),
+  doi: z.string().nullable(),
+  title: z.string(),
+  authors: z.array(z.string()),
+  publication_year: z.number().nullable(),
+  source_name: z.string().nullable(),
+  is_open_access: z.boolean(),
+  has_fetchable_full_text: z.boolean(),
+  abstract: z.string().nullable(),
+});
+export type ExternalSourceResponse = z.infer<typeof externalSourceResponseSchema>;
+
+export const externalSourceSearchResponseSchema = z.object({
+  results: z.array(externalSourceResponseSchema),
+});
+
 export const searchResultEvidenceResponseSchema = z.object({
   document_id: z.number(),
   document_title: z.string(),

@@ -72,6 +72,13 @@ class Settings(BaseSettings):
     # turnstile_secret_key above. See app.core.virus_scan.is_known_malicious's own docstring for
     # exactly what this does and does not catch (a known hash, not a fresh scan).
     virustotal_api_key: str | None = None
+    # Search-and-import source discovery (2026-10-17): the free OpenAlex API key, self-serve via
+    # an emailed verification link (openalex.org/settings/api). Required, not optional like most
+    # integrations in this app - OpenAlex's unauthenticated tier shares a tiny ($0.10/day) budget
+    # across every caller on the same network IP, which isn't viable for a real feature. Unset
+    # means the feature is off (SourceSearchNotConfiguredError), the same "missing config
+    # disables the feature" shape as turnstile_secret_key/virustotal_api_key above.
+    openalex_api_key: str | None = None
     # Google Sign-In (2026-09-20): the OAuth Client ID from Google Cloud Console, used to verify
     # the `aud` claim of every ID token. Not a secret (it's also embedded in the frontend
     # bundle as VITE_GOOGLE_CLIENT_ID) - unset means the feature is off (GoogleSignInNotConfiguredError).

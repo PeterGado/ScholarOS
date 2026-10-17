@@ -95,28 +95,31 @@ def _is_safe_to_fetch(url: str) -> bool:
     return _is_safe_public_host(parsed.hostname)
 
 
-def fetch_web_source(url: str) -> WebSource | None:
-    """Best-effort fetch-and-extract for a URL a user pasted into a chat message (2026-10-17,
-    web-source grounding - "paste a URL and have it fetched into the same knowledge pipeline").
-    Uses scrapling's basic `Fetcher` (curl_cffi-backed HTTP, not a full browser) - deliberately
-    not `StealthyFetcher`/`DynamicFetcher`, which need real browser binaries; most pasted URLs
-    (articles, papers, blog posts) render their content without JavaScript, and this app already
-    avoids adding heavy runtime dependencies where a lighter one suffices (ADR-005's own
-    MVP-scale philosophy, the Postgres-over-Redis rate-limiter precedent).
+def fetch_web_source(url: str, *, max_content_length: int = _MAX_CONTENT_LENGTH) -> WebSource | None:
+    """Best-effort fetch-and-extract for a URL (2026-10-17, web-source grounding - "paste a URL
+    and have it fetched into the same knowledge pipeline"; extended 2026-10-17 for external
+    source import, which calls this with a much larger `max_content_length` than a chat
+    message's grounding snippet needs - see app.modules.document.application.use_cases'
+    ImportExternalSourceUseCase). Uses scrapling's basic `Fetcher` (curl_cffi-backed HTTP, not a
+    full browser) - deliberately not `StealthyFetcher`/`DynamicFetcher`, which need real browser
+    binaries; most fetched URLs (articles, papers, blog posts) render their content without
+    JavaScript, and this app already avoids adding heavy runtime dependencies where a lighter
+    one suffices (ADR-005's own MVP-scale philosophy, the Postgres-over-Redis rate-limiter
+    precedent).
 
     SSRF-checked before fetching (see `_is_safe_to_fetch`/`_is_safe_public_host`), fetched with
     `follow_redirects=False` (a redirect is never silently followed to an unvalidated target),
-    `retries=0` (this is optional, best-effort enrichment inside an already-running background
-    Work Item - failing fast beats scrapling's own default 3-attempt retry-with-delay), and the
-    extracted text is capped at `_MAX_CONTENT_LENGTH` characters before being handed to the
-    caller, bounding both the prompt-budget cost and (loosely) the memory cost of a very large
-    page - not a hard byte-level cap on the underlying fetch itself, since no such cap is exposed
-    by this app's HTTP stack; the timeout is the real bound against a slow/huge response.
+    `retries=0` (this is optional, best-effort work inside an already-running background Work
+    Item - failing fast beats scrapling's own default 3-attempt retry-with-delay), and the
+    extracted text is capped at `max_content_length` characters before being handed to the
+    caller, bounding both the prompt-budget/storage cost and (loosely) the memory cost of a very
+    large page - not a hard byte-level cap on the underlying fetch itself, since no such cap is
+    exposed by this app's HTTP stack; the timeout is the real bound against a slow/huge response.
 
     Never raises: mirrors `app.ai.wikipedia.fetch_wikipedia_background` and
     `app.ai.crossref.fetch_crossref_work`'s own "never raise" contract - a blocked, unreachable,
-    or malformed URL just means no web-source section is added to the prompt. Nothing here can
-    break a chat reply.
+    or malformed URL just means the caller gets nothing back and falls through to whatever its
+    own fallback is (no section added to a prompt; metadata-only import instead of full text).
     """
     if not _is_safe_to_fetch(url):
         return None
@@ -135,9 +138,9 @@ def fetch_web_source(url: str) -> WebSource | None:
         text = (response.get_all_text() or "").strip()
         if not text:
             return None
-        if len(text) > _MAX_CONTENT_LENGTH:
-            truncated = text[:_MAX_CONTENT_LENGTH].rsplit(" ", 1)[0]
-            text = (truncated or text[:_MAX_CONTENT_LENGTH]) + "..."
+        if len(text) > max_content_length:
+            truncated = text[:max_content_length].rsplit(" ", 1)[0]
+            text = (truncated or text[:max_content_length]) + "..."
 
         return WebSource(url=url, content=text)
     except Exception:  # noqa: BLE001 - this function's whole contract is "never raise"

@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { TrayIcon } from "@phosphor-icons/react";
+import { MagnifyingGlassIcon, TrayIcon } from "@phosphor-icons/react";
 import {
   deleteResearchDocument,
+  importExternalSource,
   listProjectDocuments,
   retryResearchDocument,
+  searchExternalSources,
   uploadResearchDocument,
   uploadResearchDocuments,
 } from "@/api/documents";
@@ -39,6 +41,10 @@ export function DocumentsPage() {
   const [selectedFileCount, setSelectedFileCount] = useState(0);
   const [query, setQuery] = useState("");
   const [searchSubmitted, setSearchSubmitted] = useState("");
+  const [acquisitionTab, setAcquisitionTab] = useState<"upload" | "search-sources">("upload");
+  const [sourceQuery, setSourceQuery] = useState("");
+  const [sourceQuerySubmitted, setSourceQuerySubmitted] = useState("");
+  const [importingId, setImportingId] = useState<string | null>(null);
   const previousStatusesRef = useRef<Record<number, string>>({});
 
   const documentsQuery = useInfiniteQuery({
@@ -140,6 +146,25 @@ export function DocumentsPage() {
     enabled: searchSubmitted.length > 0,
   });
 
+  // Search-and-import source discovery (2026-10-17): searches OpenAlex's scholarly index for
+  // specific, named candidate sources - NotebookLM-style, the user explicitly picks which one(s)
+  // to import, never an unrestricted crawl of the open web.
+  const sourceSearchQuery = useQuery({
+    queryKey: ["external-source-search", sourceQuerySubmitted],
+    queryFn: () => searchExternalSources(sourceQuerySubmitted),
+    enabled: sourceQuerySubmitted.length > 0,
+  });
+
+  const importMutation = useMutation({
+    mutationFn: (openalexId: string) => importExternalSource(workspace.project.project_id, openalexId),
+    onMutate: (openalexId: string) => setImportingId(openalexId),
+    onSuccess: (document) => {
+      queryClient.invalidateQueries({ queryKey: ["documents", workspace.project.project_id] });
+      showToast(`"${document.title}" imported. Processing is queued.`);
+    },
+    onSettled: () => setImportingId(null),
+  });
+
   function handleUpload(event: FormEvent) {
     event.preventDefault();
     uploadMutation.mutate();
@@ -148,6 +173,11 @@ export function DocumentsPage() {
   function handleSearch(event: FormEvent) {
     event.preventDefault();
     setSearchSubmitted(query);
+  }
+
+  function handleSourceSearch(event: FormEvent) {
+    event.preventDefault();
+    setSourceQuerySubmitted(sourceQuery);
   }
 
   const documentCount = allDocuments.length;
@@ -169,6 +199,46 @@ export function DocumentsPage() {
             used).
           </p>
         </div>
+
+        {/* Acquisition tabs (2026-10-17, search-and-import source discovery): "Upload" (a
+            client file) and "Search sources" (an OpenAlex result the server fetches) are both
+            ways to bring a Research Document into this project - kept on one page since that's
+            where a user already looks for either. */}
+        <div role="tablist" aria-label="Add a research document" className="flex gap-1 border-b border-border">
+          <button
+            type="button"
+            role="tab"
+            id="acquisition-tab-upload"
+            aria-selected={acquisitionTab === "upload"}
+            aria-controls="acquisition-panel-upload"
+            onClick={() => setAcquisitionTab("upload")}
+            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              acquisitionTab === "upload"
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Upload
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="acquisition-tab-search-sources"
+            aria-selected={acquisitionTab === "search-sources"}
+            aria-controls="acquisition-panel-search-sources"
+            onClick={() => setAcquisitionTab("search-sources")}
+            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              acquisitionTab === "search-sources"
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Search sources
+          </button>
+        </div>
+
+        {acquisitionTab === "upload" && (
+        <div role="tabpanel" id="acquisition-panel-upload" aria-labelledby="acquisition-tab-upload" className="space-y-4">
         <form onSubmit={handleUpload} className="flex flex-wrap items-end gap-3">
           {/* Accessibility (found during an audit, 2026-10-09): these labels had no htmlFor/id
               pairing to their inputs, so a screen reader wouldn't announce the field name. */}
@@ -338,6 +408,108 @@ export function DocumentsPage() {
           <p role="alert" className="text-sm text-destructive">
             {deleteMutation.error instanceof ApiError ? deleteMutation.error.message : "Could not delete document."}
           </p>
+        )}
+        </div>
+        )}
+
+        {acquisitionTab === "search-sources" && (
+        <div
+          role="tabpanel"
+          id="acquisition-panel-search-sources"
+          aria-labelledby="acquisition-tab-search-sources"
+          className="space-y-4"
+        >
+          <p className="text-sm text-muted-foreground">
+            Search OpenAlex's open scholarly index and import a specific result into this project.
+            Only sources you explicitly choose are ever added - nothing is fetched automatically.
+          </p>
+          <form onSubmit={handleSourceSearch} className="flex gap-3">
+            <Input
+              value={sourceQuery}
+              onChange={(e) => setSourceQuery(e.target.value)}
+              placeholder="Search by topic, title, or author..."
+              aria-label="Search external sources"
+            />
+            <Button type="submit" disabled={atLimit}>Search</Button>
+          </form>
+          {atLimit && (
+            <p className="text-sm text-muted-foreground">
+              You've reached the {RESEARCH_DOCUMENT_LIMIT}-document limit for this project - delete
+              a pending or failed document above to make room before importing another.
+            </p>
+          )}
+          {sourceSearchQuery.isFetching && (
+            <div className="space-y-2" aria-label="Searching external sources">
+              <Skeleton className="h-20" />
+              <Skeleton className="h-20" />
+              <Skeleton className="h-20" />
+            </div>
+          )}
+          {sourceSearchQuery.isError && (
+            <p role="alert" className="text-sm text-destructive">
+              {sourceSearchQuery.error instanceof ApiError
+                ? sourceSearchQuery.error.errorType === "SourceSearchNotConfiguredError"
+                  ? "Source search isn't set up yet."
+                  : sourceSearchQuery.error.message
+                : "Search failed. Try again."}
+            </p>
+          )}
+          {sourceSearchQuery.data && sourceSearchQuery.data.length === 0 && (
+            <EmptyState
+              icon={MagnifyingGlassIcon}
+              title="No results"
+              description="Try a different search term."
+            />
+          )}
+          {importMutation.isError && (
+            <p role="alert" className="text-sm text-destructive">
+              {importMutation.error instanceof ApiError
+                ? importMutation.error.errorType === "ExternalSourceHasNoContentError"
+                  ? "This source has no open-access full text or abstract available to import."
+                  : importMutation.error.message
+                : "Import failed. Try again."}
+            </p>
+          )}
+          <ul className="divide-y divide-border">
+            {sourceSearchQuery.data?.map((result) => (
+              <li key={result.openalex_id} className="space-y-2 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">{result.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {result.authors.length > 0 ? result.authors.join(", ") : "Author not listed"}
+                      {result.publication_year ? ` (${result.publication_year})` : ""}
+                      {result.source_name ? ` - ${result.source_name}` : ""}
+                    </p>
+                    {result.abstract && (
+                      <p className="text-xs text-muted-foreground line-clamp-2">{result.abstract}</p>
+                    )}
+                    <div className="flex items-center gap-2">
+                      {result.has_fetchable_full_text ? (
+                        <Badge variant="success">Full text available</Badge>
+                      ) : result.abstract ? (
+                        <Badge variant="secondary">Abstract only</Badge>
+                      ) : (
+                        <Badge variant="destructive">Nothing to import</Badge>
+                      )}
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    disabled={
+                      atLimit ||
+                      (!result.has_fetchable_full_text && !result.abstract) ||
+                      importMutation.isPending
+                    }
+                    onClick={() => importMutation.mutate(result.openalex_id)}
+                  >
+                    {importMutation.isPending && importingId === result.openalex_id ? "Importing..." : "Import"}
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
         )}
       </section>
 

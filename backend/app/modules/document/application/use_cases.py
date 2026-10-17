@@ -4,7 +4,14 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from app.ai.crossref import CrossrefWork, fetch_crossref_work
+from app.ai.openalex import (
+    OpenAlexWork,
+    SourceSearchUnavailableError,
+    get_openalex_work_by_id,
+    search_openalex_works,
+)
 from app.ai.usage_guard import AiUsageGuard
+from app.ai.web_fetch import WebSource, fetch_web_source
 from app.auth.email_verification_guard import EmailVerificationGuard
 from app.core.pagination import DEFAULT_LIST_LIMIT
 from app.core.unit_of_work import UnitOfWork
@@ -19,7 +26,11 @@ from app.modules.document.domain.exceptions import (
     DocumentCannotBeDeletedError,
     DocumentCannotBeRetriedError,
     EmptyDocumentContentError,
+    ExternalSourceHasNoContentError,
+    ExternalSourceNotFoundError,
     ResearchDocumentNotFoundError,
+    SourceSearchFailedError,
+    SourceSearchNotConfiguredError,
     TooManyResearchDocumentsError,
 )
 from app.modules.document.domain.ports import ContentStore
@@ -43,6 +54,51 @@ MAX_RESEARCH_DOCUMENTS_PER_PROJECT = 20
 """A deliberate cap, not an incidental limitation - each document costs real AI provider calls
 to process (classification + embedding), and an unbounded project could exhaust a free-tier
 daily quota (or run up a paid one) on its own. See TooManyResearchDocumentsError."""
+
+
+def _create_and_enqueue_document(
+    *,
+    documents: DocumentRepository,
+    work_items: WorkItemEnqueuer,
+    uow: UnitOfWork,
+    project_id: int,
+    title: str,
+    format: str,
+    content_reference: str,
+    author: str | None,
+    source: str | None,
+    publication_year: int | None,
+    doi: str | None,
+    purpose: DocumentPurpose,
+) -> ResearchDocument:
+    """Shared tail of UploadResearchDocumentUseCase and ImportExternalSourceUseCase (2026-10-17)
+    - both are on-ramps into the same Research Document pipeline, differing only in where
+    `content_reference` came from (a client upload vs. a server-side OpenAlex fetch), so the
+    actual creation, Work Item enqueue, and commit/rollback semantics live here once.
+    """
+    try:
+        document = ResearchDocument.create(
+            project_id=project_id,
+            title=title,
+            format=format,
+            content_reference=content_reference,
+            author=author,
+            source=source,
+            publication_year=publication_year,
+            doi=doi,
+            purpose=purpose,
+        )
+        document = documents.add(document)
+        work_items.enqueue(
+            kind=WorkItemKind.PIPELINE_STAGE,
+            payload_reference=build_process_document_payload_reference(document.document_id),
+            idempotency_key=build_process_document_idempotency_key(document.document_id),
+        )
+        uow.commit()
+    except Exception:
+        uow.rollback()
+        raise
+    return document
 
 
 class UploadResearchDocumentUseCase:
@@ -122,30 +178,20 @@ class UploadResearchDocumentUseCase:
 
         content_reference = self._content_store.save(content, extension=extension)
 
-        try:
-            document = ResearchDocument.create(
-                project_id=project_id,
-                title=title,
-                format=format,
-                content_reference=content_reference,
-                author=author,
-                source=source,
-                publication_year=publication_year,
-                doi=doi,
-                purpose=DocumentPurpose.RESEARCH,
-            )
-            document = self._documents.add(document)
-            self._work_items.enqueue(
-                kind=WorkItemKind.PIPELINE_STAGE,
-                payload_reference=build_process_document_payload_reference(document.document_id),
-                idempotency_key=build_process_document_idempotency_key(document.document_id),
-            )
-            self._uow.commit()
-        except Exception:
-            self._uow.rollback()
-            raise
-
-        return document
+        return _create_and_enqueue_document(
+            documents=self._documents,
+            work_items=self._work_items,
+            uow=self._uow,
+            project_id=project_id,
+            title=title,
+            format=format,
+            content_reference=content_reference,
+            author=author,
+            source=source,
+            publication_year=publication_year,
+            doi=doi,
+            purpose=DocumentPurpose.RESEARCH,
+        )
 
 
 @dataclass(frozen=True)
@@ -418,3 +464,141 @@ class VerifyDocumentDoiUseCase:
             }
             author_ok = bool(entered_tokens & real_tokens)
         return year_ok and author_ok
+
+
+class SearchExternalSourcesUseCase:
+    """Search-and-import source discovery (2026-10-17) - the search half. NotebookLM-style: the
+    system finds and presents specific, named candidate sources for the user to explicitly
+    choose from, never an unrestricted crawl of the open web. Searches OpenAlex's scholarly
+    index; the user picks which result(s), if any, to actually bring into their project via
+    ImportExternalSourceUseCase.
+
+    No ownership check here, unlike every other use case in this module - this searches a
+    public, external index, not anything project- or user-scoped. project_id only becomes
+    relevant at import time, when a real ResearchDocument gets created.
+    """
+
+    def __init__(
+        self,
+        *,
+        openalex_api_key: str | None,
+        search_provider: Callable[..., list[OpenAlexWork]] = search_openalex_works,
+    ) -> None:
+        self._api_key = openalex_api_key
+        self._search = search_provider
+
+    def execute(self, *, query: str, limit: int = 10) -> list[OpenAlexWork]:
+        if not self._api_key:
+            raise SourceSearchNotConfiguredError()
+        try:
+            return self._search(query, api_key=self._api_key, limit=limit)
+        except SourceSearchUnavailableError as exc:
+            raise SourceSearchFailedError() from exc
+
+
+class ImportExternalSourceUseCase:
+    """Search-and-import source discovery (2026-10-17) - the import half. Re-resolves the work
+    server-side by ID (never trusts client-supplied title/author/year/DOI for document creation
+    - see app.ai.openalex.get_openalex_work_by_id's own docstring), then tries, in order: the
+    work's fetchable_url (a real open-access full text) via app.ai.web_fetch.fetch_web_source
+    with a far larger content cap than chat grounding needs; falling back to the reconstructed
+    abstract alone when no fetchable URL exists or the fetch fails; raising
+    ExternalSourceHasNoContentError only when neither is available - a metadata-only stub with
+    no abstract and no full text would leave nothing for the knowledge pipeline to work with.
+
+    Shares UploadResearchDocumentUseCase's ownership/cap/email-verification checks exactly -
+    this is a second on-ramp into the same Research Document pipeline (_create_and_enqueue_
+    document), not a separate one.
+    """
+
+    _IMPORT_CONTENT_LENGTH = 50_000
+    """Far larger than web-source chat grounding's 3,000-char cap (app.ai.web_fetch) - an
+    imported document goes through the same chunking/embedding pipeline any uploaded document
+    does, not stuffed whole into one prompt, so it can comfortably hold most full papers."""
+
+    def __init__(
+        self,
+        document_repository: DocumentRepository,
+        project_repository: ProjectRepository,
+        agent_repository: AgentRepository,
+        content_store: ContentStore,
+        unit_of_work: UnitOfWork,
+        work_item_enqueuer: WorkItemEnqueuer,
+        ai_usage_guard: AiUsageGuard,
+        email_verification_guard: EmailVerificationGuard,
+        *,
+        openalex_api_key: str | None,
+        work_lookup_provider: Callable[..., OpenAlexWork | None] = get_openalex_work_by_id,
+        content_fetch_provider: Callable[..., WebSource | None] = fetch_web_source,
+    ) -> None:
+        self._documents = document_repository
+        self._projects = project_repository
+        self._agents = agent_repository
+        self._content_store = content_store
+        self._uow = unit_of_work
+        self._work_items = work_item_enqueuer
+        self._ai_usage_guard = ai_usage_guard
+        self._email_verification_guard = email_verification_guard
+        self._api_key = openalex_api_key
+        self._lookup_work = work_lookup_provider
+        self._fetch_content = content_fetch_provider
+
+    def execute(self, *, project_id: int, user_id: int, openalex_id: str) -> ResearchDocument:
+        project = self._projects.get_by_id(project_id)
+        if project is None:
+            raise ProjectNotFoundError(project_id=project_id)
+
+        owning_agent = self._agents.get_by_id(project.agent_id)
+        if owning_agent is None or owning_agent.user_id != user_id:
+            raise ProjectNotFoundError(project_id=project_id)
+
+        # Email verification gate (2026-10-06 precedent) - right after ownership is confirmed,
+        # before any external fetch, content-store write, or AI usage is recorded.
+        self._email_verification_guard.require_verified(user_id)
+
+        existing_count = len(self._documents.list_by_project_id(project_id, purpose=DocumentPurpose.RESEARCH))
+        if existing_count >= MAX_RESEARCH_DOCUMENTS_PER_PROJECT:
+            raise TooManyResearchDocumentsError(project_id=project_id, limit=MAX_RESEARCH_DOCUMENTS_PER_PROJECT)
+
+        if not self._api_key:
+            raise SourceSearchNotConfiguredError()
+
+        try:
+            work = self._lookup_work(openalex_id, api_key=self._api_key)
+        except SourceSearchUnavailableError as exc:
+            raise SourceSearchFailedError() from exc
+        if work is None:
+            raise ExternalSourceNotFoundError(openalex_id=openalex_id)
+
+        content_text: str | None = None
+        if work.fetchable_url:
+            fetched = self._fetch_content(work.fetchable_url, max_content_length=self._IMPORT_CONTENT_LENGTH)
+            if fetched is not None:
+                content_text = fetched.content
+        if not content_text:
+            content_text = work.abstract
+        if not content_text:
+            raise ExternalSourceHasNoContentError()
+
+        content_bytes = content_text.encode("utf-8")
+
+        # Same AI usage cap reasoning as UploadResearchDocumentUseCase - a byte-length estimate,
+        # charged against the user importing the source.
+        self._ai_usage_guard.check_and_record(user_id=user_id, estimated_tokens=max(1, len(content_bytes) // 4))
+
+        content_reference = self._content_store.save(content_bytes, extension="txt")
+
+        return _create_and_enqueue_document(
+            documents=self._documents,
+            work_items=self._work_items,
+            uow=self._uow,
+            project_id=project_id,
+            title=work.title,
+            format="txt",
+            content_reference=content_reference,
+            author=", ".join(work.authors) if work.authors else None,
+            source=work.source_name,
+            publication_year=work.publication_year,
+            doi=work.doi,
+            purpose=DocumentPurpose.RESEARCH,
+        )

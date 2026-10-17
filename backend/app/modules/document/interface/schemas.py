@@ -1,7 +1,8 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from app.ai.openalex import OpenAlexWork
 from app.modules.document.application.use_cases import ResearchDocumentWithError
 from app.modules.document.domain.entities import ResearchDocument
 
@@ -62,3 +63,48 @@ class ResearchDocumentListResponse(BaseModel):
             ],
             has_more=has_more,
         )
+
+
+class ExternalSourceResponse(BaseModel):
+    """One OpenAlex search result (2026-10-17, search-and-import source discovery) - a
+    candidate the user may choose to import, not yet a Research Document. `openalex_id` is the
+    only field the import request actually needs to carry back (app.ai.openalex.
+    get_openalex_work_by_id re-resolves everything else server-side at import time); the rest
+    is shown so the user can judge the result before importing it.
+    """
+
+    openalex_id: str
+    doi: str | None
+    title: str
+    authors: list[str]
+    publication_year: int | None
+    source_name: str | None
+    is_open_access: bool
+    has_fetchable_full_text: bool
+    abstract: str | None
+
+    @classmethod
+    def from_domain(cls, work: OpenAlexWork) -> "ExternalSourceResponse":
+        return cls(
+            openalex_id=work.openalex_id,
+            doi=work.doi,
+            title=work.title,
+            authors=list(work.authors),
+            publication_year=work.publication_year,
+            source_name=work.source_name,
+            is_open_access=work.is_open_access,
+            has_fetchable_full_text=work.fetchable_url is not None,
+            abstract=work.abstract,
+        )
+
+
+class ExternalSourceSearchResponse(BaseModel):
+    results: list[ExternalSourceResponse]
+
+    @classmethod
+    def from_domain(cls, works: list[OpenAlexWork]) -> "ExternalSourceSearchResponse":
+        return cls(results=[ExternalSourceResponse.from_domain(work) for work in works])
+
+
+class ImportExternalSourceRequest(BaseModel):
+    openalex_id: str = Field(..., min_length=1)

@@ -71,3 +71,46 @@ class DocumentCannotBeDeletedError(DocumentDomainError):
         )
         self.document_id = document_id
         self.processing_status = processing_status
+
+
+class SourceSearchNotConfiguredError(DocumentDomainError):
+    """Raised by search-and-import source discovery (2026-10-17) when
+    `settings.openalex_api_key` isn't set - mirrors `GoogleSignInNotConfiguredError`'s own
+    "feature isn't configured yet" 503 pattern.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("External source search is not configured.")
+
+
+class SourceSearchFailedError(DocumentDomainError):
+    """Raised when a real call to OpenAlex fails (app.ai.openalex.SourceSearchUnavailableError)
+    - distinct from a normal, successful empty result list, and from
+    SourceSearchNotConfiguredError (which means the feature was never even attempted).
+    """
+
+    def __init__(self) -> None:
+        super().__init__("External source search is temporarily unavailable. Try again shortly.")
+
+
+class ExternalSourceNotFoundError(DocumentDomainError):
+    """Raised by ImportExternalSourceUseCase when the OpenAlex work a client is trying to
+    import no longer resolves at import time (e.g. withdrawn, or the ID was stale) - re-fetched
+    server-side rather than trusted from the client, so this is a real, if rare, possible
+    outcome between a search and the corresponding import request.
+    """
+
+    def __init__(self, *, openalex_id: str) -> None:
+        super().__init__(f"The selected source ({openalex_id}) could not be found.")
+        self.openalex_id = openalex_id
+
+
+class ExternalSourceHasNoContentError(DocumentDomainError):
+    """Raised by ImportExternalSourceUseCase when a work has neither a fetchable open-access
+    full text nor a reconstructable abstract - genuinely nothing to import, as opposed to the
+    metadata-only-stub path (title/authors/year/DOI plus the abstract when a full text isn't
+    available), which this app does support as a real, citable import.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("This source has no open-access full text or abstract available to import.")

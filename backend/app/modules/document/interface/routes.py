@@ -7,8 +7,10 @@ from app.core.config import get_settings
 from app.core.dependencies import (
     get_current_user_id,
     get_delete_research_document_use_case,
+    get_import_external_source_use_case,
     get_list_project_documents_use_case,
     get_retry_document_processing_use_case,
+    get_search_external_sources_use_case,
     get_upload_research_document_use_case,
 )
 from app.core.document_formats import looks_like_a_supported_document
@@ -19,11 +21,15 @@ from app.core.uploads import read_upload_within_limit
 from app.core.virus_scan import is_known_malicious
 from app.modules.document.application.use_cases import (
     DeleteResearchDocumentUseCase,
+    ImportExternalSourceUseCase,
     ListProjectDocumentsUseCase,
     RetryDocumentProcessingUseCase,
+    SearchExternalSourcesUseCase,
     UploadResearchDocumentUseCase,
 )
 from app.modules.document.interface.schemas import (
+    ExternalSourceSearchResponse,
+    ImportExternalSourceRequest,
     ResearchDocumentListResponse,
     ResearchDocumentResponse,
 )
@@ -187,4 +193,87 @@ def retry_document_processing(
     and re-uploading the same file.
     """
     document = use_case.execute(project_id=project_id, user_id=user_id, document_id=document_id)
+    return ResearchDocumentResponse.from_domain(document)
+
+
+@router.get(
+    "/source-search",
+    response_model=ExternalSourceSearchResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"model": ErrorResponse, "description": "Missing, malformed, unknown, or ended session."},
+        422: {"model": ErrorResponse, "description": "Malformed request (empty query)."},
+        429: {"model": ErrorResponse, "description": "Too many searches from this client."},
+        503: {
+            "model": ErrorResponse,
+            "description": "External source search is not configured, or OpenAlex is temporarily unavailable.",
+        },
+    },
+)
+# A real external API call per search (OpenAlex), not free-form crawling - 10/minute is
+# generous for a human searching, tight for a scripted scraping loop against OpenAlex through
+# this app's own key.
+@limiter.limit("10/minute")
+def search_external_sources(
+    request: Request,
+    query: str = Query(..., min_length=1),
+    limit: int = Query(10, ge=1, le=25),
+    user_id: int = Depends(get_current_user_id),
+    use_case: SearchExternalSourcesUseCase = Depends(get_search_external_sources_use_case),
+) -> ExternalSourceSearchResponse:
+    """Search-and-import source discovery (2026-10-17): searches OpenAlex's scholarly index for
+    candidate sources - NotebookLM-style, a curated list of specific, named results the user
+    explicitly chooses from, never an unrestricted crawl of the open web. Not project-scoped:
+    this searches a public external index, not anything the authenticated user owns.
+
+    No business logic lives here: the real search call and its failure modes are handled by
+    SearchExternalSourcesUseCase; exceptions are translated to HTTP responses by the handlers
+    registered in app.api.exception_handlers.
+    """
+    results = use_case.execute(query=query, limit=limit)
+    return ExternalSourceSearchResponse.from_domain(results)
+
+
+@router.post(
+    "/{project_id}/documents/import",
+    response_model=ResearchDocumentResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        401: {"model": ErrorResponse, "description": "Missing, malformed, unknown, or ended session."},
+        404: {
+            "model": ErrorResponse,
+            "description": "The referenced Project does not exist, does not belong to the authenticated user, or the selected source could no longer be found.",
+        },
+        409: {"model": ErrorResponse, "description": "The project already has the maximum number of research documents."},
+        422: {
+            "model": ErrorResponse,
+            "description": "The selected source has no open-access full text or abstract available to import.",
+        },
+        429: {"model": ErrorResponse, "description": "Too many imports from this client."},
+        503: {
+            "model": ErrorResponse,
+            "description": "External source search is not configured, or OpenAlex is temporarily unavailable.",
+        },
+    },
+)
+# Same cost profile as a regular upload (triggers the real Knowledge Processing Pipeline) plus
+# a real external fetch - 20/minute mirrors upload_research_document's own limit.
+@limiter.limit("20/minute")
+def import_external_source(
+    request: Request,
+    project_id: int,
+    payload: ImportExternalSourceRequest,
+    user_id: int = Depends(get_current_user_id),
+    use_case: ImportExternalSourceUseCase = Depends(get_import_external_source_use_case),
+) -> ResearchDocumentResponse:
+    """Imports a previously-searched OpenAlex result as a real Research Document (2026-10-17) -
+    the second half of search-and-import source discovery, and a second on-ramp into the same
+    Knowledge Processing Pipeline POST /{project_id}/documents already starts.
+
+    No business logic lives here: re-resolving the source, fetching its content (or falling
+    back to its abstract), ownership/cap/email-verification checks, and Work Item enqueueing
+    all happen in ImportExternalSourceUseCase; exceptions are translated to HTTP responses by
+    the handlers registered in app.api.exception_handlers.
+    """
+    document = use_case.execute(project_id=project_id, user_id=user_id, openalex_id=payload.openalex_id)
     return ResearchDocumentResponse.from_domain(document)

@@ -1,13 +1,17 @@
 import pytest
 
+from app.ai.openalex import OpenAlexWork, SourceSearchUnavailableError
 from app.ai.usage_guard import AiUsageGuard
+from app.ai.web_fetch import WebSource
 from app.auth.exceptions import EmailNotVerifiedError
 from app.modules.agent.domain.entities import Agent
 from app.modules.agent.domain.repositories import AgentRepository
 from app.modules.document.application.use_cases import (
     MAX_RESEARCH_DOCUMENTS_PER_PROJECT,
     DeleteResearchDocumentUseCase,
+    ImportExternalSourceUseCase,
     ListProjectDocumentsUseCase,
+    SearchExternalSourcesUseCase,
     UploadResearchDocumentUseCase,
 )
 from app.modules.document.domain.entities import ResearchDocument
@@ -15,7 +19,11 @@ from app.modules.document.domain.enums import DocumentProcessingStatus
 from app.modules.document.domain.exceptions import (
     DocumentCannotBeDeletedError,
     EmptyDocumentContentError,
+    ExternalSourceHasNoContentError,
+    ExternalSourceNotFoundError,
     ResearchDocumentNotFoundError,
+    SourceSearchFailedError,
+    SourceSearchNotConfiguredError,
     TooManyResearchDocumentsError,
 )
 from app.modules.document.domain.repositories import DocumentRepository
@@ -437,3 +445,217 @@ def test_deleting_against_a_project_not_owned_by_the_caller_is_rejected_as_not_f
     with pytest.raises(ProjectNotFoundError):
         use_case.execute(project_id=1, user_id=OTHER_USER_ID, document_id=document.document_id)
     assert documents.get_by_id(document.document_id).deleted_at is None
+
+
+# --- SearchExternalSourcesUseCase (2026-10-17) ------------------------------------------------
+
+_SAMPLE_WORK = OpenAlexWork(
+    openalex_id="https://openalex.org/W1",
+    doi="10.1000/example",
+    title="A Real Paper",
+    authors=("Ada Lovelace",),
+    publication_year=2020,
+    source_name="Journal of Examples",
+    is_open_access=True,
+    fetchable_url="https://example.com/paper.pdf",
+    abstract="An abstract.",
+)
+
+
+def test_search_without_an_api_key_is_rejected():
+    use_case = SearchExternalSourcesUseCase(openalex_api_key=None)
+
+    with pytest.raises(SourceSearchNotConfiguredError):
+        use_case.execute(query="test")
+
+
+def test_search_returns_the_providers_results():
+    calls = []
+
+    def fake_search(query, *, api_key, limit=10):
+        calls.append((query, api_key, limit))
+        return [_SAMPLE_WORK]
+
+    use_case = SearchExternalSourcesUseCase(openalex_api_key="real-key", search_provider=fake_search)
+
+    results = use_case.execute(query="retrieval augmented generation", limit=5)
+
+    assert results == [_SAMPLE_WORK]
+    assert calls == [("retrieval augmented generation", "real-key", 5)]
+
+
+def test_search_translates_a_provider_failure():
+    def failing_search(query, *, api_key, limit=10):
+        raise SourceSearchUnavailableError("simulated")
+
+    use_case = SearchExternalSourcesUseCase(openalex_api_key="real-key", search_provider=failing_search)
+
+    with pytest.raises(SourceSearchFailedError):
+        use_case.execute(query="test")
+
+
+# --- ImportExternalSourceUseCase (2026-10-17) -------------------------------------------------
+
+
+def _build_import_use_case(
+    project_id=1,
+    agents: dict[int, Agent] | None = None,
+    *,
+    email_verified: bool = True,
+    api_key: str | None = "real-key",
+    work_lookup=lambda openalex_id, *, api_key: _SAMPLE_WORK,
+    content_fetch=lambda url, *, max_content_length=50_000: WebSource(url=url, content="Full fetched text."),
+):
+    documents = FakeDocumentRepository()
+    projects = FakeProjectRepository(existing_project_id=project_id)
+    agent_repository = FakeAgentRepository(agents)
+    content_store = FakeContentStore()
+    uow = FakeUnitOfWork()
+    work_items = FakeWorkItemEnqueuer()
+    use_case = ImportExternalSourceUseCase(
+        documents,
+        projects,
+        agent_repository,
+        content_store,
+        uow,
+        work_items,
+        AiUsageGuard(None, None, daily_token_cap=None),
+        FakeEmailVerificationGuard(verified=email_verified),
+        openalex_api_key=api_key,
+        work_lookup_provider=work_lookup,
+        content_fetch_provider=content_fetch,
+    )
+    return use_case, documents, content_store, uow, work_items
+
+
+def test_import_with_fetchable_full_text_uses_the_fetched_content():
+    use_case, documents, content_store, uow, work_items = _build_import_use_case()
+
+    document = use_case.execute(project_id=1, user_id=OWNER_USER_ID, openalex_id="W1")
+
+    assert document.title == "A Real Paper"
+    assert document.author == "Ada Lovelace"
+    assert document.publication_year == 2020
+    assert document.doi == "10.1000/example"
+    assert document.format == "txt"
+    assert content_store.saved == [b"Full fetched text."]
+    assert uow.committed
+    assert len(work_items.enqueued) == 1
+
+
+def test_import_falls_back_to_the_abstract_when_fetch_returns_nothing():
+    use_case, documents, content_store, uow, work_items = _build_import_use_case(
+        content_fetch=lambda url, *, max_content_length=50_000: None,
+    )
+
+    document = use_case.execute(project_id=1, user_id=OWNER_USER_ID, openalex_id="W1")
+
+    assert content_store.saved == [b"An abstract."]
+    assert document.title == "A Real Paper"
+
+
+def test_import_falls_back_to_the_abstract_when_no_fetchable_url_exists():
+    no_url_work = OpenAlexWork(
+        openalex_id="https://openalex.org/W2",
+        doi=None,
+        title="Paywalled Paper",
+        authors=(),
+        publication_year=2019,
+        source_name=None,
+        is_open_access=False,
+        fetchable_url=None,
+        abstract="Still has an abstract.",
+    )
+    calls = []
+    use_case, documents, content_store, uow, work_items = _build_import_use_case(
+        work_lookup=lambda openalex_id, *, api_key: no_url_work,
+        content_fetch=lambda url, *, max_content_length=50_000: calls.append(url) or None,
+    )
+
+    document = use_case.execute(project_id=1, user_id=OWNER_USER_ID, openalex_id="W2")
+
+    assert calls == []  # never even attempted a fetch with no fetchable_url
+    assert content_store.saved == [b"Still has an abstract."]
+    assert document.author is None  # no authors - None, not an empty string
+
+
+def test_import_with_neither_full_text_nor_abstract_is_rejected():
+    empty_work = OpenAlexWork(
+        openalex_id="https://openalex.org/W3",
+        doi=None,
+        title="Nothing Available",
+        authors=(),
+        publication_year=None,
+        source_name=None,
+        is_open_access=False,
+        fetchable_url=None,
+        abstract=None,
+    )
+    use_case, documents, content_store, uow, work_items = _build_import_use_case(
+        work_lookup=lambda openalex_id, *, api_key: empty_work,
+    )
+
+    with pytest.raises(ExternalSourceHasNoContentError):
+        use_case.execute(project_id=1, user_id=OWNER_USER_ID, openalex_id="W3")
+
+    assert content_store.saved == []
+    assert not uow.committed
+
+
+def test_import_of_a_work_that_no_longer_resolves_is_rejected():
+    use_case, documents, content_store, uow, work_items = _build_import_use_case(
+        work_lookup=lambda openalex_id, *, api_key: None,
+    )
+
+    with pytest.raises(ExternalSourceNotFoundError):
+        use_case.execute(project_id=1, user_id=OWNER_USER_ID, openalex_id="W-missing")
+
+    assert content_store.saved == []
+
+
+def test_import_translates_a_lookup_failure():
+    def failing_lookup(openalex_id, *, api_key):
+        raise SourceSearchUnavailableError("simulated")
+
+    use_case, documents, content_store, uow, work_items = _build_import_use_case(work_lookup=failing_lookup)
+
+    with pytest.raises(SourceSearchFailedError):
+        use_case.execute(project_id=1, user_id=OWNER_USER_ID, openalex_id="W1")
+
+
+def test_import_without_an_api_key_is_rejected():
+    use_case, documents, content_store, uow, work_items = _build_import_use_case(api_key=None)
+
+    with pytest.raises(SourceSearchNotConfiguredError):
+        use_case.execute(project_id=1, user_id=OWNER_USER_ID, openalex_id="W1")
+
+    assert content_store.saved == []
+
+
+def test_import_against_a_project_not_owned_by_the_caller_is_rejected_as_not_found():
+    use_case, documents, content_store, uow, work_items = _build_import_use_case()
+
+    with pytest.raises(ProjectNotFoundError):
+        use_case.execute(project_id=1, user_id=OTHER_USER_ID, openalex_id="W1")
+
+    assert content_store.saved == []
+
+
+def test_import_by_an_unverified_account_is_rejected():
+    use_case, documents, content_store, uow, work_items = _build_import_use_case(email_verified=False)
+
+    with pytest.raises(EmailNotVerifiedError):
+        use_case.execute(project_id=1, user_id=OWNER_USER_ID, openalex_id="W1")
+
+    assert content_store.saved == []
+
+
+def test_import_beyond_the_per_project_limit_is_rejected():
+    use_case, documents, content_store, uow, work_items = _build_import_use_case()
+    for i in range(MAX_RESEARCH_DOCUMENTS_PER_PROJECT):
+        documents.add(ResearchDocument.create(project_id=1, title=f"Doc {i}", format="txt", content_reference="ref"))
+
+    with pytest.raises(TooManyResearchDocumentsError):
+        use_case.execute(project_id=1, user_id=OWNER_USER_ID, openalex_id="W1")
+
+    assert content_store.saved == []
