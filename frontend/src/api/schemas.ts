@@ -80,6 +80,17 @@ export const externalSourceSearchResponseSchema = z.object({
   results: z.array(externalSourceResponseSchema),
 });
 
+export const webSearchResultResponseSchema = z.object({
+  url: z.string(),
+  title: z.string(),
+  snippet: z.string().nullable(),
+});
+export type WebSearchResultResponse = z.infer<typeof webSearchResultResponseSchema>;
+
+export const webSearchResponseSchema = z.object({
+  results: z.array(webSearchResultResponseSchema),
+});
+
 export const searchResultEvidenceResponseSchema = z.object({
   document_id: z.number(),
   document_title: z.string(),

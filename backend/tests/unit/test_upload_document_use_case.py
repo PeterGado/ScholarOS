@@ -1,6 +1,7 @@
 import pytest
 
 from app.ai.openalex import OpenAlexWork, SourceSearchUnavailableError
+from app.ai.tavily import WebSearchResult, WebSearchUnavailableError
 from app.ai.usage_guard import AiUsageGuard
 from app.ai.web_fetch import WebSource
 from app.auth.exceptions import EmailNotVerifiedError
@@ -10,8 +11,10 @@ from app.modules.document.application.use_cases import (
     MAX_RESEARCH_DOCUMENTS_PER_PROJECT,
     DeleteResearchDocumentUseCase,
     ImportExternalSourceUseCase,
+    ImportWebSearchResultUseCase,
     ListProjectDocumentsUseCase,
     SearchExternalSourcesUseCase,
+    SearchWebUseCase,
     UploadResearchDocumentUseCase,
 )
 from app.modules.document.domain.entities import ResearchDocument
@@ -25,6 +28,7 @@ from app.modules.document.domain.exceptions import (
     SourceSearchFailedError,
     SourceSearchNotConfiguredError,
     TooManyResearchDocumentsError,
+    WebPageFetchFailedError,
 )
 from app.modules.document.domain.repositories import DocumentRepository
 from app.modules.project.domain.entities import Project
@@ -657,5 +661,142 @@ def test_import_beyond_the_per_project_limit_is_rejected():
 
     with pytest.raises(TooManyResearchDocumentsError):
         use_case.execute(project_id=1, user_id=OWNER_USER_ID, openalex_id="W1")
+
+    assert content_store.saved == []
+
+
+# --- SearchWebUseCase (2026-10-17) -------------------------------------------------------------
+
+_SAMPLE_WEB_RESULT = WebSearchResult(
+    url="https://example.com/article",
+    title="A Real Article",
+    snippet="A real snippet.",
+)
+
+
+def test_web_search_without_an_api_key_is_rejected():
+    use_case = SearchWebUseCase(tavily_api_key=None)
+
+    with pytest.raises(SourceSearchNotConfiguredError):
+        use_case.execute(query="test")
+
+
+def test_web_search_returns_the_providers_results():
+    calls = []
+
+    def fake_search(query, *, api_key, limit=10):
+        calls.append((query, api_key, limit))
+        return [_SAMPLE_WEB_RESULT]
+
+    use_case = SearchWebUseCase(tavily_api_key="real-key", search_provider=fake_search)
+
+    results = use_case.execute(query="retrieval augmented generation", limit=5)
+
+    assert results == [_SAMPLE_WEB_RESULT]
+    assert calls == [("retrieval augmented generation", "real-key", 5)]
+
+
+def test_web_search_translates_a_provider_failure():
+    def failing_search(query, *, api_key, limit=10):
+        raise WebSearchUnavailableError("simulated")
+
+    use_case = SearchWebUseCase(tavily_api_key="real-key", search_provider=failing_search)
+
+    with pytest.raises(SourceSearchFailedError):
+        use_case.execute(query="test")
+
+
+# --- ImportWebSearchResultUseCase (2026-10-17) --------------------------------------------------
+
+
+def _build_import_web_use_case(
+    project_id=1,
+    agents: dict[int, Agent] | None = None,
+    *,
+    email_verified: bool = True,
+    content_fetch=lambda url, *, max_content_length=50_000: WebSource(url=url, content="Full fetched text."),
+):
+    documents = FakeDocumentRepository()
+    projects = FakeProjectRepository(existing_project_id=project_id)
+    agent_repository = FakeAgentRepository(agents)
+    content_store = FakeContentStore()
+    uow = FakeUnitOfWork()
+    work_items = FakeWorkItemEnqueuer()
+    use_case = ImportWebSearchResultUseCase(
+        documents,
+        projects,
+        agent_repository,
+        content_store,
+        uow,
+        work_items,
+        AiUsageGuard(None, None, daily_token_cap=None),
+        FakeEmailVerificationGuard(verified=email_verified),
+        content_fetch_provider=content_fetch,
+    )
+    return use_case, documents, content_store, uow, work_items
+
+
+def test_import_web_result_uses_the_fetched_content():
+    use_case, documents, content_store, uow, work_items = _build_import_web_use_case()
+
+    document = use_case.execute(
+        project_id=1, user_id=OWNER_USER_ID, url="https://example.com/article", title="A Real Article"
+    )
+
+    assert document.title == "A Real Article"
+    assert document.author is None
+    assert document.source == "https://example.com/article"
+    assert document.format == "txt"
+    assert content_store.saved == [b"Full fetched text."]
+    assert uow.committed
+    assert len(work_items.enqueued) == 1
+
+
+def test_import_web_result_with_a_failed_fetch_is_rejected():
+    use_case, documents, content_store, uow, work_items = _build_import_web_use_case(
+        content_fetch=lambda url, *, max_content_length=50_000: None,
+    )
+
+    with pytest.raises(WebPageFetchFailedError):
+        use_case.execute(project_id=1, user_id=OWNER_USER_ID, url="https://example.com/dead", title="Dead Page")
+
+    assert content_store.saved == []
+    assert not uow.committed
+
+
+def test_import_web_result_with_empty_fetched_content_is_rejected():
+    use_case, documents, content_store, uow, work_items = _build_import_web_use_case(
+        content_fetch=lambda url, *, max_content_length=50_000: WebSource(url=url, content=""),
+    )
+
+    with pytest.raises(WebPageFetchFailedError):
+        use_case.execute(project_id=1, user_id=OWNER_USER_ID, url="https://example.com/empty", title="Empty Page")
+
+
+def test_import_web_result_against_a_project_not_owned_by_the_caller_is_rejected_as_not_found():
+    use_case, documents, content_store, uow, work_items = _build_import_web_use_case()
+
+    with pytest.raises(ProjectNotFoundError):
+        use_case.execute(project_id=1, user_id=OTHER_USER_ID, url="https://example.com/article", title="Title")
+
+    assert content_store.saved == []
+
+
+def test_import_web_result_by_an_unverified_account_is_rejected():
+    use_case, documents, content_store, uow, work_items = _build_import_web_use_case(email_verified=False)
+
+    with pytest.raises(EmailNotVerifiedError):
+        use_case.execute(project_id=1, user_id=OWNER_USER_ID, url="https://example.com/article", title="Title")
+
+    assert content_store.saved == []
+
+
+def test_import_web_result_beyond_the_per_project_limit_is_rejected():
+    use_case, documents, content_store, uow, work_items = _build_import_web_use_case()
+    for i in range(MAX_RESEARCH_DOCUMENTS_PER_PROJECT):
+        documents.add(ResearchDocument.create(project_id=1, title=f"Doc {i}", format="txt", content_reference="ref"))
+
+    with pytest.raises(TooManyResearchDocumentsError):
+        use_case.execute(project_id=1, user_id=OWNER_USER_ID, url="https://example.com/article", title="Title")
 
     assert content_store.saved == []

@@ -10,6 +10,7 @@ from app.ai.openalex import (
     get_openalex_work_by_id,
     search_openalex_works,
 )
+from app.ai.tavily import WebSearchResult, WebSearchUnavailableError, search_web
 from app.ai.usage_guard import AiUsageGuard
 from app.ai.web_fetch import WebSource, fetch_web_source
 from app.auth.email_verification_guard import EmailVerificationGuard
@@ -32,6 +33,7 @@ from app.modules.document.domain.exceptions import (
     SourceSearchFailedError,
     SourceSearchNotConfiguredError,
     TooManyResearchDocumentsError,
+    WebPageFetchFailedError,
 )
 from app.modules.document.domain.ports import ContentStore
 from app.modules.document.domain.repositories import DocumentRepository
@@ -600,5 +602,117 @@ class ImportExternalSourceUseCase:
             source=work.source_name,
             publication_year=work.publication_year,
             doi=work.doi,
+            purpose=DocumentPurpose.RESEARCH,
+        )
+
+
+class SearchWebUseCase:
+    """General web search discovery (2026-10-17) - the same NotebookLM-style "Discover sources"
+    pattern as SearchExternalSourcesUseCase, applied to the open web via Tavily instead of
+    OpenAlex's curated scholarly index. Still never project-scoped: this searches a public
+    external index, not anything project- or user-scoped.
+    """
+
+    def __init__(
+        self,
+        *,
+        tavily_api_key: str | None,
+        search_provider: Callable[..., list[WebSearchResult]] = search_web,
+    ) -> None:
+        self._api_key = tavily_api_key
+        self._search = search_provider
+
+    def execute(self, *, query: str, limit: int = 10) -> list[WebSearchResult]:
+        if not self._api_key:
+            raise SourceSearchNotConfiguredError()
+        try:
+            return self._search(query, api_key=self._api_key, limit=limit)
+        except WebSearchUnavailableError as exc:
+            raise SourceSearchFailedError() from exc
+
+
+class ImportWebSearchResultUseCase:
+    """General web search discovery (2026-10-17) - the import half. Unlike
+    ImportExternalSourceUseCase, there is no authoritative registry to re-resolve a work by ID:
+    a random web page has no such identity. `url` and `title` travel back from the search result
+    the client saw exactly as shown - the same trust boundary the existing chat-paste-URL feature
+    already accepts for any URL a user provides (see app.ai.tavily.WebSearchResult's own
+    docstring). The real security boundary is fetch-time SSRF checking
+    (app.ai.web_fetch.fetch_web_source), which runs on this url exactly like it does on every
+    other url this app fetches - not a server-side re-lookup.
+
+    Shares UploadResearchDocumentUseCase's ownership/cap/email-verification checks exactly -
+    this is a third on-ramp into the same Research Document pipeline
+    (_create_and_enqueue_document).
+    """
+
+    _IMPORT_CONTENT_LENGTH = 50_000
+    """Same cap as ImportExternalSourceUseCase - an imported document goes through the same
+    chunking/embedding pipeline any uploaded document does, not stuffed whole into one prompt."""
+
+    def __init__(
+        self,
+        document_repository: DocumentRepository,
+        project_repository: ProjectRepository,
+        agent_repository: AgentRepository,
+        content_store: ContentStore,
+        unit_of_work: UnitOfWork,
+        work_item_enqueuer: WorkItemEnqueuer,
+        ai_usage_guard: AiUsageGuard,
+        email_verification_guard: EmailVerificationGuard,
+        *,
+        content_fetch_provider: Callable[..., WebSource | None] = fetch_web_source,
+    ) -> None:
+        self._documents = document_repository
+        self._projects = project_repository
+        self._agents = agent_repository
+        self._content_store = content_store
+        self._uow = unit_of_work
+        self._work_items = work_item_enqueuer
+        self._ai_usage_guard = ai_usage_guard
+        self._email_verification_guard = email_verification_guard
+        self._fetch_content = content_fetch_provider
+
+    def execute(self, *, project_id: int, user_id: int, url: str, title: str) -> ResearchDocument:
+        project = self._projects.get_by_id(project_id)
+        if project is None:
+            raise ProjectNotFoundError(project_id=project_id)
+
+        owning_agent = self._agents.get_by_id(project.agent_id)
+        if owning_agent is None or owning_agent.user_id != user_id:
+            raise ProjectNotFoundError(project_id=project_id)
+
+        # Email verification gate (2026-10-06 precedent) - right after ownership is confirmed,
+        # before any external fetch, content-store write, or AI usage is recorded.
+        self._email_verification_guard.require_verified(user_id)
+
+        existing_count = len(self._documents.list_by_project_id(project_id, purpose=DocumentPurpose.RESEARCH))
+        if existing_count >= MAX_RESEARCH_DOCUMENTS_PER_PROJECT:
+            raise TooManyResearchDocumentsError(project_id=project_id, limit=MAX_RESEARCH_DOCUMENTS_PER_PROJECT)
+
+        fetched = self._fetch_content(url, max_content_length=self._IMPORT_CONTENT_LENGTH)
+        if fetched is None or not fetched.content:
+            raise WebPageFetchFailedError()
+
+        content_bytes = fetched.content.encode("utf-8")
+
+        # Same AI usage cap reasoning as UploadResearchDocumentUseCase - a byte-length estimate,
+        # charged against the user importing the source.
+        self._ai_usage_guard.check_and_record(user_id=user_id, estimated_tokens=max(1, len(content_bytes) // 4))
+
+        content_reference = self._content_store.save(content_bytes, extension="txt")
+
+        return _create_and_enqueue_document(
+            documents=self._documents,
+            work_items=self._work_items,
+            uow=self._uow,
+            project_id=project_id,
+            title=title,
+            format="txt",
+            content_reference=content_reference,
+            author=None,
+            source=url,
+            publication_year=None,
+            doi=None,
             purpose=DocumentPurpose.RESEARCH,
         )

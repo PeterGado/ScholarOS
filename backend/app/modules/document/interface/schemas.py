@@ -3,6 +3,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from app.ai.openalex import OpenAlexWork
+from app.ai.tavily import WebSearchResult
 from app.modules.document.application.use_cases import ResearchDocumentWithError
 from app.modules.document.domain.entities import ResearchDocument
 
@@ -108,3 +109,32 @@ class ExternalSourceSearchResponse(BaseModel):
 
 class ImportExternalSourceRequest(BaseModel):
     openalex_id: str = Field(..., min_length=1)
+
+
+class WebSearchResultResponse(BaseModel):
+    """One Tavily search result (2026-10-17, general web search discovery) - a candidate the
+    user may choose to import, not yet a Research Document. Unlike ExternalSourceResponse,
+    `url` and `title` travel back to the import request as-is (see app.ai.tavily.WebSearchResult's
+    own docstring for why there is no ID to re-resolve server-side here).
+    """
+
+    url: str
+    title: str
+    snippet: str | None
+
+    @classmethod
+    def from_domain(cls, result: WebSearchResult) -> "WebSearchResultResponse":
+        return cls(url=result.url, title=result.title, snippet=result.snippet)
+
+
+class WebSearchResponse(BaseModel):
+    results: list[WebSearchResultResponse]
+
+    @classmethod
+    def from_domain(cls, results: list[WebSearchResult]) -> "WebSearchResponse":
+        return cls(results=[WebSearchResultResponse.from_domain(result) for result in results])
+
+
+class ImportWebSearchResultRequest(BaseModel):
+    url: str = Field(..., min_length=1)
+    title: str = Field(..., min_length=1)

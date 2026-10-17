@@ -114,3 +114,15 @@ class ExternalSourceHasNoContentError(DocumentDomainError):
 
     def __init__(self) -> None:
         super().__init__("This source has no open-access full text or abstract available to import.")
+
+
+class WebPageFetchFailedError(DocumentDomainError):
+    """Raised by ImportWebSearchResultUseCase (2026-10-17, general web search discovery) when
+    the selected page could not be fetched - unreachable, blocked by the SSRF check, or the
+    fetch returned no usable text. Distinct from ExternalSourceHasNoContentError's wording
+    (open-access full text/abstract), which only makes sense for an OpenAlex work; a general
+    web page has no such concept.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("This page could not be fetched. It may be unreachable, blocked, or no longer available.")

@@ -4,9 +4,11 @@ import { MagnifyingGlassIcon, TrayIcon } from "@phosphor-icons/react";
 import {
   deleteResearchDocument,
   importExternalSource,
+  importWebSearchResult,
   listProjectDocuments,
   retryResearchDocument,
   searchExternalSources,
+  searchWeb,
   uploadResearchDocument,
   uploadResearchDocuments,
 } from "@/api/documents";
@@ -41,10 +43,13 @@ export function DocumentsPage() {
   const [selectedFileCount, setSelectedFileCount] = useState(0);
   const [query, setQuery] = useState("");
   const [searchSubmitted, setSearchSubmitted] = useState("");
-  const [acquisitionTab, setAcquisitionTab] = useState<"upload" | "search-sources">("upload");
+  const [acquisitionTab, setAcquisitionTab] = useState<"upload" | "search-sources" | "search-web">("upload");
   const [sourceQuery, setSourceQuery] = useState("");
   const [sourceQuerySubmitted, setSourceQuerySubmitted] = useState("");
   const [importingId, setImportingId] = useState<string | null>(null);
+  const [webQuery, setWebQuery] = useState("");
+  const [webQuerySubmitted, setWebQuerySubmitted] = useState("");
+  const [importingWebUrl, setImportingWebUrl] = useState<string | null>(null);
   const previousStatusesRef = useRef<Record<number, string>>({});
 
   const documentsQuery = useInfiniteQuery({
@@ -165,6 +170,26 @@ export function DocumentsPage() {
     onSettled: () => setImportingId(null),
   });
 
+  // General web search discovery (2026-10-17): same NotebookLM-style pattern as the OpenAlex
+  // search-sources tab above, applied to the open web via Tavily instead of a curated scholarly
+  // index.
+  const webSearchQuery = useQuery({
+    queryKey: ["web-search", webQuerySubmitted],
+    queryFn: () => searchWeb(webQuerySubmitted),
+    enabled: webQuerySubmitted.length > 0,
+  });
+
+  const webImportMutation = useMutation({
+    mutationFn: ({ url, title }: { url: string; title: string }) =>
+      importWebSearchResult(workspace.project.project_id, url, title),
+    onMutate: ({ url }: { url: string; title: string }) => setImportingWebUrl(url),
+    onSuccess: (document) => {
+      queryClient.invalidateQueries({ queryKey: ["documents", workspace.project.project_id] });
+      showToast(`"${document.title}" imported. Processing is queued.`);
+    },
+    onSettled: () => setImportingWebUrl(null),
+  });
+
   function handleUpload(event: FormEvent) {
     event.preventDefault();
     uploadMutation.mutate();
@@ -178,6 +203,11 @@ export function DocumentsPage() {
   function handleSourceSearch(event: FormEvent) {
     event.preventDefault();
     setSourceQuerySubmitted(sourceQuery);
+  }
+
+  function handleWebSearch(event: FormEvent) {
+    event.preventDefault();
+    setWebQuerySubmitted(webQuery);
   }
 
   const documentCount = allDocuments.length;
@@ -234,6 +264,21 @@ export function DocumentsPage() {
             }`}
           >
             Search sources
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="acquisition-tab-search-web"
+            aria-selected={acquisitionTab === "search-web"}
+            aria-controls="acquisition-panel-search-web"
+            onClick={() => setAcquisitionTab("search-web")}
+            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              acquisitionTab === "search-web"
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Search web
           </button>
         </div>
 
@@ -504,6 +549,89 @@ export function DocumentsPage() {
                     onClick={() => importMutation.mutate(result.openalex_id)}
                   >
                     {importMutation.isPending && importingId === result.openalex_id ? "Importing..." : "Import"}
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+        )}
+
+        {acquisitionTab === "search-web" && (
+        <div
+          role="tabpanel"
+          id="acquisition-panel-search-web"
+          aria-labelledby="acquisition-tab-search-web"
+          className="space-y-4"
+        >
+          <p className="text-sm text-muted-foreground">
+            Search the open web and import a specific page into this project. Only pages you
+            explicitly choose are ever added - nothing is fetched automatically.
+          </p>
+          <form onSubmit={handleWebSearch} className="flex gap-3">
+            <Input
+              value={webQuery}
+              onChange={(e) => setWebQuery(e.target.value)}
+              placeholder="Search the web..."
+              aria-label="Search the web"
+            />
+            <Button type="submit" disabled={atLimit}>Search</Button>
+          </form>
+          {atLimit && (
+            <p className="text-sm text-muted-foreground">
+              You've reached the {RESEARCH_DOCUMENT_LIMIT}-document limit for this project - delete
+              a pending or failed document above to make room before importing another.
+            </p>
+          )}
+          {webSearchQuery.isFetching && (
+            <div className="space-y-2" aria-label="Searching the web">
+              <Skeleton className="h-20" />
+              <Skeleton className="h-20" />
+              <Skeleton className="h-20" />
+            </div>
+          )}
+          {webSearchQuery.isError && (
+            <p role="alert" className="text-sm text-destructive">
+              {webSearchQuery.error instanceof ApiError
+                ? webSearchQuery.error.errorType === "SourceSearchNotConfiguredError"
+                  ? "Web search isn't set up yet."
+                  : webSearchQuery.error.message
+                : "Search failed. Try again."}
+            </p>
+          )}
+          {webSearchQuery.data && webSearchQuery.data.length === 0 && (
+            <EmptyState
+              icon={MagnifyingGlassIcon}
+              title="No results"
+              description="Try a different search term."
+            />
+          )}
+          {webImportMutation.isError && (
+            <p role="alert" className="text-sm text-destructive">
+              {webImportMutation.error instanceof ApiError
+                ? webImportMutation.error.errorType === "WebPageFetchFailedError"
+                  ? "This page could not be fetched. It may be unreachable, blocked, or no longer available."
+                  : webImportMutation.error.message
+                : "Import failed. Try again."}
+            </p>
+          )}
+          <ul className="divide-y divide-border">
+            {webSearchQuery.data?.map((result) => (
+              <li key={result.url} className="space-y-2 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">{result.title}</p>
+                    <p className="text-xs text-muted-foreground">{result.url}</p>
+                    {result.snippet && (
+                      <p className="text-xs text-muted-foreground line-clamp-2">{result.snippet}</p>
+                    )}
+                  </div>
+                  <Button
+                    size="sm"
+                    disabled={atLimit || webImportMutation.isPending}
+                    onClick={() => webImportMutation.mutate({ url: result.url, title: result.title })}
+                  >
+                    {webImportMutation.isPending && importingWebUrl === result.url ? "Importing..." : "Import"}
                   </Button>
                 </div>
               </li>

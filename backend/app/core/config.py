@@ -79,6 +79,11 @@ class Settings(BaseSettings):
     # means the feature is off (SourceSearchNotConfiguredError), the same "missing config
     # disables the feature" shape as turnstile_secret_key/virustotal_api_key above.
     openalex_api_key: str | None = None
+    # General web search discovery (2026-10-17): Tavily's search API key (sign up at
+    # tavily.com, no card required for the free tier). Same "missing config disables the
+    # feature" shape as openalex_api_key above (SourceSearchNotConfiguredError) - unlike
+    # OpenAlex, Tavily has no viable unauthenticated tier at all.
+    tavily_api_key: str | None = None
     # Google Sign-In (2026-09-20): the OAuth Client ID from Google Cloud Console, used to verify
     # the `aud` claim of every ID token. Not a secret (it's also embedded in the frontend
     # bundle as VITE_GOOGLE_CLIENT_ID) - unset means the feature is off (GoogleSignInNotConfiguredError).

@@ -48,6 +48,7 @@ from app.modules.document.domain.exceptions import (
     SourceSearchFailedError,
     SourceSearchNotConfiguredError,
     TooManyResearchDocumentsError,
+    WebPageFetchFailedError,
 )
 from app.modules.project.domain.exceptions import (
     InvalidProjectTitleError,
@@ -197,6 +198,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(SourceSearchFailedError, _handle_service_unavailable)
     app.add_exception_handler(ExternalSourceNotFoundError, _handle_not_found)
     app.add_exception_handler(ExternalSourceHasNoContentError, _handle_invalid_input)
+    app.add_exception_handler(WebPageFetchFailedError, _handle_invalid_input)
     app.add_exception_handler(InvalidStyleSampleReferenceError, _handle_not_found)
     app.add_exception_handler(NoUsableWritingStyleSamplesError, _handle_invalid_input)
     app.add_exception_handler(TooManyWritingStyleSamplesError, _handle_conflict)

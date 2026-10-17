@@ -8,9 +8,11 @@ from app.core.dependencies import (
     get_current_user_id,
     get_delete_research_document_use_case,
     get_import_external_source_use_case,
+    get_import_web_search_result_use_case,
     get_list_project_documents_use_case,
     get_retry_document_processing_use_case,
     get_search_external_sources_use_case,
+    get_search_web_use_case,
     get_upload_research_document_use_case,
 )
 from app.core.document_formats import looks_like_a_supported_document
@@ -22,16 +24,20 @@ from app.core.virus_scan import is_known_malicious
 from app.modules.document.application.use_cases import (
     DeleteResearchDocumentUseCase,
     ImportExternalSourceUseCase,
+    ImportWebSearchResultUseCase,
     ListProjectDocumentsUseCase,
     RetryDocumentProcessingUseCase,
     SearchExternalSourcesUseCase,
+    SearchWebUseCase,
     UploadResearchDocumentUseCase,
 )
 from app.modules.document.interface.schemas import (
     ExternalSourceSearchResponse,
     ImportExternalSourceRequest,
+    ImportWebSearchResultRequest,
     ResearchDocumentListResponse,
     ResearchDocumentResponse,
+    WebSearchResponse,
 )
 
 router = APIRouter(prefix="/projects", tags=["documents"])
@@ -276,4 +282,84 @@ def import_external_source(
     the handlers registered in app.api.exception_handlers.
     """
     document = use_case.execute(project_id=project_id, user_id=user_id, openalex_id=payload.openalex_id)
+    return ResearchDocumentResponse.from_domain(document)
+
+
+@router.get(
+    "/web-search",
+    response_model=WebSearchResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"model": ErrorResponse, "description": "Missing, malformed, unknown, or ended session."},
+        422: {"model": ErrorResponse, "description": "Malformed request (empty query)."},
+        429: {"model": ErrorResponse, "description": "Too many searches from this client."},
+        503: {
+            "model": ErrorResponse,
+            "description": "General web search is not configured, or Tavily is temporarily unavailable.",
+        },
+    },
+)
+# A real external API call per search (Tavily), not free-form crawling - same rate as
+# search_external_sources above.
+@limiter.limit("10/minute")
+def search_web_sources(
+    request: Request,
+    query: str = Query(..., min_length=1),
+    limit: int = Query(10, ge=1, le=20),
+    user_id: int = Depends(get_current_user_id),
+    use_case: SearchWebUseCase = Depends(get_search_web_use_case),
+) -> WebSearchResponse:
+    """General web search discovery (2026-10-17): searches the open web via Tavily for candidate
+    sources - NotebookLM-style, a curated list of specific, named results the user explicitly
+    chooses from, never an unrestricted crawl. Not project-scoped: this searches a public
+    external index, not anything the authenticated user owns.
+
+    No business logic lives here: the real search call and its failure modes are handled by
+    SearchWebUseCase; exceptions are translated to HTTP responses by the handlers registered in
+    app.api.exception_handlers.
+    """
+    results = use_case.execute(query=query, limit=limit)
+    return WebSearchResponse.from_domain(results)
+
+
+@router.post(
+    "/{project_id}/documents/import-web",
+    response_model=ResearchDocumentResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        401: {"model": ErrorResponse, "description": "Missing, malformed, unknown, or ended session."},
+        404: {
+            "model": ErrorResponse,
+            "description": "The referenced Project does not exist, or does not belong to the authenticated user.",
+        },
+        409: {"model": ErrorResponse, "description": "The project already has the maximum number of research documents."},
+        422: {
+            "model": ErrorResponse,
+            "description": "The selected page could not be fetched (unreachable, blocked, or no usable text).",
+        },
+        429: {"model": ErrorResponse, "description": "Too many imports from this client."},
+    },
+)
+# Same cost profile as import_external_source above - a real external fetch plus the full
+# Knowledge Processing Pipeline.
+@limiter.limit("20/minute")
+def import_web_search_result(
+    request: Request,
+    project_id: int,
+    payload: ImportWebSearchResultRequest,
+    user_id: int = Depends(get_current_user_id),
+    use_case: ImportWebSearchResultUseCase = Depends(get_import_web_search_result_use_case),
+) -> ResearchDocumentResponse:
+    """Imports a previously-searched Tavily result as a real Research Document (2026-10-17) -
+    the second half of general web search discovery, and a third on-ramp into the same
+    Knowledge Processing Pipeline POST /{project_id}/documents already starts.
+
+    Unlike import_external_source, there is no server-side re-resolution step: a general web
+    page has no authoritative registry to re-check against, so `url`/`title` are used as the
+    client supplied them (the same trust boundary the existing chat-paste-URL feature already
+    accepts for any URL a user provides). The real security boundary is the SSRF check inside
+    ImportWebSearchResultUseCase's fetch step, which runs on this url exactly like it does on
+    every other url this app fetches.
+    """
+    document = use_case.execute(project_id=project_id, user_id=user_id, url=payload.url, title=payload.title)
     return ResearchDocumentResponse.from_domain(document)
