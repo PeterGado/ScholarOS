@@ -148,8 +148,10 @@ def _send_and_process(session, storage, workspace, conversation_id, content, pro
         embedding_provider=FakeEmbeddingProvider(),
         embedding_model_version="test-embedding-model",
         storage=storage,
-        # Never make a real Wikipedia network call from a test (2026-09-30).
+        # Never make a real Wikipedia/web network call from a test (2026-09-30, extended
+        # 2026-10-17).
         background_knowledge_provider=lambda topic: None,
+        web_fetch_provider=lambda url: None,
     ) is True
 
 

@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from app.ai.providers.base import TextGenerationProvider
 from app.ai.token_estimate import estimate_tokens
 from app.ai.usage_guard import AiUsageGuard
+from app.ai.web_fetch import WebSource, extract_urls, fetch_web_source
 from app.ai.wikipedia import fetch_wikipedia_background
 from app.auth.email_verification_guard import EmailVerificationGuard
 from app.core.pagination import DEFAULT_LIST_LIMIT
@@ -22,6 +23,7 @@ from app.modules.writing.domain.context_assembly import (
     ContextEvidenceSource,
     ContextMemory,
     ContextStyleSignal,
+    ContextWebSource,
     assemble_context,
     build_critique_prompt,
     build_revision_prompt,
@@ -543,6 +545,7 @@ class GenerateConversationReplyUseCase:
         unit_of_work: UnitOfWork,
         *,
         background_knowledge_provider: Callable[[str], str | None] = fetch_wikipedia_background,
+        web_fetch_provider: Callable[[str], WebSource | None] = fetch_web_source,
         enable_multi_pass: bool = True,
     ) -> None:
         self._messages = message_repository
@@ -556,6 +559,10 @@ class GenerateConversationReplyUseCase:
         # Engineering Implications: retrieval-adjacent components must be testable without
         # network access).
         self._background_knowledge_provider = background_knowledge_provider
+        # Same injection reasoning as background_knowledge_provider above (2026-10-17,
+        # web-source grounding) - tests must always override this, since the default makes a
+        # real network call to whatever URL a test message happens to contain.
+        self._web_fetch_provider = web_fetch_provider
         # Multi-pass draft -> critique -> revise (2026-10-06, settings.
         # ai_enable_multi_pass_generation): see execute()'s own comment for the sequence.
         self._enable_multi_pass = enable_multi_pass
@@ -567,13 +574,28 @@ class GenerateConversationReplyUseCase:
         if conversation is None or conversation.deleted_at is not None:
             raise ConversationNotFoundError(conversation_id=conversation_id)
 
-        # Wikipedia background (2026-09-30) is fetched here, worker-side, not at send-time in
-        # SendChatMessageUseCase - a network call to an external service must never sit inline
-        # in the synchronous HTTP request path (the same lesson the executor's own asyncio ->
-        # threading rewrite exists for). assemble_context itself stays pure/I/O-free; this is
-        # the one place that does the fetch and hands the result in as plain data.
+        # Wikipedia background (2026-09-30) and web-source fetching (2026-10-17) both happen
+        # here, worker-side, not at send-time in SendChatMessageUseCase - a network call to an
+        # external service must never sit inline in the synchronous HTTP request path (the same
+        # lesson the executor's own asyncio -> threading rewrite exists for). assemble_context
+        # itself stays pure/I/O-free; this is the one place that does the fetch and hands the
+        # result in as plain data.
+        #
+        # context.instructions is the just-sent message's own raw content (see
+        # SendChatMessageUseCase.execute, which sets ContextAssemblyInput.instructions=content
+        # directly from the message the caller just sent) - not something that needs finding in
+        # conversation_messages, which only ever holds *prior* turns.
+        urls = extract_urls(context.instructions)
+        fetched_web_sources = tuple(
+            ContextWebSource(url=source.url, content=source.content)
+            for source in (self._web_fetch_provider(url) for url in urls)
+            if source is not None
+        )
+
         context_with_background = replace(
-            context, background_knowledge=self._background_knowledge_provider(context.topic)
+            context,
+            background_knowledge=self._background_knowledge_provider(context.topic),
+            web_sources=fetched_web_sources,
         )
         assembled = assemble_context(context_with_background)
         draft = self._require_nonempty(self._text_provider.generate(assembled.prompt))

@@ -63,9 +63,10 @@ def _process_next_work_item(db_engine, tmp_path, *, text_provider=None, enable_m
             embedding_provider=FakeEmbeddingProvider(),
             embedding_model_version="test-embedding-model",
             storage=storage,
-            # Never make a real Wikipedia network call from a test (2026-09-30) - mirrors every
-            # other fake provider above.
+            # Never make a real Wikipedia/web network call from a test (2026-09-30, extended
+            # 2026-10-17) - mirrors every other fake provider above.
             background_knowledge_provider=lambda topic: None,
+            web_fetch_provider=lambda url: None,
             enable_multi_pass_generation=enable_multi_pass_generation,
         )
     finally:

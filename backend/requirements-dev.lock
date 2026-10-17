@@ -18,8 +18,13 @@ anyio==4.14.2
     #   httpx
     #   httpx2
     #   scholaros-backend (pyproject.toml)
+    #   scrapling
     #   starlette
     #   watchfiles
+apify-fingerprint-datapoints==0.15.0
+    # via
+    #   browserforge
+    #   scrapling
 ast-serialize==0.12.1
     # via mypy
 attrs==26.1.0
@@ -43,21 +48,28 @@ botocore==1.43.111
     #   boto3
     #   moto
     #   s3transfer
+browserforge==1.2.4
+    # via scrapling
 certifi==2026.7.22
     # via
+    #   curl-cffi
     #   httpcore
     #   httpx
     #   requests
     #   sentry-sdk
 cffi==2.1.1
-    # via cryptography
+    # via
+    #   cryptography
+    #   curl-cffi
 cfn-lint==1.57.2
     # via moto
 charset-normalizer==3.5.2
     # via requests
 click==8.5.0
     # via
+    #   browserforge
     #   flask
+    #   scrapling
     #   uvicorn
 colorama==0.4.6
     # via pytest
@@ -66,6 +78,10 @@ cryptography==50.0.2
     #   google-auth
     #   joserfc
     #   moto
+cssselect==1.6.0
+    # via scrapling
+curl-cffi==0.16.3
+    # via scrapling
 deprecated==3.0.0
     # via limits
 distro==1.9.0
@@ -94,6 +110,10 @@ google-genai==2.29.0
     # via scholaros-backend (pyproject.toml)
 graphql-core==3.3.0
     # via moto
+greenlet==3.5.6
+    # via
+    #   patchright
+    #   playwright
 h11==0.16.0
     # via
     #   httpcore
@@ -153,7 +173,9 @@ librt==0.16.0
 limits==5.8.0
     # via slowapi
 lxml==6.1.3
-    # via python-docx
+    # via
+    #   python-docx
+    #   scrapling
 mako==1.4.3
     # via alembic
 markupsafe==3.0.4
@@ -166,6 +188,8 @@ moto[s3,server]==5.2.3
     # via scholaros-backend (pyproject.toml)
 mpmath==1.3.0
     # via sympy
+msgspec==0.22.0
+    # via scrapling
 mypy==2.4.0
     # via scholaros-backend (pyproject.toml)
 mypy-extensions==1.1.0
@@ -178,16 +202,24 @@ openapi-spec-validator==0.9.0
     # via moto
 opentelemetry-api==1.45.1
     # via fastapi
+orjson==3.13.0
+    # via scrapling
 packaging==26.3
     # via
     #   limits
     #   pytest
+patchright==1.64.1
+    # via scrapling
 pathable==0.6.0
     # via jsonschema-path
 pathspec==1.1.1
     # via mypy
+playwright==1.64.0
+    # via scrapling
 pluggy==1.6.0
     # via pytest
+protego==0.7.0
+    # via scrapling
 psycopg[binary]==3.3.6
     # via scholaros-backend (pyproject.toml)
 psycopg-binary==3.3.6
@@ -215,6 +247,10 @@ pydantic-settings==2.15.0
     #   openapi-schema-validator
     #   openapi-spec-validator
     #   scholaros-backend (pyproject.toml)
+pyee==14.0.0
+    # via
+    #   patchright
+    #   playwright
 pygments==2.21.0
     # via pytest
 pyparsing==3.3.3
@@ -269,6 +305,8 @@ ruff==0.17.0
     # via scholaros-backend (pyproject.toml)
 s3transfer==0.19.2
     # via boto3
+scrapling[fetchers]==0.4.15
+    # via scholaros-backend (pyproject.toml)
 sentry-sdk[fastapi]==2.71.0
     # via scholaros-backend (pyproject.toml)
 six==1.17.0
@@ -289,6 +327,8 @@ sympy==1.14.0
     # via cfn-lint
 tenacity==9.1.4
     # via google-genai
+tld==0.13.2
+    # via scrapling
 truststore==0.10.4
     # via
     #   httpcore2
@@ -304,7 +344,9 @@ typing-extensions==4.16.0
     #   opentelemetry-api
     #   pydantic
     #   pydantic-core
+    #   pyee
     #   python-docx
+    #   scrapling
     #   sqlalchemy
     #   typing-inspection
 typing-inspection==0.4.4
@@ -323,6 +365,8 @@ urllib3==2.8.0
     #   sentry-sdk
 uvicorn[standard]==0.54.0
     # via scholaros-backend (pyproject.toml)
+w3lib==2.5.0
+    # via scrapling
 watchfiles==1.3.0
     # via uvicorn
 websockets==16.1.1

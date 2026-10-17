@@ -144,7 +144,10 @@ def _context_to_dict(context: ContextAssemblyInput) -> dict:
     `ContextAssemblyInput` field here is a conscious choice, not automatic. `background_knowledge`
     is deliberately absent: it's always `None` at send time (resolved later, worker-side, by
     `GenerateConversationReplyUseCase` - see that field's own docstring for why), so persisting
-    it here would just round-trip a `None`. `segment_name`/`segment_instructions` (2026-10-02),
+    it here would just round-trip a `None`. `web_sources` (2026-10-17) is absent for the exact
+    same reason - always `()` at send time, resolved worker-side by extracting URLs from
+    `context.instructions` (itself already serialized below) and fetching them there; no new
+    field needed here at all. `segment_name`/`segment_instructions` (2026-10-02),
     by contrast, ARE resolved synchronously at send time in `SendChatMessageUseCase` - a real
     bug found via a live e2e test confirmed that omitting them here silently dropped a selected
     segment's instructions before they ever reached the worker's assembled prompt.
