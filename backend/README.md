@@ -118,7 +118,7 @@ by default, unlike `TestClient`/curl-based checks, which don't enforce CORS. Def
 cover the Vite dev server's default port (`http://localhost:5173` / `http://127.0.0.1:5173`); to
 allow a different origin, set:
 
-```env
+```sh
 CORS_ALLOWED_ORIGINS=["http://localhost:5173", "https://your-deployed-frontend.example"]
 ```
 
@@ -126,7 +126,7 @@ CORS_ALLOWED_ORIGINS=["http://localhost:5173", "https://your-deployed-frontend.e
 
 ## Layout
 
-```
+```sh
 app/
 ├── main.py            # FastAPI app entrypoint - also starts the Work Item executor when AI_API_KEY is configured
 ├── core/               # config, shared dependencies, base exceptions

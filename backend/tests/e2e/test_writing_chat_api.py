@@ -43,13 +43,15 @@ class FailingTextGenerationProvider:
 
 @pytest.fixture(autouse=True)
 def _override_embedding_provider():
-    app.dependency_overrides[get_embedding_provider] = lambda: FakeEmbeddingProvider()
+    app.dependency_overrides[get_embedding_provider] = lambda: FakeEmbeddingProvider(
+    )
     yield
     app.dependency_overrides.pop(get_embedding_provider, None)
 
 
 def _create_workspace(client, headers, *, topic="Coastal erosion") -> dict:
-    response = client.post("/agents", json={"project_title": "Thesis", "project_topic": topic}, headers=headers)
+    response = client.post(
+        "/agents", json={"project_title": "Thesis", "project_topic": topic}, headers=headers)
     return response.json()
 
 
@@ -78,9 +80,11 @@ def _process_next_work_item(db_engine, tmp_path, *, text_provider=None, enable_m
 def test_list_conversations_respects_limit_and_reports_has_more(client, auth_headers):
     _create_workspace(client, auth_headers)
     for i in range(5):
-        client.post("/writing/conversations", json={"title": f"Conversation {i}"}, headers=auth_headers)
+        client.post("/writing/conversations",
+                    json={"title": f"Conversation {i}"}, headers=auth_headers)
 
-    response = client.get("/writing/conversations", params={"limit": 3}, headers=auth_headers)
+    response = client.get("/writing/conversations",
+                          params={"limit": 3}, headers=auth_headers)
 
     assert response.status_code == 200
     body = response.json()
@@ -91,9 +95,11 @@ def test_list_conversations_respects_limit_and_reports_has_more(client, auth_hea
 def test_list_conversations_offset_skips_already_seen_conversations(client, auth_headers):
     _create_workspace(client, auth_headers)
     for i in range(5):
-        client.post("/writing/conversations", json={"title": f"Conversation {i}"}, headers=auth_headers)
+        client.post("/writing/conversations",
+                    json={"title": f"Conversation {i}"}, headers=auth_headers)
 
-    first_page = client.get("/writing/conversations", params={"limit": 3}, headers=auth_headers).json()
+    first_page = client.get("/writing/conversations",
+                            params={"limit": 3}, headers=auth_headers).json()
     second_page = client.get(
         "/writing/conversations", params={"limit": 3, "offset": 3}, headers=auth_headers
     ).json()
@@ -107,7 +113,8 @@ def test_list_conversations_offset_skips_already_seen_conversations(client, auth
 
 def test_list_conversation_messages_respects_limit_and_reports_has_more(client, auth_headers):
     _create_workspace(client, auth_headers)
-    conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
+    conversation = client.post(
+        "/writing/conversations", json={}, headers=auth_headers).json()
     for i in range(5):
         client.post(
             f"/writing/conversations/{conversation['conversation_id']}/messages",
@@ -128,12 +135,14 @@ def test_list_conversation_messages_respects_limit_and_reports_has_more(client, 
     # offset=0 is the tail of the conversation (most recent messages), not the start - a chat
     # UI's initial load should show recent messages, not message #1 of a long conversation.
     # Each page is still returned oldest-first internally for display.
-    assert [m["content"] for m in body["messages"]] == ["message 2", "message 3", "message 4"]
+    assert [m["content"] for m in body["messages"]] == [
+        "message 2", "message 3", "message 4"]
 
 
 def test_list_conversation_messages_offset_returns_the_older_page_in_order(client, auth_headers):
     _create_workspace(client, auth_headers)
-    conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
+    conversation = client.post(
+        "/writing/conversations", json={}, headers=auth_headers).json()
     for i in range(5):
         client.post(
             f"/writing/conversations/{conversation['conversation_id']}/messages",
@@ -149,14 +158,16 @@ def test_list_conversation_messages_offset_returns_the_older_page_in_order(clien
         headers=auth_headers,
     ).json()
 
-    assert [m["content"] for m in second_page["messages"]] == ["message 0", "message 1"]
+    assert [m["content"]
+            for m in second_page["messages"]] == ["message 0", "message 1"]
     assert second_page["has_more"] is False
 
 
 def test_start_conversation_returns_the_created_conversation(client, auth_headers):
     _create_workspace(client, auth_headers)
 
-    response = client.post("/writing/conversations", json={"title": "Planning chat"}, headers=auth_headers)
+    response = client.post("/writing/conversations",
+                           json={"title": "Planning chat"}, headers=auth_headers)
 
     assert response.status_code == 201
     body = response.json()
@@ -166,17 +177,20 @@ def test_start_conversation_returns_the_created_conversation(client, auth_header
 
 def test_send_message_and_receive_a_reply(client, auth_headers, db_engine, tmp_path):
     _create_workspace(client, auth_headers)
-    conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
+    conversation = client.post(
+        "/writing/conversations", json={}, headers=auth_headers).json()
 
     response = client.post(
         f"/writing/conversations/{conversation['conversation_id']}/messages",
-        json={"content": "Remember that the methodology for this project is a LIDAR survey."},
+        json={
+            "content": "Remember that the methodology for this project is a LIDAR survey."},
         headers=auth_headers,
     )
     assert response.status_code == 202
     assert response.json()["state"] == "queued"
 
-    assert _process_next_work_item(db_engine, tmp_path, text_provider=FakeTextGenerationProvider("Understood.")) is True
+    assert _process_next_work_item(
+        db_engine, tmp_path, text_provider=FakeTextGenerationProvider("Understood.")) is True
 
     messages = client.get(
         f"/writing/conversations/{conversation['conversation_id']}/messages", headers=auth_headers
@@ -193,20 +207,24 @@ def test_sending_a_message_with_a_segment_applies_its_instructions_to_the_real_p
     _create_workspace(client, auth_headers)
     segment = client.post(
         "/writing/segments",
-        json={"name": "Background of the Study", "instructions": "Always cite at least two sources."},
+        json={"name": "Background of the Study",
+              "instructions": "Always cite at least two sources."},
         headers=auth_headers,
     ).json()
-    conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
+    conversation = client.post(
+        "/writing/conversations", json={}, headers=auth_headers).json()
 
     response = client.post(
         f"/writing/conversations/{conversation['conversation_id']}/messages",
-        json={"content": "Write the opening paragraph.", "segment_id": segment["segment_id"]},
+        json={"content": "Write the opening paragraph.",
+              "segment_id": segment["segment_id"]},
         headers=auth_headers,
     )
     assert response.status_code == 202
 
     provider = FakeTextGenerationProvider("Draft text.")
-    assert _process_next_work_item(db_engine, tmp_path, text_provider=provider) is True
+    assert _process_next_work_item(
+        db_engine, tmp_path, text_provider=provider) is True
 
     real_prompt = provider.prompts[0]
     assert "## SEGMENT INSTRUCTIONS (Background of the Study)" in real_prompt
@@ -215,7 +233,8 @@ def test_sending_a_message_with_a_segment_applies_its_instructions_to_the_real_p
 
 def test_sending_a_message_with_an_unknown_segment_id_returns_404(client, auth_headers):
     _create_workspace(client, auth_headers)
-    conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
+    conversation = client.post(
+        "/writing/conversations", json={}, headers=auth_headers).json()
 
     response = client.post(
         f"/writing/conversations/{conversation['conversation_id']}/messages",
@@ -235,18 +254,24 @@ def test_sending_a_message_with_another_users_segment_id_returns_404(client, db_
 
     session = build_sessionmaker(db_engine)()
     try:
-        session.add(User(username="intruder2", password_hash=hash_password("intruder-pass")))
+        session.add(User(username="intruder2",
+                    password_hash=hash_password("intruder-pass")))
         session.commit()
     finally:
         session.close()
-    intruder_login = client.post("/auth/login", json={"username": "intruder2", "password": "intruder-pass"})
-    intruder_headers = {"Authorization": f"Bearer {intruder_login.json()['access_token']}"}
-    client.post("/agents", json={"project_title": "Intruder Thesis", "project_topic": "Other"}, headers=intruder_headers)
-    intruder_conversation = client.post("/writing/conversations", json={}, headers=intruder_headers).json()
+    intruder_login = client.post(
+        "/auth/login", json={"username": "intruder2", "password": "intruder-pass"})
+    intruder_headers = {
+        "Authorization": f"Bearer {intruder_login.json()['access_token']}"}
+    client.post("/agents", json={"project_title": "Intruder Thesis",
+                "project_topic": "Other"}, headers=intruder_headers)
+    intruder_conversation = client.post(
+        "/writing/conversations", json={}, headers=intruder_headers).json()
 
     response = client.post(
         f"/writing/conversations/{intruder_conversation['conversation_id']}/messages",
-        json={"content": "Write something.", "segment_id": segment["segment_id"]},
+        json={"content": "Write something.",
+              "segment_id": segment["segment_id"]},
         headers=intruder_headers,
     )
 
@@ -256,7 +281,8 @@ def test_sending_a_message_with_another_users_segment_id_returns_404(client, db_
 
 def test_sending_a_message_with_no_segment_renders_the_placeholder(client, auth_headers, db_engine, tmp_path):
     _create_workspace(client, auth_headers)
-    conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
+    conversation = client.post(
+        "/writing/conversations", json={}, headers=auth_headers).json()
     client.post(
         f"/writing/conversations/{conversation['conversation_id']}/messages",
         json={"content": "Write something."},
@@ -264,14 +290,16 @@ def test_sending_a_message_with_no_segment_renders_the_placeholder(client, auth_
     )
 
     provider = FakeTextGenerationProvider("Draft text.")
-    assert _process_next_work_item(db_engine, tmp_path, text_provider=provider) is True
+    assert _process_next_work_item(
+        db_engine, tmp_path, text_provider=provider) is True
 
     assert "No project segment was selected for this message." in provider.prompts[0]
 
 
 def test_a_message_over_the_length_limit_is_rejected(client, auth_headers):
     _create_workspace(client, auth_headers)
-    conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
+    conversation = client.post(
+        "/writing/conversations", json={}, headers=auth_headers).json()
 
     response = client.post(
         f"/writing/conversations/{conversation['conversation_id']}/messages",
@@ -284,7 +312,8 @@ def test_a_message_over_the_length_limit_is_rejected(client, auth_headers):
 
 def test_a_message_at_exactly_the_length_limit_is_accepted(client, auth_headers):
     _create_workspace(client, auth_headers)
-    conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
+    conversation = client.post(
+        "/writing/conversations", json={}, headers=auth_headers).json()
 
     response = client.post(
         f"/writing/conversations/{conversation['conversation_id']}/messages",
@@ -309,7 +338,8 @@ def test_a_second_message_carries_prior_conversation_into_context(client, auth_h
             return "Reply."
 
     _create_workspace(client, auth_headers)
-    conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
+    conversation = client.post(
+        "/writing/conversations", json={}, headers=auth_headers).json()
 
     client.post(
         f"/writing/conversations/{conversation['conversation_id']}/messages",
@@ -319,14 +349,16 @@ def test_a_second_message_carries_prior_conversation_into_context(client, auth_h
     spy = SpyingProvider()
     # Multi-pass generation isn't what this test exercises (conversation-history carryover is)
     # and would otherwise triple spy.prompts and shift every index below - opt out explicitly.
-    _process_next_work_item(db_engine, tmp_path, text_provider=spy, enable_multi_pass_generation=False)
+    _process_next_work_item(
+        db_engine, tmp_path, text_provider=spy, enable_multi_pass_generation=False)
 
     client.post(
         f"/writing/conversations/{conversation['conversation_id']}/messages",
         json={"content": "What methodology did I just mention?"},
         headers=auth_headers,
     )
-    _process_next_work_item(db_engine, tmp_path, text_provider=spy, enable_multi_pass_generation=False)
+    _process_next_work_item(
+        db_engine, tmp_path, text_provider=spy, enable_multi_pass_generation=False)
 
     assert len(spy.prompts) == 2
     # The second prompt's RELEVANT CONVERSATION CONTEXT section carries the first exchange.
@@ -336,7 +368,8 @@ def test_a_second_message_carries_prior_conversation_into_context(client, auth_h
 
 def test_conversations_and_messages_do_not_leak_across_agents(client, auth_headers, db_engine, tmp_path):
     _create_workspace(client, auth_headers)
-    conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
+    conversation = client.post(
+        "/writing/conversations", json={}, headers=auth_headers).json()
     client.post(
         f"/writing/conversations/{conversation['conversation_id']}/messages",
         json={"content": "Secret project detail."},
@@ -345,13 +378,17 @@ def test_conversations_and_messages_do_not_leak_across_agents(client, auth_heade
 
     session = build_sessionmaker(db_engine)()
     try:
-        session.add(User(username="intruder-chat", password_hash=hash_password("intruder-pass")))
+        session.add(User(username="intruder-chat",
+                    password_hash=hash_password("intruder-pass")))
         session.commit()
     finally:
         session.close()
-    intruder_login = client.post("/auth/login", json={"username": "intruder-chat", "password": "intruder-pass"})
-    intruder_headers = {"Authorization": f"Bearer {intruder_login.json()['access_token']}"}
-    client.post("/agents", json={"project_title": "Other", "project_topic": "Other"}, headers=intruder_headers)
+    intruder_login = client.post(
+        "/auth/login", json={"username": "intruder-chat", "password": "intruder-pass"})
+    intruder_headers = {
+        "Authorization": f"Bearer {intruder_login.json()['access_token']}"}
+    client.post("/agents", json={"project_title": "Other",
+                "project_topic": "Other"}, headers=intruder_headers)
 
     # The intruder cannot read the victim's conversation's messages.
     response = client.get(
@@ -368,7 +405,8 @@ def test_conversations_and_messages_do_not_leak_across_agents(client, auth_heade
     assert response.status_code == 404
 
     # The intruder's own conversation listing never includes the victim's conversation.
-    intruder_conversations = client.get("/writing/conversations", headers=intruder_headers).json()
+    intruder_conversations = client.get(
+        "/writing/conversations", headers=intruder_headers).json()
     assert intruder_conversations["conversations"] == []
 
 
@@ -377,19 +415,24 @@ def test_conversations_and_messages_do_not_leak_across_agents(client, auth_heade
 
 def test_deleting_a_conversation_returns_204_and_it_disappears_from_listing(client, auth_headers):
     _create_workspace(client, auth_headers)
-    conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
+    conversation = client.post(
+        "/writing/conversations", json={}, headers=auth_headers).json()
 
-    response = client.delete(f"/writing/conversations/{conversation['conversation_id']}", headers=auth_headers)
+    response = client.delete(
+        f"/writing/conversations/{conversation['conversation_id']}", headers=auth_headers)
 
     assert response.status_code == 204
-    listing = client.get("/writing/conversations", headers=auth_headers).json()["conversations"]
+    listing = client.get("/writing/conversations",
+                         headers=auth_headers).json()["conversations"]
     assert listing == []
 
 
 def test_a_deleted_conversation_can_no_longer_be_read_from_or_sent_to(client, auth_headers):
     _create_workspace(client, auth_headers)
-    conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
-    client.delete(f"/writing/conversations/{conversation['conversation_id']}", headers=auth_headers)
+    conversation = client.post(
+        "/writing/conversations", json={}, headers=auth_headers).json()
+    client.delete(
+        f"/writing/conversations/{conversation['conversation_id']}", headers=auth_headers)
 
     read_response = client.get(
         f"/writing/conversations/{conversation['conversation_id']}/messages", headers=auth_headers
@@ -411,14 +454,16 @@ def test_deleting_a_conversation_cancels_its_still_queued_reply(client, auth_hea
     guaranteed to fail. Deleting the conversation should cancel it immediately instead.
     """
     _create_workspace(client, auth_headers)
-    conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
+    conversation = client.post(
+        "/writing/conversations", json={}, headers=auth_headers).json()
     client.post(
         f"/writing/conversations/{conversation['conversation_id']}/messages",
         json={"content": "Will this reply survive?"},
         headers=auth_headers,
     )
 
-    response = client.delete(f"/writing/conversations/{conversation['conversation_id']}", headers=auth_headers)
+    response = client.delete(
+        f"/writing/conversations/{conversation['conversation_id']}", headers=auth_headers)
     assert response.status_code == 204
 
     session = build_sessionmaker(db_engine)()
@@ -426,17 +471,21 @@ def test_deleting_a_conversation_cancels_its_still_queued_reply(client, auth_hea
         items = session.query(WorkItemModel).all()
         assert len(items) == 1
         assert items[0].state == WorkItemState.FAILED
-        assert items[0].attempts == 0  # cancelled outright, not discovered via a real attempt
+        # cancelled outright, not discovered via a real attempt
+        assert items[0].attempts == 0
     finally:
         session.close()
 
 
 def test_deleting_an_already_deleted_conversation_returns_404(client, auth_headers):
     _create_workspace(client, auth_headers)
-    conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
-    client.delete(f"/writing/conversations/{conversation['conversation_id']}", headers=auth_headers)
+    conversation = client.post(
+        "/writing/conversations", json={}, headers=auth_headers).json()
+    client.delete(
+        f"/writing/conversations/{conversation['conversation_id']}", headers=auth_headers)
 
-    response = client.delete(f"/writing/conversations/{conversation['conversation_id']}", headers=auth_headers)
+    response = client.delete(
+        f"/writing/conversations/{conversation['conversation_id']}", headers=auth_headers)
 
     assert response.status_code == 404
 
@@ -444,29 +493,37 @@ def test_deleting_an_already_deleted_conversation_returns_404(client, auth_heade
 def test_deleting_a_nonexistent_conversation_returns_404(client, auth_headers):
     _create_workspace(client, auth_headers)
 
-    response = client.delete("/writing/conversations/999999", headers=auth_headers)
+    response = client.delete(
+        "/writing/conversations/999999", headers=auth_headers)
 
     assert response.status_code == 404
 
 
 def test_deleting_another_users_conversation_is_rejected_as_not_found(client, db_engine, auth_headers):
     _create_workspace(client, auth_headers)
-    conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
+    conversation = client.post(
+        "/writing/conversations", json={}, headers=auth_headers).json()
 
     session = build_sessionmaker(db_engine)()
     try:
-        session.add(User(username="intruder-delete-chat", password_hash=hash_password("intruder-pass")))
+        session.add(User(username="intruder-delete-chat",
+                    password_hash=hash_password("intruder-pass")))
         session.commit()
     finally:
         session.close()
-    intruder_login = client.post("/auth/login", json={"username": "intruder-delete-chat", "password": "intruder-pass"})
-    intruder_headers = {"Authorization": f"Bearer {intruder_login.json()['access_token']}"}
-    client.post("/agents", json={"project_title": "Other", "project_topic": "Other"}, headers=intruder_headers)
+    intruder_login = client.post(
+        "/auth/login", json={"username": "intruder-delete-chat", "password": "intruder-pass"})
+    intruder_headers = {
+        "Authorization": f"Bearer {intruder_login.json()['access_token']}"}
+    client.post("/agents", json={"project_title": "Other",
+                "project_topic": "Other"}, headers=intruder_headers)
 
-    response = client.delete(f"/writing/conversations/{conversation['conversation_id']}", headers=intruder_headers)
+    response = client.delete(
+        f"/writing/conversations/{conversation['conversation_id']}", headers=intruder_headers)
 
     assert response.status_code == 404
-    listing = client.get("/writing/conversations", headers=auth_headers).json()["conversations"]
+    listing = client.get("/writing/conversations",
+                         headers=auth_headers).json()["conversations"]
     assert len(listing) == 1  # untouched
 
 
@@ -488,8 +545,10 @@ def _send_and_get_work_item_id(client, auth_headers, conversation_id: int, conte
 
 def test_reply_status_is_queued_before_the_worker_runs(client, auth_headers):
     _create_workspace(client, auth_headers)
-    conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
-    work_item_id = _send_and_get_work_item_id(client, auth_headers, conversation["conversation_id"])
+    conversation = client.post(
+        "/writing/conversations", json={}, headers=auth_headers).json()
+    work_item_id = _send_and_get_work_item_id(
+        client, auth_headers, conversation["conversation_id"])
 
     response = client.get(
         f"/writing/conversations/{conversation['conversation_id']}/reply-status/{work_item_id}",
@@ -504,8 +563,10 @@ def test_reply_status_is_queued_before_the_worker_runs(client, auth_headers):
 
 def test_reply_status_is_succeeded_after_the_worker_runs(client, auth_headers, db_engine, tmp_path):
     _create_workspace(client, auth_headers)
-    conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
-    work_item_id = _send_and_get_work_item_id(client, auth_headers, conversation["conversation_id"])
+    conversation = client.post(
+        "/writing/conversations", json={}, headers=auth_headers).json()
+    work_item_id = _send_and_get_work_item_id(
+        client, auth_headers, conversation["conversation_id"])
     _process_next_work_item(db_engine, tmp_path)
 
     response = client.get(
@@ -518,16 +579,20 @@ def test_reply_status_is_succeeded_after_the_worker_runs(client, auth_headers, d
 
 
 def _fail_a_reply(client, auth_headers, db_engine, tmp_path, conversation_id: int) -> int:
-    work_item_id = _send_and_get_work_item_id(client, auth_headers, conversation_id)
+    work_item_id = _send_and_get_work_item_id(
+        client, auth_headers, conversation_id)
     for _ in range(3):  # DEFAULT_MAX_ATTEMPTS - exhaust retries so it reaches `failed`
-        _process_next_work_item(db_engine, tmp_path, text_provider=FailingTextGenerationProvider())
+        _process_next_work_item(db_engine, tmp_path,
+                                text_provider=FailingTextGenerationProvider())
     return work_item_id
 
 
 def test_reply_status_includes_the_real_failure_reason_once_failed(client, auth_headers, db_engine, tmp_path):
     _create_workspace(client, auth_headers)
-    conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
-    work_item_id = _fail_a_reply(client, auth_headers, db_engine, tmp_path, conversation["conversation_id"])
+    conversation = client.post(
+        "/writing/conversations", json={}, headers=auth_headers).json()
+    work_item_id = _fail_a_reply(
+        client, auth_headers, db_engine, tmp_path, conversation["conversation_id"])
 
     response = client.get(
         f"/writing/conversations/{conversation['conversation_id']}/reply-status/{work_item_id}",
@@ -542,9 +607,11 @@ def test_reply_status_includes_the_real_failure_reason_once_failed(client, auth_
 
 def test_retrying_a_failed_reply_succeeds_and_produces_a_message(client, auth_headers, db_engine, tmp_path):
     _create_workspace(client, auth_headers)
-    conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
+    conversation = client.post(
+        "/writing/conversations", json={}, headers=auth_headers).json()
     conversation_id = conversation["conversation_id"]
-    work_item_id = _fail_a_reply(client, auth_headers, db_engine, tmp_path, conversation_id)
+    work_item_id = _fail_a_reply(
+        client, auth_headers, db_engine, tmp_path, conversation_id)
 
     response = client.post(
         f"/writing/conversations/{conversation_id}/reply-status/{work_item_id}/retry",
@@ -554,16 +621,20 @@ def test_retrying_a_failed_reply_succeeds_and_produces_a_message(client, auth_he
     assert response.status_code == 200
     assert response.json()["state"] == "queued"
 
-    assert _process_next_work_item(db_engine, tmp_path, text_provider=FakeTextGenerationProvider("Recovered.")) is True
-    messages = client.get(f"/writing/conversations/{conversation_id}/messages", headers=auth_headers).json()["messages"]
+    assert _process_next_work_item(
+        db_engine, tmp_path, text_provider=FakeTextGenerationProvider("Recovered.")) is True
+    messages = client.get(
+        f"/writing/conversations/{conversation_id}/messages", headers=auth_headers).json()["messages"]
     assert len(messages) == 2
     assert messages[1]["content"] == "Recovered."
 
 
 def test_retrying_a_queued_reply_returns_409(client, auth_headers):
     _create_workspace(client, auth_headers)
-    conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
-    work_item_id = _send_and_get_work_item_id(client, auth_headers, conversation["conversation_id"])
+    conversation = client.post(
+        "/writing/conversations", json={}, headers=auth_headers).json()
+    work_item_id = _send_and_get_work_item_id(
+        client, auth_headers, conversation["conversation_id"])
 
     response = client.post(
         f"/writing/conversations/{conversation['conversation_id']}/reply-status/{work_item_id}/retry",
@@ -576,8 +647,10 @@ def test_retrying_a_queued_reply_returns_409(client, auth_headers):
 
 def test_retrying_a_succeeded_reply_returns_409(client, auth_headers, db_engine, tmp_path):
     _create_workspace(client, auth_headers)
-    conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
-    work_item_id = _send_and_get_work_item_id(client, auth_headers, conversation["conversation_id"])
+    conversation = client.post(
+        "/writing/conversations", json={}, headers=auth_headers).json()
+    work_item_id = _send_and_get_work_item_id(
+        client, auth_headers, conversation["conversation_id"])
     _process_next_work_item(db_engine, tmp_path)
 
     response = client.post(
@@ -590,7 +663,8 @@ def test_retrying_a_succeeded_reply_returns_409(client, auth_headers, db_engine,
 
 def test_reply_status_for_a_nonexistent_work_item_returns_404(client, auth_headers):
     _create_workspace(client, auth_headers)
-    conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
+    conversation = client.post(
+        "/writing/conversations", json={}, headers=auth_headers).json()
 
     response = client.get(
         f"/writing/conversations/{conversation['conversation_id']}/reply-status/999999",
@@ -608,9 +682,12 @@ def test_reply_status_for_a_work_item_from_another_conversation_returns_404(clie
     generation status - see GetChatReplyStatusUseCase's own docstring.
     """
     _create_workspace(client, auth_headers)
-    conversation_a = client.post("/writing/conversations", json={}, headers=auth_headers).json()
-    conversation_b = client.post("/writing/conversations", json={}, headers=auth_headers).json()
-    work_item_id = _send_and_get_work_item_id(client, auth_headers, conversation_a["conversation_id"])
+    conversation_a = client.post(
+        "/writing/conversations", json={}, headers=auth_headers).json()
+    conversation_b = client.post(
+        "/writing/conversations", json={}, headers=auth_headers).json()
+    work_item_id = _send_and_get_work_item_id(
+        client, auth_headers, conversation_a["conversation_id"])
 
     response = client.get(
         f"/writing/conversations/{conversation_b['conversation_id']}/reply-status/{work_item_id}",
@@ -623,18 +700,24 @@ def test_reply_status_for_a_work_item_from_another_conversation_returns_404(clie
 
 def test_reply_status_for_another_users_conversation_returns_404(client, db_engine, auth_headers):
     _create_workspace(client, auth_headers)
-    conversation = client.post("/writing/conversations", json={}, headers=auth_headers).json()
-    work_item_id = _send_and_get_work_item_id(client, auth_headers, conversation["conversation_id"])
+    conversation = client.post(
+        "/writing/conversations", json={}, headers=auth_headers).json()
+    work_item_id = _send_and_get_work_item_id(
+        client, auth_headers, conversation["conversation_id"])
 
     session = build_sessionmaker(db_engine)()
     try:
-        session.add(User(username="intruder-reply-status", password_hash=hash_password("intruder-pass")))
+        session.add(User(username="intruder-reply-status",
+                    password_hash=hash_password("intruder-pass")))
         session.commit()
     finally:
         session.close()
-    intruder_login = client.post("/auth/login", json={"username": "intruder-reply-status", "password": "intruder-pass"})
-    intruder_headers = {"Authorization": f"Bearer {intruder_login.json()['access_token']}"}
-    client.post("/agents", json={"project_title": "Other", "project_topic": "Other"}, headers=intruder_headers)
+    intruder_login = client.post(
+        "/auth/login", json={"username": "intruder-reply-status", "password": "intruder-pass"})
+    intruder_headers = {
+        "Authorization": f"Bearer {intruder_login.json()['access_token']}"}
+    client.post("/agents", json={"project_title": "Other",
+                "project_topic": "Other"}, headers=intruder_headers)
 
     response = client.get(
         f"/writing/conversations/{conversation['conversation_id']}/reply-status/{work_item_id}",
