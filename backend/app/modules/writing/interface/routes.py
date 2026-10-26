@@ -193,7 +193,8 @@ def list_writing_style_documents(
     },
 )
 # 2026-09-19 production security pass: this makes a real AI provider call - the most directly
-# cost-bearing route in the app alongside chat replies. 10/minute per IP.
+# cost-bearing route in the app alongside chat replies. 10/minute per user (not per IP, since
+# 2026-10-23 - see app.core.rate_limit.rate_limit_key).
 @limiter.limit("10/minute")
 async def extract_writing_style_profile(
     request: Request,

@@ -63,7 +63,8 @@ router = APIRouter(prefix="/projects", tags=["documents"])
     },
 )
 # 2026-09-19 production security pass: an upload triggers real processing work (the Knowledge
-# Processing Pipeline, ADR-006) - 20/minute per IP bounds that cost without hindering normal use.
+# Processing Pipeline, ADR-006) - 20/minute per user bounds that cost without hindering normal
+# use (per user, not per IP, since 2026-10-23 - see app.core.rate_limit.rate_limit_key).
 @limiter.limit("20/minute")
 async def upload_research_document(
     request: Request,

@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from app.ai.provider_usage import metering_provider_usage
 from app.ai.providers.base import TextGenerationProvider
 from app.ai.token_estimate import estimate_tokens
 from app.ai.usage_guard import AiUsageGuard
@@ -139,10 +140,18 @@ class ExtractWritingStyleProfileUseCase:
 
         # AI usage cap (2026-09-21 security pass): estimated from the pooled sample text that
         # extract_style_characteristics will actually send to the provider.
-        self._ai_usage_guard.check_and_record(
-            user_id=user_id, estimated_tokens=estimate_tokens("\n\n".join(samples))
+        #
+        # Check before, record after (2026-10-23): the gate stays an estimate, the ledger row
+        # holds the provider's own reported prompt/completion counts. This is the one AI call
+        # site where the provider call and the user's identity are in the same request, so the
+        # recorded number is exact.
+        estimated_tokens = estimate_tokens("\n\n".join(samples))
+        self._ai_usage_guard.check(user_id=user_id, estimated_tokens=estimated_tokens)
+        with metering_provider_usage() as meter:
+            extracted = extract_style_characteristics(samples, self._text_provider)
+        self._ai_usage_guard.record_metered(
+            user_id=user_id, meter=meter, fallback_estimate=estimated_tokens
         )
-        extracted = extract_style_characteristics(samples, self._text_provider)
 
         try:
             if profile is None:

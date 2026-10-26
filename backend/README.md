@@ -141,7 +141,7 @@ CORS_ALLOWED_ORIGINS=["http://localhost:5173", "https://your-deployed-frontend.e
 
 ## Layout
 
-```
+```sh
 app/
 ├── main.py            # FastAPI app entrypoint - also starts the Work Item executor when AI_API_KEY is configured
 ├── core/               # config, shared dependencies, base exceptions

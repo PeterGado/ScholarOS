@@ -183,6 +183,52 @@ def test_a_nonzero_start_index_still_wraps_around_to_every_provider_on_failover(
     assert first.generate_calls == 1
 
 
+# --- failover observability (2026-10-23) -----------------------------------------------------
+
+
+def test_a_rate_limited_key_is_logged_with_its_position_in_the_pool(caplog):
+    import logging
+
+    first = FakeProvider(name="key-a", error=ProviderRateLimitError("key-a exhausted"))
+    second = FakeProvider(name="key-b")
+    provider = FailoverProvider([first, second], start_index_fn=_fixed_start(0))
+
+    with caplog.at_level(logging.WARNING, logger="app.ai.providers.failover"):
+        provider.generate("hello")
+
+    # 1-based and pool-relative, not "position in this call's attempt order" - which provider is
+    # actually exhausted is the operationally useful fact, and it varies per call by design.
+    assert "key 1 of 2 is rate limited" in caplog.text
+    assert "key-a exhausted" in caplog.text
+
+
+def test_a_successful_call_logs_nothing(caplog):
+    import logging
+
+    provider = FailoverProvider([FakeProvider(name="key-a")], start_index_fn=_fixed_start(0))
+
+    with caplog.at_level(logging.WARNING, logger="app.ai.providers.failover"):
+        provider.generate("hello")
+
+    assert caplog.records == []
+
+
+def test_exhausting_the_whole_pool_is_logged_as_an_error(caplog):
+    import logging
+
+    first = FakeProvider(name="key-a", error=ProviderRateLimitError("key-a exhausted"))
+    second = FakeProvider(name="key-b", error=ProviderRateLimitError("key-b exhausted"))
+    provider = FailoverProvider([first, second], start_index_fn=_fixed_start(0))
+
+    with caplog.at_level(logging.ERROR, logger="app.ai.providers.failover"), pytest.raises(
+        ProviderRateLimitError
+    ):
+        provider.generate("hello")
+
+    # Distinct from the per-key warnings: only this line means the request was actually dropped.
+    assert "All 2 configured AI provider keys are rate limited" in caplog.text
+
+
 def test_start_index_fn_is_called_with_the_provider_count():
     calls: list[int] = []
 

@@ -9,9 +9,13 @@ from sqlalchemy.orm import Session
 
 from app.ai.crossref import CrossrefWork, fetch_crossref_work
 from app.ai.exceptions import ProviderContentBlockedError, ProviderRateLimitError
+from app.ai.provider_usage import ProviderUsageMeter, metering_provider_usage
 from app.ai.providers.base import EmbeddingProvider, TextGenerationProvider
+from app.ai.usage_guard import AiUsageGuard
+from app.ai.usage_infrastructure import SqlAlchemyAiUsageRepository
 from app.ai.web_fetch import WebSource, fetch_web_source
 from app.ai.wikipedia import fetch_wikipedia_background
+from app.core.config import get_settings
 from app.database.unit_of_work import SqlAlchemyUnitOfWork
 from app.modules.agent.infrastructure.repositories import SqlAlchemyAgentRepository
 from app.modules.document.application.use_cases import VerifyDocumentDoiUseCase
@@ -87,6 +91,13 @@ def process_one_work_item(
     uow = SqlAlchemyUnitOfWork(session)
     work_items = WorkItemRepository(session)
     documents = SqlAlchemyDocumentRepository(session)
+    # Actual AI usage is recorded here, not at the enqueue site (2026-10-23): a document upload
+    # or a chat message only *checks* the cap with an estimate, because the provider call they
+    # schedule happens later, in this process. Recording only the real, provider-reported
+    # counts afterwards keeps one ledger row per action instead of an estimate plus a duplicate.
+    usage_guard = AiUsageGuard(
+        SqlAlchemyAiUsageRepository(session), uow, daily_token_cap=get_settings().ai_daily_token_cap_per_user
+    )
 
     item = work_items.claim_next_queued()
     if item is None:
@@ -110,40 +121,53 @@ def process_one_work_item(
             return True
 
     if work_kind == "chat":
-        try:
-            GenerateConversationReplyUseCase(
-                SqlAlchemyMessageRepository(session),
-                SqlAlchemyConversationRepository(session),
-                SqlAlchemyMemoryRecordRepository(session),
-                SqlAlchemyMemoryProvenanceLinkRepository(session),
-                text_provider,
-                uow,
-                background_knowledge_provider=background_knowledge_provider,
-                web_fetch_provider=web_fetch_provider,
-                enable_multi_pass=enable_multi_pass_generation,
-            ).execute(conversation_id=conversation_id, context=chat_context)
-        except Exception as exc:  # noqa: BLE001 - worker routes all failures through bounded retry
-            updated_item = work_items.mark_failed(
-                item.work_item_id,
-                error=str(exc),
-                # A quota reset needs time, and a safety-blocked message will be blocked again
-                # unmodified - immediate automatic attempts only burn through the retry budget
-                # and create duplicate provider requests.
-                max_attempts=1 if isinstance(exc, (ProviderRateLimitError, ProviderContentBlockedError)) else 3,
-            )
+        user_id = _user_id_for_conversation(session, conversation_id)
+        with metering_provider_usage() as meter:
+            try:
+                GenerateConversationReplyUseCase(
+                    SqlAlchemyMessageRepository(session),
+                    SqlAlchemyConversationRepository(session),
+                    SqlAlchemyMemoryRecordRepository(session),
+                    SqlAlchemyMemoryProvenanceLinkRepository(session),
+                    text_provider,
+                    uow,
+                    background_knowledge_provider=background_knowledge_provider,
+                    web_fetch_provider=web_fetch_provider,
+                    enable_multi_pass=enable_multi_pass_generation,
+                ).execute(conversation_id=conversation_id, context=chat_context)
+            except Exception as exc:  # noqa: BLE001 - worker routes all failures through bounded retry
+                updated_item = work_items.mark_failed(
+                    item.work_item_id,
+                    error=str(exc),
+                    # A quota reset needs time, and a safety-blocked message will be blocked again
+                    # unmodified - immediate automatic attempts only burn through the retry budget
+                    # and create duplicate provider requests.
+                    max_attempts=1 if isinstance(exc, (ProviderRateLimitError, ProviderContentBlockedError)) else 3,
+                )
+                uow.commit()
+                logger.warning("Work item %s failed (attempt %d): %s",
+                               item.work_item_id, updated_item.attempts, exc)
+                # capture_exception is a no-op before sentry_sdk.init() (app.main) - this is the
+                # first place a worker failure actually reaches Sentry; previously only logged,
+                # which is easy to miss since nothing currently polls for it (see /health/queue).
+                sentry_sdk.capture_exception(exc)
+                # A failure can still have consumed real tokens (a draft succeeded, the critique
+                # pass that follows it did not) - record what was actually spent, after the
+                # item's own outcome is committed.
+                _record_provider_usage(usage_guard, user_id=user_id, meter=meter)
+                return True
+
+            work_items.mark_succeeded(item.work_item_id)
             uow.commit()
-            logger.warning("Work item %s failed (attempt %d): %s",
-                           item.work_item_id, updated_item.attempts, exc)
-            # capture_exception is a no-op before sentry_sdk.init() (app.main) - this is the
-            # first place a worker failure actually reaches Sentry; previously only logged,
-            # which is easy to miss since nothing currently polls for it (see /health/queue).
-            sentry_sdk.capture_exception(exc)
+            _record_provider_usage(usage_guard, user_id=user_id, meter=meter)
             return True
 
-        work_items.mark_succeeded(item.work_item_id)
-        uow.commit()
-        return True
-
+    user_id = _user_id_for_document(session, document_id)
+    # Only the AI-assisted extraction is metered (2026-10-23) - ProcessDocumentUseCase is
+    # mechanical, and DOI verification calls Crossref, not an AI provider. `document_meter`
+    # stays None if a failure happens before that block, in which case nothing was spent and
+    # nothing is recorded.
+    document_meter: ProviderUsageMeter | None = None
     try:
         documents.update_processing_status(
             document_id, DocumentProcessingStatus.PROCESSING)
@@ -167,7 +191,8 @@ def process_one_work_item(
             SqlAlchemyKnowledgeChunkEmbeddingRepository(session),
             uow,
         )
-        extract_knowledge.execute(document_id=document_id)
+        with metering_provider_usage() as document_meter:
+            extract_knowledge.execute(document_id=document_id)
 
         # DOI verification (2026-10-06) is non-critical enrichment, deliberately outside the
         # try/except above's "any failure retries the whole document" contract - a transient
@@ -213,13 +238,64 @@ def process_one_work_item(
         logger.warning("Work item %s failed (attempt %d): %s",
                        item.work_item_id, updated_item.attempts, exc)
         sentry_sdk.capture_exception(exc)
+        _record_provider_usage(usage_guard, user_id=user_id, meter=document_meter)
         return True
 
     work_items.mark_succeeded(item.work_item_id)
     documents.update_processing_status(
         document_id, DocumentProcessingStatus.PROCESSED, processed_at=datetime.now(UTC))
     uow.commit()
+    _record_provider_usage(usage_guard, user_id=user_id, meter=document_meter)
     return True
+
+
+def _user_id_for_conversation(session: Session, conversation_id: int) -> int | None:
+    """Who to charge for a chat reply's AI usage - the conversation's owning Agent's user.
+    Returns None (record nothing) rather than raising when the conversation or its Agent no
+    longer exists; the reply itself already fails cleanly in that case.
+    """
+    conversation = SqlAlchemyConversationRepository(session).get_by_id(conversation_id)
+    if conversation is None:
+        return None
+    agent = SqlAlchemyAgentRepository(session).get_by_id(conversation.agent_id)
+    return agent.user_id if agent is not None else None
+
+
+def _user_id_for_document(session: Session, document_id: int) -> int | None:
+    """Same attribution as `_user_id_for_conversation`, via the document's Project's Agent -
+    the AI-assisted extraction this meters has no request context to read a user from.
+    """
+    document = SqlAlchemyDocumentRepository(session).get_by_id(document_id)
+    if document is None:
+        return None
+    project = SqlAlchemyProjectRepository(session).get_by_id(document.project_id)
+    if project is None:
+        return None
+    agent = SqlAlchemyAgentRepository(session).get_by_id(project.agent_id)
+    return agent.user_id if agent is not None else None
+
+
+def _record_provider_usage(
+    usage_guard: AiUsageGuard, *, user_id: int | None, meter: ProviderUsageMeter | None
+) -> None:
+    """Writes the provider-reported usage a metered block observed (app.ai.provider_usage).
+
+    Swallows a recording failure rather than letting it change the Work Item's outcome: this
+    runs after the item's own success/failure is already committed, and a bookkeeping write
+    failing must not turn a reply the user already received into a failed item. Logged, not
+    silent - the same reasoning the executor's other best-effort steps already follow.
+
+    One known gap, deliberately not papered over with an estimate here: Gemini's embedding
+    endpoint reports no token counts (app.ai.providers.google_genai), so for a document whose
+    classification succeeded this records the generation calls only. `observed_calls` is the
+    guard against recording a bogus 0 for a block that never reached the provider at all.
+    """
+    if user_id is None or meter is None or not meter.observed_calls:
+        return
+    try:
+        usage_guard.record_metered(user_id=user_id, meter=meter)
+    except Exception:
+        logger.exception("Failed to record AI usage for user %s", user_id)
 
 
 class WorkItemExecutorLoop:
