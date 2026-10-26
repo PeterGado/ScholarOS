@@ -13,6 +13,13 @@ import {
   uploadResearchDocuments,
 } from "@/api/documents";
 import { searchKnowledge } from "@/api/knowledge";
+import { AI_USAGE_QUERY_KEY } from "@/api/usage";
+import {
+  parseDocumentMetadata,
+  type DocumentMetadata,
+  type DocumentMetadataErrors,
+  type DocumentMetadataField,
+} from "@/lib/documentMetadata";
 import { ApiError } from "@/lib/apiClient";
 import { useToast } from "@/lib/ToastContext";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
@@ -23,6 +30,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { VirtualList } from "@/components/VirtualList";
+import { cn } from "@/lib/utils";
 
 const DELETABLE_STATUSES = new Set(["pending", "failed"]);
 // Mirrors the backend's own MAX_RESEARCH_DOCUMENTS_PER_PROJECT (app/modules/document/
@@ -40,6 +49,9 @@ export function DocumentsPage() {
   const [author, setAuthor] = useState("");
   const [year, setYear] = useState("");
   const [doi, setDoi] = useState("");
+  // Per-field messages from parseDocumentMetadata (@/lib/documentMetadata), shown under the
+  // input they belong to rather than in the generic upload-failure alert below.
+  const [metadataErrors, setMetadataErrors] = useState<DocumentMetadataErrors>({});
   const [selectedFileCount, setSelectedFileCount] = useState(0);
   const [query, setQuery] = useState("");
   const [searchSubmitted, setSearchSubmitted] = useState("");
@@ -83,10 +95,13 @@ export function DocumentsPage() {
       const previousStatus = previousStatusesRef.current[doc.document_id];
       if (previousStatus && previousStatus !== "processed" && doc.processing_status === "processed") {
         showToast(`"${doc.title}" finished processing.`);
+        // Processing is what actually spends (and records) AI tokens - the upload that queued it
+        // only checked the cap - so this transition is the moment the sidebar's figure changed.
+        queryClient.invalidateQueries({ queryKey: AI_USAGE_QUERY_KEY });
       }
       previousStatusesRef.current[doc.document_id] = doc.processing_status;
     }
-  }, [documentsQuery.data, showToast]);
+  }, [documentsQuery.data, showToast, queryClient]);
 
   // Once a document is fully processed, its knowledge has already been absorbed into the
   // Agent's knowledge base - it's no longer a "file" to manage here, only searchable below.
@@ -98,7 +113,9 @@ export function DocumentsPage() {
   const processedDocuments = allDocuments.filter((doc) => doc.processing_status === "processed");
 
   const uploadMutation = useMutation({
-    mutationFn: async () => {
+    // `metadata` is handleUpload's already-validated/normalized metadata for a single-file
+    // upload, or null for anything else (multi-file uploads carry no per-file metadata).
+    mutationFn: async (metadata: DocumentMetadata | null) => {
       const files = Array.from(fileInputRef.current?.files ?? []);
       if (files.length === 0) throw new Error("Choose at least one file first.");
       if (files.length > RESEARCH_DOCUMENT_LIMIT - documentCount) {
@@ -107,18 +124,17 @@ export function DocumentsPage() {
       // A custom title (and author/year/DOI) only makes sense for a single file. Multi-file
       // uploads preserve each filename so their source remains identifiable in the knowledge
       // base, with no per-file metadata UI.
-      if (files.length === 1 && (title.trim() || author.trim() || year.trim() || doi.trim())) {
+      if (metadata !== null) {
         const file = files[0];
         const extension = file.name.split(".").pop() ?? "txt";
-        const parsedYear = year.trim() ? Number(year.trim()) : undefined;
         return [await uploadResearchDocument({
           projectId: workspace.project.project_id,
           file,
-          title: title.trim() || file.name,
+          title: metadata.title || file.name,
           format: extension,
-          author: author.trim() || undefined,
-          publicationYear: parsedYear,
-          doi: doi.trim() || undefined,
+          author: metadata.author ?? undefined,
+          publicationYear: metadata.publicationYear ?? undefined,
+          doi: metadata.doi ?? undefined,
         })];
       }
       return uploadResearchDocuments(workspace.project.project_id, files);
@@ -128,9 +144,14 @@ export function DocumentsPage() {
       setAuthor("");
       setYear("");
       setDoi("");
+      setMetadataErrors({});
       setSelectedFileCount(0);
       if (fileInputRef.current) fileInputRef.current.value = "";
       queryClient.invalidateQueries({ queryKey: ["documents", workspace.project.project_id] });
+      // An upload only checks the cap; the Work Item records usage once it processes (see the
+      // status-transition effect above). Still invalidated here so the widget re-reads on every
+      // upload rather than waiting up to its own refetch interval.
+      queryClient.invalidateQueries({ queryKey: AI_USAGE_QUERY_KEY });
       showToast(`${documents.length} document${documents.length === 1 ? "" : "s"} uploaded. Processing is queued.`);
     },
   });
@@ -165,6 +186,8 @@ export function DocumentsPage() {
     onMutate: (openalexId: string) => setImportingId(openalexId),
     onSuccess: (document) => {
       queryClient.invalidateQueries({ queryKey: ["documents", workspace.project.project_id] });
+      // Imported sources are processed exactly like uploads, so the same re-read applies.
+      queryClient.invalidateQueries({ queryKey: AI_USAGE_QUERY_KEY });
       showToast(`"${document.title}" imported. Processing is queued.`);
     },
     onSettled: () => setImportingId(null),
@@ -185,14 +208,35 @@ export function DocumentsPage() {
     onMutate: ({ url }: { url: string; title: string }) => setImportingWebUrl(url),
     onSuccess: (document) => {
       queryClient.invalidateQueries({ queryKey: ["documents", workspace.project.project_id] });
+      // Imported sources are processed exactly like uploads, so the same re-read applies.
+      queryClient.invalidateQueries({ queryKey: AI_USAGE_QUERY_KEY });
       showToast(`"${document.title}" imported. Processing is queued.`);
     },
     onSettled: () => setImportingWebUrl(null),
   });
 
+  function clearMetadataError(field: DocumentMetadataField) {
+    setMetadataErrors((previous) => (previous[field] === undefined ? previous : { ...previous, [field]: undefined }));
+  }
+
   function handleUpload(event: FormEvent) {
     event.preventDefault();
-    uploadMutation.mutate();
+    const files = Array.from(fileInputRef.current?.files ?? []);
+    // Validate before mutating so a bad year/DOI renders under its own field instead of as the
+    // generic upload-failure alert - and never becomes a round trip that 422s (or, for a bad
+    // DOI, a confusing "DOI not found" badge after processing).
+    if (files.length === 1) {
+      const parsed = parseDocumentMetadata({ title, author, year, doi });
+      if (!parsed.ok) {
+        setMetadataErrors(parsed.errors);
+        return;
+      }
+      setMetadataErrors({});
+      uploadMutation.mutate(parsed.value);
+      return;
+    }
+    setMetadataErrors({});
+    uploadMutation.mutate(null);
   }
 
   function handleSearch(event: FormEvent) {
@@ -320,11 +364,21 @@ export function DocumentsPage() {
               id="document-year"
               type="number"
               value={year}
-              onChange={(e) => setYear(e.target.value)}
+              onChange={(e) => {
+                setYear(e.target.value);
+                clearMetadataError("year");
+              }}
               placeholder="e.g. 2012"
               className="max-w-24"
               disabled={atLimit || selectedFileCount > 1}
+              aria-invalid={metadataErrors.year !== undefined}
+              aria-describedby={metadataErrors.year ? "document-year-error" : undefined}
             />
+            {metadataErrors.year && (
+              <p id="document-year-error" role="alert" className="text-xs text-destructive">
+                {metadataErrors.year}
+              </p>
+            )}
           </div>
           <div className="space-y-1">
             <label htmlFor="document-doi" className="text-sm font-medium">
@@ -333,11 +387,21 @@ export function DocumentsPage() {
             <Input
               id="document-doi"
               value={doi}
-              onChange={(e) => setDoi(e.target.value)}
+              onChange={(e) => {
+                setDoi(e.target.value);
+                clearMetadataError("doi");
+              }}
               placeholder="e.g. 10.1038/nphys1170"
               className="max-w-48"
               disabled={atLimit || selectedFileCount > 1}
+              aria-invalid={metadataErrors.doi !== undefined}
+              aria-describedby={metadataErrors.doi ? "document-doi-error" : undefined}
             />
+            {metadataErrors.doi && (
+              <p id="document-doi-error" role="alert" className="text-xs text-destructive">
+                {metadataErrors.doi}
+              </p>
+            )}
           </div>
           <Input
             ref={fileInputRef}
@@ -399,9 +463,14 @@ export function DocumentsPage() {
             Nothing pending - uploaded documents will appear here while processing.
           </p>
         )}
-        <ul className="divide-y divide-border">
-          {inProgressDocuments.map((doc) => (
-            <li key={doc.document_id} className="space-y-2 py-3">
+        <VirtualList
+          items={inProgressDocuments}
+          getItemKey={(doc) => doc.document_id}
+          estimateSize={88}
+          className="max-h-[24rem]"
+          ariaLabel="Documents being processed"
+          renderItem={(doc, index) => (
+            <div className={cn("space-y-2 py-3", index > 0 && "border-t border-border")}>
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">{doc.title}</span>
                 <div className="flex items-center gap-2">
@@ -431,9 +500,9 @@ export function DocumentsPage() {
                 </div>
               </div>
               {doc.error_message && <p role="alert" className="text-sm text-destructive">{doc.error_message}</p>}
-            </li>
-          ))}
-        </ul>
+            </div>
+          )}
+        />
         {documentsQuery.hasNextPage && (
           <Button
             variant="outline"
@@ -650,9 +719,14 @@ export function DocumentsPage() {
               as files here.
             </p>
           </div>
-          <ul className="divide-y divide-border">
-            {processedDocuments.map((doc) => (
-              <li key={doc.document_id} className="flex items-center justify-between py-3">
+          <VirtualList
+            items={processedDocuments}
+            getItemKey={(doc) => doc.document_id}
+            estimateSize={72}
+            className="max-h-[28rem]"
+            ariaLabel="Processed documents"
+            renderItem={(doc, index) => (
+              <div className={cn("flex items-center justify-between py-3", index > 0 && "border-t border-border")}>
                 <div>
                   <span className="text-sm font-medium">{doc.title}</span>
                   <p className="text-xs text-muted-foreground">
@@ -677,9 +751,9 @@ export function DocumentsPage() {
                   )}
                   <Badge variant="success">processed</Badge>
                 </div>
-              </li>
-            ))}
-          </ul>
+              </div>
+            )}
+          />
         </section>
       )}
 

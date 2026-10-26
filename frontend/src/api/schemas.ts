@@ -20,6 +20,16 @@ export const profileResponseSchema = z.object({
 });
 export type ProfileResponse = z.infer<typeof profileResponseSchema>;
 
+// GET /ai/usage (backend/app/api/routes/ai_usage.py). `daily_token_cap`/`remaining_tokens`
+// are null when no cap is configured - "unlimited", never "0 left".
+export const aiUsageResponseSchema = z.object({
+  used_tokens: z.number(),
+  daily_token_cap: z.number().nullable(),
+  remaining_tokens: z.number().nullable(),
+  window_hours: z.number(),
+});
+export type AiUsageResponse = z.infer<typeof aiUsageResponseSchema>;
+
 export const agentResponseSchema = z.object({
   agent_id: z.number(),
   status: z.string(),

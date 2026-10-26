@@ -8,6 +8,7 @@ import {
   uploadWritingStyleDocument,
 } from "@/api/writing";
 import { deleteResearchDocument } from "@/api/documents";
+import { AI_USAGE_QUERY_KEY } from "@/api/usage";
 import { ApiError } from "@/lib/apiClient";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useWorkspaceContext } from "@/components/WorkspaceGate";
@@ -59,7 +60,12 @@ export function StyleProfilePage() {
 
   const extractMutation = useMutation({
     mutationFn: () => extractWritingStyleProfile(documents.map((d) => d.document_id)),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["writing-profile"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["writing-profile"] });
+      // Extraction calls the AI provider synchronously in this request (unlike uploads, whose
+      // usage is recorded by the worker later), so the new total is already in the ledger.
+      queryClient.invalidateQueries({ queryKey: AI_USAGE_QUERY_KEY });
+    },
   });
 
   const deleteMutation = useMutation({
