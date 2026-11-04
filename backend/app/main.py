@@ -63,7 +63,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
         return
 
-    if settings.ai_api_key:
+    if settings.ai_api_key or settings.ai_provider == "fake":
         text_provider = create_provider(settings)
     else:
         text_provider = UnavailableAIProvider()

@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import app.database.session as session_module
+from app.ai.providers.fake import FakeAIProvider
 from app.auth.hashing import hash_password
 from app.core.config import get_settings
 from app.database.session import build_engine, build_sessionmaker
@@ -88,3 +89,30 @@ def test_startup_fails_fast_with_a_malformed_password_hash(db_engine, clear_sett
     # The exact wrapping exception type is FastAPI/Starlette's own, not ours.
     with pytest.raises(Exception), TestClient(app):  # noqa: B017
         pass
+
+
+def test_startup_uses_fake_provider_without_api_key(db_engine, clear_settings_cache, monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "fake")
+    monkeypatch.setenv("AI_API_KEY", "")
+    monkeypatch.setenv("AI_FAKE_PROVIDER_FAIL", "1")
+    get_settings.cache_clear()
+
+    providers = []
+
+    class CapturingExecutor:
+        def __init__(self, _session_factory, text_provider, *_args, **_kwargs):
+            providers.append(text_provider)
+
+        def start(self):
+            pass
+
+        async def stop(self):
+            pass
+
+    monkeypatch.setattr("app.main.WorkItemExecutorLoop", CapturingExecutor)
+
+    with TestClient(app):
+        pass
+
+    assert len(providers) == 1
+    assert isinstance(providers[0], FakeAIProvider)
