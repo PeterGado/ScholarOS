@@ -187,6 +187,9 @@ jobs:
           PLAYWRIGHT_START_BACKEND: "1"
           PLAYWRIGHT_API_BASE_URL: http://127.0.0.1:8123
           AUTH_USERNAME: manual-verify-user
+          # Hermetic E2E uses a throwaway SQLite database; one real executor thread
+          # avoids needless worker-vs-worker write contention without disabling processing.
+          WORK_ITEM_WORKER_COUNT: "1"
         run: |
           set -euo pipefail
           AUTH_PASSWORD_HASH="$(python -c 'import bcrypt; print(bcrypt.hashpw(b"ManualVerify-Pass-1", bcrypt.gensalt()).decode())')"
