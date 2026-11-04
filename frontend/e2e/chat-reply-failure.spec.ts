@@ -34,7 +34,7 @@ test("a genuinely failed reply shows a real error and can be retried", async ({ 
   // timeout) - three real attempts against the real provider exhaust the bounded retry policy
   // well within this window.
   await expect(page.getByText("Reply failed")).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByText("AI provider request failed.")).toBeVisible();
+  await expect(page.getByText(/AI provider request failed\./)).toBeVisible();
   const retryButton = page.getByRole("button", { name: "Retry", exact: true });
   await expect(retryButton).toBeVisible();
 
