@@ -31,15 +31,15 @@ Main points:
 CTA: "What does your current workflow look like?"
 
 #### Day 3
-Title: Who ScholarOS is built for
-Opening: "ScholarOS is designed for people whose work depends on reading, synthesizing, writing, and remembering context."
+Title: ScholarOS is built for people whose work is all about context
+Opening: "ScholarOS is designed for people whose work depends on reading deeply, synthesizing ideas, writing clearly, and remembering what matters across a growing body of material."
 Main points:
-- researchers
-- students
-- writers
-- knowledge workers
-- teams handling large amounts of material
-CTA: "If this is you, I’d love to compare notes."
+- researchers who are reading, comparing, and building arguments from many sources
+- students and academics turning scattered notes into understanding and output
+- writers who need context, evidence, and continuity across drafts and revisions
+- knowledge workers who manage complex information but still live in fragmented tools
+- teams working from large amounts of material, where context gets lost as quickly as it is found
+CTA: "If this sounds like the kind of work you do, I’d love to hear how you keep context together."
 
 #### Day 4
 Title: Why this problem matters more than people think

@@ -9,6 +9,7 @@ from app.ai.exceptions import (
     ProviderRateLimitError,
     ProviderRequestError,
 )
+from app.ai.provider_usage import observe_provider_usage
 from app.ai.providers.failover import FailoverProvider
 from app.ai.providers.rate_limited import RateLimitedProvider
 
@@ -55,6 +56,14 @@ class GoogleGenAIProvider:
     Implements the same `TextGenerationProvider`/`EmbeddingProvider` protocols (app.ai.
     providers.base) as `OpenAICompatibleProvider` - swapping providers costs one new file,
     not a redesign of anything that depends on the gateway.
+
+    `generate` reports the response's own exact token usage (usage_metadata.prompt_token_count /
+    candidates_token_count) into the active usage meter, when one is active (app.ai.
+    provider_usage) - that is what lets the usage ledger hold provider-reported counts instead
+    of a chars/4 guess for every chat reply and document classification. `embed`/`embed_batch`
+    report nothing: the SDK's embedding response has no token counts at all (only an optional
+    `billable_character_count` for a different product), and inventing one would be exactly the
+    kind of guess this exists to replace - see AiUsageGuard.record_metered's fallback handling.
     """
 
     def __init__(
@@ -97,6 +106,10 @@ class GoogleGenAIProvider:
             if _is_safety_blocked(response):
                 raise ProviderContentBlockedError()
             raise ProviderRequestError("Provider response did not contain expected generated content.")
+        observe_provider_usage(
+            input_tokens=_reported_token_count(response, "prompt_token_count"),
+            output_tokens=_reported_token_count(response, "candidates_token_count"),
+        )
         return text
 
     def embed(self, text: str) -> list[float]:
@@ -175,6 +188,16 @@ def create_google_genai_provider(settings) -> GoogleGenAIProvider | FailoverProv
         max_output_tokens=settings.ai_max_output_tokens,
         temperature=settings.ai_temperature,
     )
+
+
+def _reported_token_count(response, field: str) -> int:
+    """Reads one field off the SDK's `usage_metadata` without assuming it exists - a response
+    from an older SDK, or a test double with no usage metadata at all, reports 0 rather than
+    raising. 0 is also what `observe_provider_usage` treats as "nothing to add".
+    """
+    usage_metadata = getattr(response, "usage_metadata", None)
+    value = getattr(usage_metadata, field, None)
+    return value if isinstance(value, int) and value > 0 else 0
 
 
 def _is_rate_limit_error(exc: Exception) -> bool:

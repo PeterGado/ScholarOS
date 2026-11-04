@@ -176,7 +176,12 @@ class UploadResearchDocumentUseCase:
         # document size) - a byte-length calc, not app.ai.token_estimate.estimate_tokens(str),
         # since content is bytes, not decoded text (and decoding untrusted upload bytes just to
         # estimate a count isn't worth the cost/risk).
-        self._ai_usage_guard.check_and_record(user_id=user_id, estimated_tokens=max(1, len(content) // 4))
+        #
+        # Only the gate, not a ledger write (2026-10-23): this request uploads and enqueues, it
+        # never calls a provider - the Work Item executor is what actually spends the tokens,
+        # and it records the provider-reported counts once the document really is processed
+        # (app.workers.executor). Recording an estimate here as well would double-count it.
+        self._ai_usage_guard.check(user_id=user_id, estimated_tokens=max(1, len(content) // 4))
 
         content_reference = self._content_store.save(content, extension=extension)
 
@@ -586,7 +591,9 @@ class ImportExternalSourceUseCase:
 
         # Same AI usage cap reasoning as UploadResearchDocumentUseCase - a byte-length estimate,
         # charged against the user importing the source.
-        self._ai_usage_guard.check_and_record(user_id=user_id, estimated_tokens=max(1, len(content_bytes) // 4))
+        # Gate only - the Work Item executor records the actual provider usage later, the same
+        # split UploadResearchDocumentUseCase makes above (2026-10-23).
+        self._ai_usage_guard.check(user_id=user_id, estimated_tokens=max(1, len(content_bytes) // 4))
 
         content_reference = self._content_store.save(content_bytes, extension="txt")
 
@@ -698,7 +705,9 @@ class ImportWebSearchResultUseCase:
 
         # Same AI usage cap reasoning as UploadResearchDocumentUseCase - a byte-length estimate,
         # charged against the user importing the source.
-        self._ai_usage_guard.check_and_record(user_id=user_id, estimated_tokens=max(1, len(content_bytes) // 4))
+        # Gate only - the Work Item executor records the actual provider usage later, the same
+        # split UploadResearchDocumentUseCase makes above (2026-10-23).
+        self._ai_usage_guard.check(user_id=user_id, estimated_tokens=max(1, len(content_bytes) // 4))
 
         content_reference = self._content_store.save(content_bytes, extension="txt")
 

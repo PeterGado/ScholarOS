@@ -33,7 +33,7 @@ npm run build            # production build
 
 ## Layout
 
-```
+```sh
 src/
 ├── api/        # typed API client per backend module + Zod response schemas
 ├── components/ # shared UI (shadcn/ui-generated primitives in components/ui/, plus app shell,

@@ -373,7 +373,11 @@ class SendChatMessageUseCase:
         # Item's later generate() call will use, via the same assemble_context() call the
         # executor makes - reused, not duplicated logic, just called one step earlier so the
         # cap can be checked before enqueueing rather than after the fact.
-        self._ai_usage_guard.check_and_record(
+        #
+        # Gate only (2026-10-23): the reply itself is generated worker-side, and the executor
+        # records the provider's own reported token counts once it runs. Recording this
+        # estimate too would double-count every reply.
+        self._ai_usage_guard.check(
             user_id=user_id, estimated_tokens=estimate_tokens(assemble_context(context).prompt)
         )
 

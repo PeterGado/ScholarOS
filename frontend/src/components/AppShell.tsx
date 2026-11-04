@@ -15,6 +15,7 @@ import {
 import { useAuth } from "@/lib/AuthContext";
 import { logout as logoutRequest } from "@/api/auth";
 import { deleteConversation, listConversations, startConversation } from "@/api/writing";
+import { AiUsageCard } from "@/components/AiUsageCard";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -333,6 +334,11 @@ export function AppShell() {
               : "Could not delete the conversation."}
           </p>
         )}
+
+        {/* Above the Settings/logout footer, not inside it: the AI budget applies to the whole
+            app, and the backend rejects AI work with a 429 once it is reached - it needs to be
+            visible while working, not only after the fact. */}
+        <AiUsageCard />
 
         <div className="border-t border-sidebar-border p-2">
           <NavLink

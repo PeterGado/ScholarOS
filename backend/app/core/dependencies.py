@@ -8,6 +8,7 @@ from app.ai.providers.factory import create_provider
 from app.ai.tavily import search_web
 from app.ai.usage_guard import AiUsageGuard
 from app.ai.usage_infrastructure import SqlAlchemyAiUsageRepository
+from app.ai.usage_snapshot import GetAiUsageSnapshotUseCase
 from app.ai.web_fetch import fetch_web_source
 from app.auth.account import UpdateEmailUseCase
 from app.auth.account_linking import ConnectGoogleAccountUseCase, SetPasswordUseCase
@@ -157,6 +158,15 @@ def get_ai_usage_guard(
     unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
 ) -> AiUsageGuard:
     return AiUsageGuard(repository, unit_of_work, daily_token_cap=get_settings().ai_daily_token_cap_per_user)
+
+
+def get_ai_usage_snapshot_use_case(
+    repository: SqlAlchemyAiUsageRepository = Depends(get_ai_usage_repository),
+) -> GetAiUsageSnapshotUseCase:
+    """Read-only counterpart of get_ai_usage_guard - same repository, same configured cap, so
+    what GET /ai/usage reports is exactly what the guard would accept.
+    """
+    return GetAiUsageSnapshotUseCase(repository, daily_token_cap=get_settings().ai_daily_token_cap_per_user)
 
 
 def get_create_project_use_case(

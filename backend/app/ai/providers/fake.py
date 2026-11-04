@@ -3,6 +3,8 @@ import re
 import time
 
 from app.ai.exceptions import ProviderRequestError
+from app.ai.provider_usage import observe_provider_usage
+from app.ai.token_estimate import estimate_tokens
 
 __all__ = ["FakeAIProvider", "create_fake_provider"]
 
@@ -45,7 +47,7 @@ class FakeAIProvider:
             )
 
         if '"characteristics":' in prompt:
-            return json.dumps(
+            reply = json.dumps(
                 {
                     "characteristics": [
                         {
@@ -56,11 +58,9 @@ class FakeAIProvider:
                     ]
                 }
             )
-
-        batch_match = _BATCH_COUNT_RE.search(prompt)
-        if batch_match:
+        elif batch_match := _BATCH_COUNT_RE.search(prompt):
             count = int(batch_match.group(1))
-            return json.dumps(
+            reply = json.dumps(
                 [
                     {
                         "element_type": "concept",
@@ -70,17 +70,24 @@ class FakeAIProvider:
                     for index in range(count)
                 ]
             )
-
-        if '"element_type"' in prompt:
-            return json.dumps(
+        elif '"element_type"' in prompt:
+            reply = json.dumps(
                 {
                     "element_type": "concept",
                     "label": "Fake classification",
                     "description": "Deterministic placeholder classification from the fake AI provider.",
                 }
             )
+        else:
+            reply = "This is a deterministic reply from the fake AI provider used in CI."
 
-        return "This is a deterministic reply from the fake AI provider used in CI."
+        # Usage reporting (2026-10-23): a deterministic provider has no real token accounting to
+        # report, so it reports the same chars/4 estimate a real provider call would have been
+        # approximated with before exact usage existed. That keeps e2e specs using this provider
+        # exercising the real metering/recording path (app.ai.provider_usage) end-to-end without
+        # inventing numbers that would look like something the AI actually billed.
+        observe_provider_usage(input_tokens=estimate_tokens(prompt), output_tokens=estimate_tokens(reply))
+        return reply
 
     def embed(self, text: str) -> list[float]:
         time.sleep(_SIMULATED_LATENCY_SECONDS)
@@ -89,6 +96,7 @@ class FakeAIProvider:
                 "AI provider request failed. (Provider detail: fake provider configured to "
                 "fail via AI_FAKE_PROVIDER_FAIL, for e2e failure-path testing)"
             )
+        observe_provider_usage(input_tokens=estimate_tokens(text), output_tokens=0)
         return [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
 
     def embed_batch(self, texts: list[str]) -> list[list[float]]:
@@ -100,6 +108,7 @@ class FakeAIProvider:
                 "AI provider request failed. (Provider detail: fake provider configured to "
                 "fail via AI_FAKE_PROVIDER_FAIL, for e2e failure-path testing)"
             )
+        observe_provider_usage(input_tokens=sum(estimate_tokens(text) for text in texts), output_tokens=0)
         return [[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8] for _ in texts]
 
 

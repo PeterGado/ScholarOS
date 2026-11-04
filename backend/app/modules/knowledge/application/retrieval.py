@@ -1,6 +1,7 @@
 from collections import defaultdict
 from dataclasses import dataclass, field
 
+from app.ai.provider_usage import metering_provider_usage
 from app.ai.providers.base import EmbeddingProvider
 from app.ai.token_estimate import estimate_tokens
 from app.ai.usage_guard import AiUsageGuard
@@ -98,8 +99,18 @@ class SearchKnowledgeUseCase:
             # are no embeddings yet, no provider call happens at all (the short-circuit above),
             # so charging usage unconditionally would bill searches that never actually cost
             # anything.
-            self._ai_usage_guard.check_and_record(user_id=user_id, estimated_tokens=estimate_tokens(query))
-            query_vector = self._embedding_provider.embed(query)
+            #
+            # Check before, record after (2026-10-23): the gate still uses an estimate, but the
+            # ledger row now holds the provider's own reported count when it reports one. A
+            # provider that reports nothing (Gemini's embedding endpoint) falls back to that
+            # same estimate - see AiUsageGuard.record_metered.
+            estimated_tokens = estimate_tokens(query)
+            self._ai_usage_guard.check(user_id=user_id, estimated_tokens=estimated_tokens)
+            with metering_provider_usage() as meter:
+                query_vector = self._embedding_provider.embed(query)
+            self._ai_usage_guard.record_metered(
+                user_id=user_id, meter=meter, fallback_estimate=estimated_tokens
+            )
             semantic_ranking = [chunk_id for chunk_id, _ in rank_by_similarity(query_vector, candidates)]
 
         lexical_ranking = self._lexical_search.search(agent_id=agent.agent_id, query=query, limit=MAX_TOP_K)
