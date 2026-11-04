@@ -6,11 +6,17 @@ export async function login(username: string, password: string): Promise<TokenRe
   return tokenResponseSchema.parse(response.data);
 }
 
-export async function register(email: string, password: string, turnstileToken?: string | null): Promise<TokenResponse> {
+export async function register(
+  email: string,
+  password: string,
+  turnstileToken?: string | null,
+  inviteCode?: string | null,
+): Promise<TokenResponse> {
   const response = await apiClient.post("/auth/register", {
     email,
     password,
     turnstile_token: turnstileToken || null,
+    invite_code: inviteCode || null,
   });
   return tokenResponseSchema.parse(response.data);
 }

@@ -16,9 +16,9 @@ import { Input } from "@/components/ui/input";
 // real alternative, not just a fallback for when Google fails to load - some researchers won't
 // use Google, and institutions may require a different identity provider. Registration collects
 // an email, not a username (external security review) - a username is still synthesized
-// server-side, but it's never user-chosen or shown as the account's real identity. Registration
-// is fully open either way - no invite code anywhere in this flow; REGISTRATION_INVITE_CODE is
-// unset in production.
+// server-side, but it's never user-chosen or shown as the account's real identity. Invite-code
+// support is shown only when the deployment enables VITE_REQUIRE_INVITE_CODE; the backend
+// remains the authority and enforces REGISTRATION_INVITE_CODE.
 export function RegisterPage() {
   useDocumentTitle("Create account");
   useMetaDescription(
@@ -27,10 +27,12 @@ export function RegisterPage() {
   const { isAuthenticated, setToken } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [googleUnavailable, setGoogleUnavailable] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const requiresInviteCode = import.meta.env.VITE_REQUIRE_INVITE_CODE === "true";
 
   if (isAuthenticated) {
     return <Navigate to="/chat" replace />;
@@ -41,7 +43,7 @@ export function RegisterPage() {
     setError(null);
     setIsSubmitting(true);
     try {
-      const { access_token } = await register(email, password, turnstileToken);
+      const { access_token } = await register(email, password, turnstileToken, inviteCode);
       setToken(access_token);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Registration failed. Check the backend is running.");
@@ -53,7 +55,7 @@ export function RegisterPage() {
   async function handleGoogleCredential(idToken: string) {
     setError(null);
     try {
-      const { access_token } = await loginWithGoogle(idToken);
+      const { access_token } = await loginWithGoogle(idToken, inviteCode);
       setToken(access_token);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Google sign-in failed. Check the backend is running.");
@@ -115,6 +117,21 @@ export function RegisterPage() {
               required
             />
           </div>
+          {requiresInviteCode && (
+            <div className="space-y-1">
+              <label htmlFor="invite-code" className="text-sm font-medium">
+                Invite code
+              </label>
+              <Input
+                id="invite-code"
+                size="lg"
+                value={inviteCode}
+                onChange={(e) => setInviteCode(e.target.value)}
+                autoComplete="off"
+                required
+              />
+            </div>
+          )}
           <div className="space-y-1">
             <label htmlFor="password" className="text-sm font-medium">
               Password
