@@ -25,6 +25,7 @@ plainly via the model's own `__table_args__`, so no NOT VALID equivalent exists 
 from collections.abc import Sequence
 
 from alembic import op
+from app.database.migration_helpers import existing_check_constraint_names
 
 # revision identifiers, used by Alembic.
 revision: str = "0d3469b21177"
@@ -46,12 +47,21 @@ def upgrade() -> None:
             "CHECK (length(content) <= 10000) NOT VALID"
         )
     else:
-        with op.batch_alter_table("messages") as batch_op:
-            batch_op.create_check_constraint("ck_messages_content_length", "length(content) <= 40000")
-        with op.batch_alter_table("knowledge_chunks") as batch_op:
-            batch_op.create_check_constraint(
-                "ck_knowledge_chunks_content_length", "length(content) <= 10000"
-            )
+        # Idempotent (2026-11-06): a `create_all()`-bootstrapped database already carries these
+        # constraints, because both are declared in the models' own __table_args__ - adding them
+        # again would duplicate the constraint in the batch rebuild rather than fail loudly.
+        if "ck_messages_content_length" not in existing_check_constraint_names("messages"):
+            with op.batch_alter_table("messages") as batch_op:
+                batch_op.create_check_constraint(
+                    "ck_messages_content_length", "length(content) <= 40000"
+                )
+        if "ck_knowledge_chunks_content_length" not in existing_check_constraint_names(
+            "knowledge_chunks"
+        ):
+            with op.batch_alter_table("knowledge_chunks") as batch_op:
+                batch_op.create_check_constraint(
+                    "ck_knowledge_chunks_content_length", "length(content) <= 10000"
+                )
 
 
 def downgrade() -> None:

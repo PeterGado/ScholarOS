@@ -115,7 +115,10 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          # 3.12, matching the backend job above and python:3.12-slim in backend/Dockerfile.
+          # Was 3.13, which meant the e2e specs ran the backend under an interpreter nothing
+          # else in the pipeline (or production) uses (2026-11-06 alignment).
+          python-version: "3.12"
           cache: pip
           cache-dependency-path: backend/pyproject.toml
 

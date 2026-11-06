@@ -10,6 +10,7 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 
 from alembic import op
+from app.database.migration_helpers import create_table_if_missing
 
 # revision identifiers, used by Alembic.
 revision: str = '4d323d592976'
@@ -24,7 +25,7 @@ def upgrade() -> None:
     # Note: autogenerate always proposes dropping the knowledge_chunk_fts* shadow tables here -
     # a known false positive since they're raw-SQL-created (FTS5 virtual table), never part of
     # SQLAlchemy metadata. Stripped, same as every prior migration in this project.
-    op.create_table('rate_limit_counters',
+    create_table_if_missing('rate_limit_counters',
     sa.Column('key', sa.String(length=512), nullable=False),
     sa.Column('counter', sa.Integer(), nullable=False),
     sa.Column('expires_at', sa.Float(), nullable=False),

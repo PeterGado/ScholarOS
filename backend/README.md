@@ -2,7 +2,7 @@
 
 Milestone 6 (Backend Implementation, Slice 1: Agent Creation → Research Document Upload), Milestone 7 (Real Authentication Boundary), and Backend Slice 2 (Knowledge Processing Pipeline: upload → process → understand → retrieve) are implemented.
 
-See [`docs/Backend_Implementation_Plan.md`](../docs/Backend_Implementation_Plan.md) for Slice 1's module structure and scope rationale, [`docs/Authentication_Implementation_Plan.md`](../docs/Authentication_Implementation_Plan.md) for the Authentication Boundary, [`docs/Backend_Slice2_Implementation_Plan.md`](../docs/Backend_Slice2_Implementation_Plan.md) for the Knowledge Processing Pipeline, and [`docs/architecture/05_Backend_Architecture.md`](../docs/architecture/05_Backend_Architecture.md) for the governing service boundaries.
+See [`docs/Others/Backend_Implementation_Plan.md`](../docs/Others/Backend_Implementation_Plan.md) for Slice 1's module structure and scope rationale, [`docs/Others/Authentication_Implementation_Plan.md`](../docs/Others/Authentication_Implementation_Plan.md) for the Authentication Boundary, [`docs/Others/Backend_Slice2_Implementation_Plan.md`](../docs/Others/Backend_Slice2_Implementation_Plan.md) for the Knowledge Processing Pipeline, and [`docs/architecture/05_Backend_Architecture.md`](../docs/architecture/05_Backend_Architecture.md) for the governing service boundaries.
 
 ## Setup
 
@@ -13,7 +13,20 @@ python -m venv .venv
 pip install -r requirements-dev.lock
 pip install --no-deps -e .
 cp .env.example .env
+python -m alembic upgrade head
 ```
+
+**Python 3.12** is the supported interpreter - pinned in the repo-root `.python-version`, in CI,
+and in `backend/Dockerfile` (`python:3.12-slim`). `pyproject.toml`'s `requires-python = ">=3.11"`
+is the floor for the type checker, not a tested version; nothing else in the pipeline runs an
+interpreter other than 3.12.
+
+**The last step creates the schema, and it is not optional.** The app does not bootstrap its own
+tables at startup any more (2026-11-06): `create_all()` is additive at table level only, so a
+database it built before a column-adding migration stayed permanently stale with no error of its
+own - the failure that surfaced as `no such column: users.email` on startup. Startup now verifies
+the schema against the models and refuses to serve a database that doesn't match, naming the
+missing columns and the fix.
 
 `requirements-dev.lock` pins every dependency (direct and transitive) to the exact version CI
 and production install (2026-10-10, closing a "no dependency lockfile" gap - what's installed
@@ -31,11 +44,18 @@ local setup when you don't need reproducibility guarantees.
 
 ## Run
 
+With the schema already migrated (see Setup):
+
 ```bash
 uvicorn app.main:app --reload
 ```
 
 Health check: `GET /health`
+
+After pulling a change that adds a migration, re-run `python -m alembic upgrade head` before
+starting the app - it adopts the existing tables and applies only what is new, preserving your
+local data. If you skip it, startup fails immediately with the missing columns listed rather
+than part-way through a request.
 
 ## Test
 
@@ -155,7 +175,7 @@ app/
 ├── database/             # structured-core persistence (SQLAlchemy)
 ├── storage/               # object store (local filesystem, ADR-004)
 ├── auth/                   # Authentication Boundary (ADR-010) - a boundary, not a modules/
-│                             # bounded context (see docs/Authentication_Implementation_Plan.md)
+│                             # bounded context (see docs/Others/Authentication_Implementation_Plan.md)
 ├── ai/                     # Provider Abstraction gateway (ADR-002) - app/ai/providers/
 │                             # holds concrete providers (google_genai, openai_compatible);
 │                             # domain/application code depends only on app/ai/providers/base.py
@@ -163,4 +183,4 @@ app/
 ```
 
 Retrieval (`GET /knowledge/search`) is hybrid (lexical + semantic, fused via Reciprocal Rank
-Fusion) per ADR-005, realized 2026-09-18 - see `docs/Project_Status.md`'s Risks table.
+Fusion) per ADR-005, realized 2026-09-18 - see `docs/Others/Project_Status.md`'s Risks table.

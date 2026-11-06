@@ -19,7 +19,7 @@ from app.core.dependencies import get_content_store
 from app.core.middleware import MaxBodySizeMiddleware
 from app.core.rate_limit import limiter
 from app.database import session as db_session_module
-from app.database.session import init_db
+from app.database.session import init_db, verify_schema
 from app.workers.executor import WorkItemExecutorLoop
 from app.workers.health import QueueHealthMonitor
 from app.workers.retention import DataRetentionJob
@@ -27,15 +27,27 @@ from app.workers.retention import DataRetentionJob
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    # Schema bootstrap (ADR-004). The PostgreSQL cutover this comment used to describe as
-    # future has happened: Alembic (14 revisions) now owns schema changes in every real
-    # deployment, run via `alembic upgrade head` before this process ever starts (see
-    # backend/Dockerfile's CMD). create_all() here is harmless and idempotent against an
-    # already-migrated Postgres database (it only creates tables that don't already exist, and
-    # Alembic already created all of them) - this call now exists mainly for local SQLite
-    # dev/test setups that never run Alembic at all, not as this app's real schema-management
-    # mechanism.
-    init_db()
+    settings = get_settings()
+
+    # Schema bootstrap (ADR-004), narrowed to ephemeral test databases only (2026-11-06).
+    # Alembic has owned this app's schema in every real deployment since the Postgres cutover,
+    # run via `alembic upgrade head` before the process starts (fly.toml's release_command).
+    # create_all() used to also run here for local SQLite dev, on the theory that it was
+    # "harmless and idempotent". It is neither: it is additive at *table* level only, so any
+    # database it bootstrapped before a column-adding migration silently kept the old column
+    # set forever - which is exactly how this app ended up unable to start against its own
+    # local database (`no such column: users.email`, thrown from sync_configured_user below).
+    # Local development now bootstraps through `alembic upgrade head` like production does
+    # (see backend/README.md), leaving create_all() for the throwaway per-test databases that
+    # have no migration history at all.
+    if settings.environment == "test":
+        init_db()
+
+    # Schema drift guard (2026-11-06): whatever created the schema, verify it actually matches
+    # the models before serving. Without this the failure above stays opaque - the first query
+    # naming a missing column dies with a bare `no such column`, attributed to whichever
+    # unrelated feature happened to run it first. This names the drift and the fix instead.
+    verify_schema()
 
     # Single-user credential provisioning (ADR-010 Decision item 1; Stage 4). A no-op if
     # AUTH_USERNAME/AUTH_PASSWORD_HASH aren't configured yet - acceptable before Stage 6 makes
@@ -43,7 +55,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # the module (not `from ... import SessionLocal`) so tests that monkeypatch
     # app.database.session.SessionLocal are honored here too - the same reason init_db()
     # resolves its default engine at call time rather than via a stale bound default.
-    settings = get_settings()
     db = db_session_module.SessionLocal()
     try:
         sync_configured_user(db, username=settings.auth_username, password_hash=settings.auth_password_hash)

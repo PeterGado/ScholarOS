@@ -15,6 +15,7 @@ add now, and `work_items` only grows over time - nothing archives or prunes term
 from collections.abc import Sequence
 
 from alembic import op
+from app.database.migration_helpers import create_index_if_missing
 
 # revision identifiers, used by Alembic.
 revision: str = 'b017cd8cd1c0'
@@ -25,7 +26,7 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.create_index('ix_work_items_state_work_item_id', 'work_items', ['state', 'work_item_id'], unique=False)
+    create_index_if_missing('ix_work_items_state_work_item_id', 'work_items', ['state', 'work_item_id'], unique=False)
 
 
 def downgrade() -> None:

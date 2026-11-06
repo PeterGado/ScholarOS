@@ -10,6 +10,7 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 
 from alembic import op
+from app.database.migration_helpers import existing_columns
 
 # revision identifiers, used by Alembic.
 revision: str = 'e151d6a4fdf6'
@@ -25,10 +26,16 @@ def upgrade() -> None:
 
     Batch mode for SQLite portability (local dev/tests), matching this codebase's existing
     column-add migrations - plain ALTER on Postgres (production).
+
+    Idempotent (2026-11-06): each column is skipped when already present, so this revision can
+    be part of repairing a `create_all()`-bootstrapped database.
     """
+    already_present = existing_columns('research_documents')
     with op.batch_alter_table('research_documents') as batch_op:
-        batch_op.add_column(sa.Column('doi', sa.String(length=255), nullable=True))
-        batch_op.add_column(sa.Column('doi_verification_status', sa.String(length=16), nullable=True))
+        if 'doi' not in already_present:
+            batch_op.add_column(sa.Column('doi', sa.String(length=255), nullable=True))
+        if 'doi_verification_status' not in already_present:
+            batch_op.add_column(sa.Column('doi_verification_status', sa.String(length=16), nullable=True))
 
 
 def downgrade() -> None:
