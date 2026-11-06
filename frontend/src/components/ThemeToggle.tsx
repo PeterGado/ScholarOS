@@ -7,27 +7,23 @@ export function ThemeToggle() {
 
   return (
     <Button
+      // Explicit default variant: the same fill as the header's "Get started" button
+      // (bg-primary #172554, hover:bg-primary-hover #1E3A8A), so the two read as one
+      // control family rather than two different blues.
+      //
+      // A filled variant rather than ghost: the toggle also renders on the ivory
+      // landing-page header, where a transparent button with a white icon was invisible
+      // at rest. The inner white border keeps an edge on the navy sidebar, whose
+      // background (--sidebar #172554) is the same navy as --primary.
+      variant="default"
       size="icon"
       onClick={toggleTheme}
       aria-label={
         theme === "dark" ? "Switch to light theme" : "Switch to dark theme"
       }
-      // Solid blue instead of a transparent ghost button. The toggle is rendered both on the
-      // ivory landing-page header and on the navy sidebar, and a transparent button with
-      // `text-sidebar-foreground` (white in the light theme) was invisible against the ivory
-      // page - only the hover state ever showed. A filled button is visible at rest in both
-      // placements regardless of what sits behind it.
-      //
-      // `bg-primary-hover` (#1E3A8A light / #5578E8 dark) is a step brighter than `bg-primary`,
-      // so the button stays distinguishable from the light-mode sidebar, which is itself
-      // `--sidebar: #172554` backed by the same navy as `--primary`. The white inner border
-      // gives it an edge on that navy; on the ivory page it reads as a plain blue button.
-      // Brightening on hover (rather than swapping to `--primary`) avoids landing back on the
-      // sidebar's own color mid-interaction.
       className="
-        border-white/25 bg-primary-hover text-primary-foreground shadow-sm
-        hover:brightness-110
-        transition-all duration-200
+        border-white/25 shadow-sm
+        transition-colors duration-200
         focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
       "
     >
