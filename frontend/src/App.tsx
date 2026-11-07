@@ -1,5 +1,6 @@
 import { lazy, Suspense } from "react";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { WorkspaceGate } from "@/components/WorkspaceGate";
 import { AppShell } from "@/components/AppShell";
@@ -39,9 +40,13 @@ function RouteFallback() {
   return <p className="p-6 text-sm text-muted-foreground">Loading...</p>;
 }
 
-function App() {
+function AppRoutes() {
+  // Keying the boundary on the pathname resets it on navigation (2026-11-06): without the key a
+  // page that threw once would keep the fallback on screen after the user clicked elsewhere.
+  const location = useLocation();
+
   return (
-    <BrowserRouter>
+    <ErrorBoundary key={location.pathname} label="This page">
       <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route path="/" element={<LandingPage />} />
@@ -80,6 +85,14 @@ function App() {
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </Suspense>
+    </ErrorBoundary>
+  );
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      <AppRoutes />
     </BrowserRouter>
   );
 }

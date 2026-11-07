@@ -9,6 +9,30 @@
       name="description"
       content="ScholarOS is an AI writing assistant that reads your research documents and writing style, then helps you write with real citations grounded in the evidence you actually uploaded."
     />
+    <!-- Browser chrome colour per theme (2026-11-06) - matches --background in each theme
+         (index.css), so the mobile address bar doesn't sit as a grey band above the app. -->
+    <meta name="theme-color" content="#FAFAF7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#11182B" media="(prefers-color-scheme: dark)" />
+    <!-- Applies the saved theme before first paint. ThemeContext also sets the .dark class,
+         but it does so inside a useEffect, which runs *after* the browser has painted - so
+         anyone with the dark theme selected saw the ivory background flash first on every
+         load and reload. This runs synchronously in <head>, before the body is rendered.
+         Keep the storage key and the matchMedia query in sync with src/lib/ThemeContext.tsx;
+         the rules are duplicated here on purpose, because this block cannot import the app
+         bundle without defeating the point of running before it. -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("scholaros-theme");
+          var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var isDark = stored === "dark" || (stored !== "light" && prefersDark);
+          if (isDark) document.documentElement.classList.add("dark");
+        } catch (error) {
+          // localStorage can throw in private browsing / with storage disabled. Falling
+          // through leaves the light theme, which is the same default ThemeContext uses.
+        }
+      })();
+    </script>
     <meta property="og:title" content="ScholarOS" />
     <meta
       property="og:description"

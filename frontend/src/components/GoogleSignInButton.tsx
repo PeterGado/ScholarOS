@@ -32,14 +32,14 @@ function loadGoogleIdentityScript(): Promise<void> {
   });
 }
 
-interface GoogleSignInButtonProps {
-  /** Called with the raw Google ID token once the user completes the Google flow - this
-   * component is presentation-only; the caller owns calling the backend and setToken. */
+export interface GoogleSignInButtonProps {
+  /** Called with the raw Google ID token once the user completes the Google flow - the caller
+   * owns calling the backend and setToken. */
   onCredential: (idToken: string) => void;
   /** Called when Google Sign-In doesn't become usable within a few seconds - no client ID
-   * configured, the identity script failed to load (a corporate/school network or an
-   * ad-blocker can do this), or it simply never finished in time. Lets the caller show a
-   * fallback instead of silently rendering nothing. */
+   * configured, the identity script failed to load (a corporate/school network or an ad-blocker
+   * can do this), or it simply never finished in time. Lets the caller show a fallback instead
+   * of silently rendering nothing. */
   onUnavailable?: () => void;
 }
 
@@ -47,7 +47,18 @@ export function GoogleSignInButton({ onCredential, onUnavailable }: GoogleSignIn
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // The env var is intentionally empty in the repo (.env.example ships it that way too) and the
+    // surrounding comment says so: a Google Cloud OAuth Client ID is required for Google Sign-In,
+    // and shipping a placeholder would just mask the failure until the user's first click. At dev
+    // time, dumping the actual value to the console is the difference between "why isn't it
+    // loading?" and "I forgot to paste it into .env".
     if (!import.meta.env.VITE_GOOGLE_CLIENT_ID) {
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          "[GoogleSignInButton] VITE_GOOGLE_CLIENT_ID is not set. Copy VITE_GOOGLE_CLIENT_ID from the backend's GOOGLE_OAUTH_CLIENT_ID, then restart. The button will stay empty until you do.",
+        );
+      }
       onUnavailable?.();
       return;
     }
