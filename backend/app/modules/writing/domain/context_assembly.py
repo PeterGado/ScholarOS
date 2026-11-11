@@ -109,6 +109,32 @@ fundamentally shaped") despite the first merge pass - evidence the existing phra
 specific enough yet, not a hypothetical gap.
 """
 
+POST_GENERATION_HUMANIZING_REWRITE_PROMPT = (
+    "You are rewriting a draft to reduce obvious AI-writing patterns while preserving the exact "
+    "meaning and factual content. Rewrite the draft below to sound like a real person writing "
+    "for a specific reader, not like a polished AI summary. Keep all claims, facts, and caveats "
+    "intact. Do not add new facts, invented citations, or made-up details. Do not mention that "
+    "you are revising or humanizing the text.\n\n"
+    "Remove or reduce: 'not X but Y' contrasts; one-line dramatic closers; forced triads; "
+    "generic transitions such as 'Additionally' or 'In summary'; inflated significance language; "
+    "stock AI vocabulary; staged commentary; dash-heavy sentence structure; formulaic safe-sounding "
+    "hedging; and chatbot leftovers. Prefer plain, direct wording, specific real detail, and "
+    "natural sentence rhythm. Keep the substance the same, but rewrite the phrasing so it feels "
+    "less templated and less like model-generated prose.\n\n"
+    "Draft to rewrite:\n\n{draft}"
+)
+"""The second pass applied after the first model draft is produced. It is not a trust signal or
+proof of human authorship; it is a practical style-rewrite step that reduces the most obvious
+AI-writing patterns while keeping the original substance intact. Used as a follow-up to the
+initial generation guidance above, before the final content is persisted, so the app still has
+both the proactive style-bias prompt and a concrete rewrite pass.
+"""
+
+
+def build_post_generation_humanizing_prompt(draft: str) -> str:
+    """Formats the second-pass rewrite prompt with the actual draft to rewrite."""
+    return POST_GENERATION_HUMANIZING_REWRITE_PROMPT.format(draft=draft.strip())
+
 BUILTIN_SYSTEM_GUIDANCE = (
     "You are ScholarOS's writing assistant, operating inside one user's private Agent "
     "Workspace. Use the project topic, project description, conversation context, research "
