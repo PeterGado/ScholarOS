@@ -40,6 +40,7 @@ describe("RegisterPage", () => {
     window.localStorage.clear();
     setToken(null);
     vi.clearAllMocks();
+    vi.stubEnv("VITE_REQUIRE_INVITE_CODE", "false");
   });
 
   it("has a way back to the landing page", () => {
@@ -48,14 +49,14 @@ describe("RegisterPage", () => {
     expect(screen.getByRole("link", { name: /back to home/i })).toHaveAttribute("href", "/");
   });
 
-  it("signs up via Google with no invite code - registration is fully open", async () => {
+  it("signs up via Google with no invite code when invite gating is disabled", async () => {
     vi.mocked(authApi.loginWithGoogle).mockResolvedValue({ access_token: "token-456", token_type: "bearer" });
     const user = userEvent.setup();
     renderRegisterPage();
 
     await user.click(screen.getByRole("button", { name: "Sign in with Google" }));
 
-    await waitFor(() => expect(authApi.loginWithGoogle).toHaveBeenCalledWith("fake-google-id-token"));
+    await waitFor(() => expect(authApi.loginWithGoogle).toHaveBeenCalledWith("fake-google-id-token", ""));
   });
 
   it("shows an error message when Google sign-in fails", async () => {
@@ -81,7 +82,7 @@ describe("RegisterPage", () => {
     await user.click(screen.getByRole("button", { name: "Create account" }));
 
     await waitFor(() =>
-      expect(authApi.register).toHaveBeenCalledWith("new-researcher@example.com", "a-real-password"),
+      expect(authApi.register).toHaveBeenCalledWith("new-researcher@example.com", "a-real-password", null, ""),
     );
   });
 
@@ -95,7 +96,31 @@ describe("RegisterPage", () => {
     await user.click(screen.getByRole("button", { name: "Create account" }));
 
     await waitFor(() =>
-      expect(authApi.register).toHaveBeenCalledWith("new-researcher@example.com", "a-real-password"),
+      expect(authApi.register).toHaveBeenCalledWith("new-researcher@example.com", "a-real-password", null, ""),
+    );
+  });
+
+  it("submits the invite code for email registration and Google sign-in when required", async () => {
+    vi.stubEnv("VITE_REQUIRE_INVITE_CODE", "true");
+    vi.mocked(authApi.register).mockResolvedValue({ access_token: "token-123", token_type: "bearer" });
+    vi.mocked(authApi.loginWithGoogle).mockResolvedValue({ access_token: "token-456", token_type: "bearer" });
+    const user = userEvent.setup();
+    renderRegisterPage();
+
+    await user.type(screen.getByLabelText("Invite code"), "beta-invite");
+    await user.click(screen.getByRole("button", { name: "Sign in with Google" }));
+    await waitFor(() => expect(authApi.loginWithGoogle).toHaveBeenCalledWith("fake-google-id-token", "beta-invite"));
+
+    await user.type(screen.getByLabelText("Email"), "new-researcher@example.com");
+    await user.type(screen.getByLabelText("Password"), "a-real-password");
+    await user.click(screen.getByRole("button", { name: "Create account" }));
+    await waitFor(() =>
+      expect(authApi.register).toHaveBeenCalledWith(
+        "new-researcher@example.com",
+        "a-real-password",
+        null,
+        "beta-invite",
+      ),
     );
   });
 

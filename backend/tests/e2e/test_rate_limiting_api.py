@@ -143,6 +143,46 @@ def test_search_beyond_the_per_minute_limit_returns_429(client, auth_headers):
     assert response.json()["error_type"] == "RateLimitExceeded"
 
 
+def test_each_authenticated_user_gets_its_own_rate_limit(client, auth_headers):
+    """2026-10-23, per-user keying: before this, every request from one IP shared a bucket, so
+    two researchers behind the same campus/office NAT starved each other - and one user could
+    reset their budget by switching networks.
+    """
+    _create_workspace(client, auth_headers)
+    for _ in range(20):
+        assert client.get("/knowledge/search", params={"q": "anything"}, headers=auth_headers).status_code == 200
+    assert client.get("/knowledge/search", params={"q": "one too many"}, headers=auth_headers).status_code == 429
+
+    # A different user, from the very same client IP - must not inherit the exhausted budget.
+    register_response = client.post(
+        "/auth/register", json={"email": "second-researcher@example.com", "password": "a-real-password"}
+    )
+    assert register_response.status_code == 201
+    other_headers = {"Authorization": f"Bearer {register_response.json()['access_token']}"}
+    _create_workspace(client, other_headers)
+
+    response = client.get("/knowledge/search", params={"q": "anything"}, headers=other_headers)
+
+    assert response.status_code == 200
+
+
+def test_a_second_session_for_the_same_user_shares_the_same_limit(client, auth_headers):
+    """Keying is per user, not per bearer token - logging in again must not hand out a fresh
+    budget, otherwise the limit is trivially bypassed.
+    """
+    _create_workspace(client, auth_headers)
+    for _ in range(20):
+        assert client.get("/knowledge/search", params={"q": "anything"}, headers=auth_headers).status_code == 200
+
+    second_login = client.post("/auth/login", json={"username": AUTH_USERNAME, "password": AUTH_PASSWORD})
+    assert second_login.status_code == 200
+    second_session = {"Authorization": f"Bearer {second_login.json()['access_token']}"}
+
+    response = client.get("/knowledge/search", params={"q": "anything"}, headers=second_session)
+
+    assert response.status_code == 429
+
+
 def test_a_429_response_includes_a_retry_after_header(client, provisioned_user):
     for _ in range(10):
         client.post("/auth/login", json={"username": AUTH_USERNAME, "password": "wrong-password"})

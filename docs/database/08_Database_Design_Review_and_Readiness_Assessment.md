@@ -335,3 +335,49 @@ This section is appended after §23 to record a second, subsequent correction, p
 **Outstanding technical debt and deferred decisions (§10–§11) are unaffected**, with two additions: idle/absolute session timeout policy (explicitly left undecided by ADR-010 — see its Decision item 2) and the operational mechanism for generating `AUTH_PASSWORD_HASH` (flagged in ADR-010 Decision item 1 as required before implementation, not yet specified) both join §11's deferred-decisions list.
 
 **Governance record:** this correction is recorded in the journal (`docs/journal/2026-09-10.md`) and in `docs/Baseline_Register.md`, per `04_Repository_Governance.md` §4.4 and §5.3.
+
+---
+
+## 25. Post-Freeze Correction: ADR-012 (2026-10-09, recording a decision made and implemented earlier)
+
+This section is appended after §24 to record a third correction, per `04_Repository_Governance.md` §4.4. Sections 1–24 above remain the historical record and are not rewritten. Unlike §23 and §24, the decision this section records was not made at the time of writing — it was made and fully implemented in an uncommitted working session between 2026-09-16 and 2026-09-18, with no ADR, journal entry, or correction section written at the time. `docs/Database_Human_Review_Materials.md` §3.2 (2026-09-18) surfaced this gap during a baseline review and explicitly left the decision of whether to formally correct it to the project owner, who has since confirmed it. `ADR-012` and this section are that correction, written retroactively.
+
+**What changed:** `Draft` (§3.15), `Draft Version` (§3.16), `Review` (§3.17), and `Review Decision` (§3.18) — four core entities — and `Draft Evidence Link` (§4.2) — one link entity — are removed from the Database Baseline. `Conversation` and `Message` (§3.9–§3.10), already specified in the frozen model as a secondary channel, became the primary writing-generation mechanism in their place; `Memory Record` absorbs the persistent-context role `Review Decision` used to feed; `Message Context Link` (already specified, same exclusive-arc shape as `Draft Evidence Link`) carries evidence-grounding forward. No entity was newly designed for this — see `ADR-012` Decision item 3.
+
+**Why:** a conversational writing interface is a better fit for this product's actual single-researcher, iterative use case than a formal Draft → Review → Decision pipeline modeled on a distinct-reviewer-role workflow this product never had. Full rationale in `ADR-012`.
+
+**Documents corrected, and the honest extent of correction:**
+- `04_Logical_Data_Model.md`: the five entity/link sections themselves (§3.15–§3.18, §4.2) are marked removed in place, **section numbers preserved** (not renumbered, to avoid breaking the many other documents that cross-reference them by number) rather than deleted outright. §16's summary counts are corrected: twenty-six logical entities → twenty-one (seventeen core/system, four link, down from twenty-one and five respectively).
+- `02_Domain_Model.md`: the domain inventory is corrected — Draft and Review removed, thirteen domains → eleven.
+- **Not corrected in this pass, flagged as an explicit, open follow-up:** inline Draft/Review references remaining in `02`'s per-domain narrative sections (dependencies/relationships mentioning Draft or Review as a consumer), `03_Conceptual_Data_Model.md`'s relationship catalogue and matrix (§3.9 "Draft Relationships," §3.10 "Review Relationships," and several table rows), and `05_Constraints_and_Integrity.md`'s invariants, state-transition table, candidate-key list, and tombstone-policy list (at minimum: invariants 1, 2, 4, 14; the state table's Draft/Draft Version/Review/Review Decision rows; the evidence-immutability and Agent-scoping prose). These were reviewed and identified, not silently missed, but correcting dense formal prose across two more documents in the same pass risked rushing it — see `ADR-012` Alternatives Considered #3. A reader of `02`, `03`, or `05` encountering a Draft/Review reference not yet corrected should treat `ADR-012` and this section as authoritative over that uncorrected prose, not the other way around.
+- `06_Physical_Design_Strategy.md`, `07_Database_Validation_and_Quality_Assurance.md`: reviewed, require no change — neither names Draft/Review-specific physical or validation concerns beyond what the general entity/link patterns already cover.
+
+**Updated readiness verdict:** unaffected by the correction itself (removing entities from an already-implemented, already-validated system does not reopen implementation readiness). The Database Baseline, as now corrected, is **an accurate description of a system that has been running in production since before this correction was written**, not a forward-looking design the correction is clearing the way for — a different relationship to "readiness" than §23 or §24 had, worth naming directly.
+
+**Outstanding technical debt and deferred decisions (§10–§11) are unaffected**, with one addition: the `02`/`03`/`05` follow-up correction named above joins §11's deferred-decisions list.
+
+**Governance record:** no journal entry exists for the original 2026-09-16–2026-09-18 decision (the gap `ADR-012`'s own Context and Consequences sections name directly). This correction itself is recorded in `docs/Baseline_Register.md` and `ADR-012`, per `04_Repository_Governance.md` §4.4 and §5.3.
+
+---
+
+## 26. Post-Freeze Correction: ADR-013 (2026-10-10, Row-Level Security and schema growth)
+
+This section is appended after §25 to record a fourth correction, per `04_Repository_Governance.md` §4.4. Sections 1–25 above remain the historical record and are not rewritten. Like §25, most of what this section records was already true of the running system before it was written down — Row-Level Security shipped 2026-09-21, the schema growth below accumulated progressively through 2026-10-06 — with no ADR or correction section covering any of it until `ADR-013`.
+
+**What changed:**
+- **Row-Level Security** is adopted as a second, independent tenant-isolation enforcement layer on top of the application-level ownership checks the Database Baseline already assumed. Sixteen tables carry a policy walking their foreign-key chain back to `agents.user_id`; the running application connects through a restricted, non-superuser role (`scholaros_app`) rather than the table-owner role migrations run as; `users`, the pre-identity token tables, `work_items`, and `rate_limit_counters` are deliberately excluded. Full policy inventory: `docs/Backend_Schema_Reference.md` §6.
+- **Schema growth beyond §23–§25's corrections:** `User` gained `email`, `email_verified`, `google_subject` (the schema-level consequence of ADR-011's registration/Google Sign-In/password reset/email verification work); `ResearchDocument` gained `publication_year`, `doi`, `doi_verification_status`, `purpose`; five new tables with no prior baseline entity — `writing_segments`, `password_reset_tokens`, `email_verification_tokens`, `ai_usage_records`, `rate_limit_counters`. None required redesigning a frozen entity. Full current detail: `docs/Backend_Schema_Reference.md` §2–§3.
+
+**Why:** Row-Level Security realizes the "per-tenant isolation decision" `ADR-007` Decision item 5 itself said would get a future ADR — `ADR-013` is that ADR. The schema growth is normal additive evolution of already-approved feature work (ADR-011's registration expansion; the rate limiter and AI usage guard built alongside it), recorded here in aggregate per the same "additive, not every similarly-shaped change needs its own ADR" discipline `ADR-011`/`ADR-012` already established. Full rationale: `ADR-013`.
+
+**Documents corrected, and the honest extent of correction:**
+- `docs/adr/ADR-004_Storage_and_Memory_Strategy.md`, `docs/adr/ADR-007_Deployment_Strategy.md`: cross-reference additions only — `ADR-013` as the realization/multi-tenant-isolation record either anticipated; neither document's Decision text is rewritten.
+- `docs/architecture/07_Operational_Architecture.md`: one Traceability-section line extended to name `ADR-013` alongside `ADR-004`/`ADR-007`.
+- `docs/Baseline_Register.md`: new correction line for Architecture Baseline v1 (its third) and Database Baseline v1 (its fourth).
+- **Not separately corrected in this pass:** `02_Domain_Model.md` through `07_Database_Validation_and_Quality_Assurance.md`'s own prose is not individually amended for every new table/column named above — `docs/Backend_Schema_Reference.md` is the authoritative, current, practical schema reference going forward for this kind of additive growth (per its own Purpose section), rather than every addition triggering a fresh correction pass through the conceptual/logical model documents. This is a deliberate choice about where incremental schema-growth detail lives, not an oversight — see `ADR-013` Alternatives Considered.
+
+**Updated readiness verdict:** unaffected. As with §25, this corrects the record of an already-running, already-validated production system, not a forward-looking design.
+
+**Outstanding technical debt and deferred decisions (§10–§11) are unaffected**, with one addition: the pgvector migration `ADR-004` Decision item 3 named remains open, now explicitly re-flagged by `ADR-013` rather than silently left to be inferred.
+
+**Governance record:** this correction is recorded in `docs/Baseline_Register.md` and `ADR-013`, per `04_Repository_Governance.md` §4.4 and §5.3.

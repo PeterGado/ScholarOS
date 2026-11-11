@@ -48,10 +48,10 @@ Attributes are expressed with **logical type families** — implementation-neutr
 
 ### 2.2 Entity Families
 
-**Corrected by ADR-009:** Agent added as a new core entity; Agent/Agent Capability renamed to Capability/Capability Entry to free the name.
+**Corrected by ADR-009:** Agent added as a new core entity; Agent/Agent Capability renamed to Capability/Capability Entry to free the name. **Corrected by ADR-012 (2026-10-09, see `08` §25):** Draft, Draft Version, Review, and Review Decision removed.
 
-* **Core entities** hold the primary information of each domain (Agent, Project, Research Document, Knowledge Element, Knowledge Chunk, Memory Record, Conversation, Message, Writing Profile, Profile Characteristic, Capability, Capability Entry, Draft, Draft Version, Review, Review Decision, Configuration Item, User, Session).
-* **Link entities** resolve many-to-many and polymorphic relationships (Chunk Evidence Link, Draft Evidence Link, Memory Provenance Link, Message Context Link, Profile Characteristic Source). The **Knowledge Element Relationship** — the junction that resolves element-to-element semantic relationships — is presented alongside the entity it associates in §3.6 and counts toward the core entity total in §16.
+* **Core entities** hold the primary information of each domain (Agent, Project, Research Document, Knowledge Element, Knowledge Chunk, Memory Record, Conversation, Message, Writing Profile, Profile Characteristic, Capability, Capability Entry, Configuration Item, User, Session). *(Draft, Draft Version, Review, and Review Decision were core entities too, before ADR-012 removed all four — see `08` §25.)*
+* **Link entities** resolve many-to-many and polymorphic relationships (Chunk Evidence Link, Memory Provenance Link, Message Context Link, Profile Characteristic Source — Draft Evidence Link removed, ADR-012, see `08` §25). The **Knowledge Element Relationship** — the junction that resolves element-to-element semantic relationships — is presented alongside the entity it associates in §3.6 and counts toward the core entity total in §16.
 * **System entities** support the approved operational model (Work Item — the durable outbox of ADR-006).
 
 ### 2.3 Content Payloads
@@ -97,7 +97,7 @@ Content payloads (document content, chunk content, draft content) are modeled as
 
 ### 3.3 Project
 
-**Purpose:** the raw input material of a research undertaking — its identity, topic, and source documents (DR-001 to DR-003). **Narrowed by ADR-009:** Project no longer directly hosts knowledge, memory, conversations, drafts, writing profile, or configuration — see §3.21 Agent. Project is now owned by exactly one Agent.
+**Purpose:** the raw input material of a research undertaking — its identity, topic, and source documents (DR-001 to DR-003). **Narrowed by ADR-009:** Project no longer directly hosts knowledge, memory, conversations, writing profile, or configuration (nor, at the time, drafts — removed entirely by ADR-012, see `08` §25) — see §3.21 Agent. Project is now owned by exactly one Agent.
 
 | Attribute | Logical type | Nullability | Description |
 |-----------|--------------|-------------|-------------|
@@ -303,67 +303,21 @@ Content payloads (document content, chunk content, draft content) are modeled as
 
 **Keys:** primary key `entry_id`; candidate key (`capability_id`, `capability_name`). **FK:** `capability_id` → Capability.
 
-### 3.15 Draft
+### 3.15 Draft — REMOVED (ADR-012, see `08` §25)
 
-**Purpose:** generated/refined academic content as a series of versions (DR-016 to DR-019; 04 §20).
+Removed from the Database Baseline 2026-10-09 (decision made and implemented earlier, 2026-09-16–2026-09-18; see `ADR-012`). Replaced by `Conversation`/`Message` (§3.9–§3.10) as the primary writing-generation mechanism. Section number preserved, not reused, for cross-reference stability. Original specification preserved in `08` §25 and git history, not here.
 
-| Attribute | Logical type | Nullability | Description |
-|-----------|--------------|-------------|-------------|
-| draft_id | Identifier | Not null | Surrogate identifier. |
-| agent_id | Reference | Not null | → Agent. **Replaces `project_id` — ADR-009.** |
-| title | Short Text | Not null | Draft title. |
-| target | Short Text | Nullable | Chapter/section context within Chapters 1–3 (MVP-015). |
-| status | Enumerated | Not null | drafting / in_review / approved / superseded. |
-| created_at | Timestamp | Not null | Creation time. |
-| updated_at | Timestamp | Nullable | Last change. |
-| deleted_at | Timestamp | Nullable | Soft-delete tombstone. |
+### 3.16 Draft Version — REMOVED (ADR-012, see `08` §25)
 
-**Keys:** primary key `draft_id`. **FK:** `agent_id` → Agent.
+Removed alongside `Draft` (§3.15). See `ADR-012`.
 
-### 3.16 Draft Version
+### 3.17 Review — REMOVED (ADR-012, see `08` §25)
 
-**Purpose:** an immutable state of a draft produced by one writing or revision cycle (DR-017; MVP-021; AIR-035).
+Removed 2026-10-09 (decision made earlier; see `ADR-012`). No successor entity — the single-researcher use case this baseline was corrected to reflect has no distinct reviewer role or approval-gate step.
 
-| Attribute | Logical type | Nullability | Description |
-|-----------|--------------|-------------|-------------|
-| version_id | Identifier | Not null | Surrogate identifier. |
-| draft_id | Reference | Not null | → Draft. |
-| version_number | Numeric | Not null | Ordinal within the draft. |
-| content | Long Text | Not null | Version content (immutable after creation). |
-| created_at | Timestamp | Not null | Version time. |
-| created_by | Enumerated | Not null | system (generated) / user (authored/edited). |
+### 3.18 Review Decision — REMOVED (ADR-012, see `08` §25)
 
-**Keys:** primary key `version_id`; candidate key (`draft_id`, `version_number`). **FK:** `draft_id` → Draft.
-
-### 3.17 Review
-
-**Purpose:** an evaluation round applied to a draft version (DR-019; WR-022 to WR-025).
-
-| Attribute | Logical type | Nullability | Description |
-|-----------|--------------|-------------|-------------|
-| review_id | Identifier | Not null | Surrogate identifier. |
-| draft_version_id | Reference | Not null | → Draft Version. |
-| status | Enumerated | Not null | open / decided. |
-| notes | Long Text | Nullable | Reviewer's feedback and revision requests. |
-| opened_at | Timestamp | Not null | Review start. |
-| decided_at | Timestamp | Nullable | Decision time. |
-
-**Keys:** primary key `review_id`. **FK:** `draft_version_id` → Draft Version.
-
-### 3.18 Review Decision
-
-**Purpose:** the recorded outcome of a review, preserved for audit (DR-019; AIR-054; MVP-018 to MVP-020).
-
-| Attribute | Logical type | Nullability | Description |
-|-----------|--------------|-------------|-------------|
-| decision_id | Identifier | Not null | Surrogate identifier. |
-| review_id | Reference | Not null | → Review (one-to-one). |
-| outcome | Enumerated | Not null | approved / revisions_requested / rejected. |
-| rationale | Long Text | Nullable | Justification. |
-| decided_by | Reference | Not null | → User (the researcher). |
-| decided_at | Timestamp | Not null | Decision time. |
-
-**Keys:** primary key `decision_id`; candidate key `review_id` (one decision per review). **FKs:** `review_id` → Review; `decided_by` → User.
+Removed alongside `Review` (§3.17). Its memory-provenance role is absorbed by `Memory Record` (§3.8) directly. See `ADR-012`.
 
 ### 3.19 Configuration Item
 
@@ -440,21 +394,9 @@ Content payloads (document content, chunk content, draft content) are modeled as
 
 **Keys:** primary key `link_id`; candidate key (`chunk_id`, `document_id`). **FKs:** `chunk_id` → Knowledge Chunk; `document_id` → Research Document. Links are immutable.
 
-### 4.2 Draft Evidence Link
+### 4.2 Draft Evidence Link — REMOVED (ADR-012, see `08` §25)
 
-**Purpose:** evidence annotation connecting a Draft Version to the Knowledge Chunks or Research Documents that support it (DR-018; AIR-027; 04 §18.1 stage 4).
-
-| Attribute | Logical type | Nullability | Description |
-|-----------|--------------|-------------|-------------|
-| link_id | Identifier | Not null | Surrogate identifier. |
-| draft_version_id | Reference | Not null | → Draft Version. |
-| target_type | Enumerated | Not null | knowledge_chunk / research_document. |
-| chunk_id | Reference | Nullable | → Knowledge Chunk (set when target_type = knowledge_chunk). |
-| document_id | Reference | Nullable | → Research Document (set when target_type = research_document). |
-| created_at | Timestamp | Not null | Annotation time. |
-| created_by | Enumerated | Not null | system / user. |
-
-**Keys:** primary key `link_id`; candidate key (`draft_version_id`, `target_type`, `chunk_id`, `document_id`). **FKs:** `draft_version_id` → Draft Version; `chunk_id` → Knowledge Chunk; `document_id` → Research Document. **Rule:** exactly one target reference is set (exclusive arc; §8).
+Removed 2026-10-09 (decision made earlier; see `ADR-012`) alongside `Draft Version` (§3.16), the entity it annotated. Evidence-grounding is now carried by `Message Context Link` (§4.4, already specified, same exclusive-arc shape), not reintroduced as a separate mechanism.
 
 ### 4.3 Memory Provenance Link
 
@@ -464,12 +406,10 @@ Content payloads (document content, chunk content, draft content) are modeled as
 |-----------|--------------|-------------|-------------|
 | link_id | Identifier | Not null | Surrogate identifier. |
 | record_id | Reference | Not null | → Memory Record. |
-| source_type | Enumerated | Not null | user_input / review_decision / conversation / knowledge_element / document / draft_version. |
-| review_decision_id | Reference | Nullable | → Review Decision. |
+| source_type | Enumerated | Not null | user_input / conversation / knowledge_element / document. *(`review_decision` removed by ADR-012, 2026-10-09, see `08` §25 — `review_decision_id` below removed with it.)* |
 | conversation_id | Reference | Nullable | → Conversation. |
 | element_id | Reference | Nullable | → Knowledge Element. |
 | document_id | Reference | Nullable | → Research Document. |
-| draft_version_id | Reference | Nullable | → Draft Version. |
 | created_at | Timestamp | Not null | Link creation. |
 
 **Keys:** primary key `link_id`; candidate key (`record_id`, `source_type`, target reference). **FKs:** per source type. **Rule:** exactly one target reference is set (exclusive arc).
@@ -482,11 +422,10 @@ Content payloads (document content, chunk content, draft content) are modeled as
 |-----------|--------------|-------------|-------------|
 | link_id | Identifier | Not null | Surrogate identifier. |
 | message_id | Reference | Not null | → Message. |
-| target_type | Enumerated | Not null | research_document / knowledge_element / knowledge_chunk / draft_version / memory_record. |
+| target_type | Enumerated | Not null | research_document / knowledge_element / knowledge_chunk / memory_record. *(`draft_version` removed by ADR-012, 2026-10-09, see `08` §25 — `draft_version_id` below removed with it.)* |
 | document_id | Reference | Nullable | → Research Document. |
 | element_id | Reference | Nullable | → Knowledge Element. |
 | chunk_id | Reference | Nullable | → Knowledge Chunk. |
-| draft_version_id | Reference | Nullable | → Draft Version. |
 | memory_record_id | Reference | Nullable | → Memory Record. |
 | created_at | Timestamp | Not null | Reference time. |
 
@@ -522,7 +461,6 @@ The conceptual relationships of Document 03 §3 are realized as follows:
 | Agent — Knowledge Chunk (1:N) | Reference `KnowledgeChunk.agent_id`. *(Moved from Project by ADR-009.)* |
 | Agent — Memory Record (1:N) | Reference `MemoryRecord.agent_id`. *(Moved from Project by ADR-009.)* |
 | Agent — Conversation (1:N) | Reference `Conversation.agent_id`. *(Moved from Project by ADR-009.)* |
-| Agent — Draft (1:N) | Reference `Draft.agent_id`. *(Moved from Project by ADR-009.)* |
 | Agent — Writing Profile (1:N) | Reference `WritingProfile.agent_id`. *(Moved from Project by ADR-009.)* |
 | Agent — Configuration Item (1:N) | Reference `ConfigurationItem.agent_id` (agent scope). *(Moved from Project by ADR-009; scope value renamed `project` → `agent`.)* |
 | Research Document — Knowledge Element (1:N) | Reference `KnowledgeElement` — the derivation is expressed by the evidence chain (Element ← Chunk ← ChunkEvidenceLink → Document). |
@@ -536,15 +474,11 @@ The conceptual relationships of Document 03 §3 are realized as follows:
 | Conversation — Memory Record (approved outcomes) | **Memory Provenance Link** (source_type = conversation). |
 | Writing Profile — Profile Characteristic (1:N) | Reference `ProfileCharacteristic.profile_id`. |
 | Profile Characteristic — Research Document (N:M) | **Profile Characteristic Source** (junction). |
-| Writing Profile — Draft (N:M) | Realized indirectly: a draft's project associates it with the project's active profile (see §7, rule 4). |
+| Writing Profile — Conversation (N:M) | Realized indirectly: a conversation's agent associates it with the agent's active profile. *(Previously "Writing Profile — Draft" — ADR-012, see `08` §25.)* |
 | Capability — Capability Entry (1:N) | Reference `CapabilityEntry.capability_id`. *(Renamed from Agent/Agent Capability by ADR-009.)* |
 | Capability — Configuration Item (N:M) | Configuration Item with scope = agent (capability entry sets). |
-| Draft — Draft Version (1:N, composition) | Reference `DraftVersion.draft_id`. |
-| Draft Version — Chunk/Document (N:M, evidence) | **Draft Evidence Link** (exclusive arc). |
-| Draft Version — Memory Record (N:M) | Realized indirectly through context assembly; provenance retained via Memory Provenance Link where the draft is a source. |
-| Draft Version — Writing Profile (N:M) | Indirect via project profile (see Writing Profile — Draft). |
-| Draft Version — Review (1:N) | Reference `Review.draft_version_id`. |
-| Review — Review Decision (1:1) | Reference `ReviewDecision.review_id` (unique). |
+
+*Rows removed by ADR-012 (2026-10-09, see `08` §25): Draft—Draft Version (composition), Draft Version—Chunk/Document evidence (Draft Evidence Link), Draft Version—Memory Record, Draft Version—Writing Profile, Draft Version—Review, Review—Review Decision. Their equivalents are realized through Conversation/Message, Message Context Link, and Memory Provenance Link instead — see the rows above for Conversation's own relationships.*
 
 ---
 
@@ -552,14 +486,14 @@ The conceptual relationships of Document 03 §3 are realized as follows:
 
 The logical model is normalized to **third normal form (3NF)** as the baseline, with deliberate, documented deviations only where the approved baseline demands them:
 
-* **No repeating groups.** Draft versions, messages, profile characteristics, and capability entries are separate entities rather than repeated attributes (1NF).
+* **No repeating groups.** Messages, profile characteristics, and capability entries are separate entities rather than repeated attributes (1NF). *(Draft versions were too, before ADR-012 removed Draft — see `08` §25.)*
 * **No partial dependencies.** All attributes depend on the full primary key (2NF); e.g., a Message depends on its conversation context via reference, never via duplicated attributes.
-* **No transitive dependencies.** Derived values are not stored where they can be derived; e.g., a project's "current" draft version is the latest version_number, not a stored attribute (3NF).
+* **No transitive dependencies.** Derived values are not stored where they can be derived; e.g., a memory record's supersession state lives in the chain, not a duplicated flag (3NF). *(Previously illustrated with "a project's 'current' draft version is the latest version_number" — ADR-012.)*
 
 **Deliberate deviations:**
 
 1. **Configuration Item is an entity–attribute–value (EAV) pattern.** Configuration entries are heterogeneous and extensible (system, agent, user scope — renamed from "project" scope by ADR-009; DR-020 to DR-022). Storing them as typed columns would force schema churn for every new setting. The EAV form is accepted for *configuration only*, with strong key discipline (§7) and versioned history (§11). All other domains remain conventionally normalized.
-2. **Content payloads are referenced, not embedded.** Document, chunk, and draft-version content is a long-form payload referenced by the logical entity; this is required by the storage-category separation of 07 §3.2 (mapped in document 06). The logical model retains the reference; the physical separation is not a normalization decision.
+2. **Content payloads are referenced, not embedded.** Document and chunk content is a long-form payload referenced by the logical entity; this is required by the storage-category separation of 07 §3.2 (mapped in document 06). The logical model retains the reference; the physical separation is not a normalization decision. *(Draft-version content was the same, before ADR-012.)*
 3. **Evidence links are explicit entities, not columns.** Because evidence is many-to-many and first-class (ADR-005), links are entities. This is the relational-normal form for M:N relationships and preserves referential integrity (DR-028).
 4. **No denormalized read projections in the structured core.** Retrieval snapshots, counts, or summaries that future scale may warrant are *derived* artifacts of the retrieval strategy (ADR-005) and belong to the derived stores mapped in document 06, not the structured core.
 
@@ -578,21 +512,19 @@ The logical model is normalized to **third normal form (3NF)** as the baseline, 
   * `KnowledgeElementRelationship(element_from_id, element_to_id, relationship_type)` — no duplicate relationship statements.
   * `ChunkEvidenceLink(chunk_id, document_id)` — no duplicate evidence links.
   * `Message(conversation_id, sequence)` — messages are strictly ordered per conversation.
-  * `DraftVersion(draft_id, version_number)` — versions are strictly ordered per draft.
-  * `ReviewDecision.review_id` — one decision per review.
   * `Capability.name`, `CapabilityEntry(capability_id, capability_name)` — registry entries are uniquely named. *(Renamed from Agent/AgentCapability by ADR-009.)*
   * `ConfigurationItem(scope, agent_id, user_id, config_key, version_number)` — one history entry per key per scope. *(Renamed from `project_id` by ADR-009.)*
   * `WorkItem.idempotency_key` — at-most-once processing (ADR-006).
+  * *(Removed by ADR-012, 2026-10-09, see `08` §25: `DraftVersion(draft_id, version_number)`, `ReviewDecision.review_id`.)*
 * **State rules.**
-  * At most one **open** Review per Draft Version at any time.
   * At most one **active** Writing Profile per Agent in the MVP. *(Renamed from "per project" by ADR-009.)*
   * A superseding Memory Record or Knowledge Element references its predecessor; at most one record may reference a given record as its predecessor (one active successor per record).
   * Configuration Item: exactly one `is_active = true` version per (scope, owner, key).
+  * *(Removed by ADR-012: at most one open Review per Draft Version at any time — no successor rule.)*
 * **Check rules (stated as logical invariants, not DDL).**
-  * `DraftEvidenceLink`: exactly one of `chunk_id` / `document_id` is set, consistent with `target_type`.
   * `MessageContextLink` and `MemoryProvenanceLink`: exactly one target reference is set, consistent with `target_type` / `source_type`.
   * `ConfigurationItem`: `agent_id` set iff scope = agent; `user_id` set iff scope = user. *(Renamed from `project_id`/scope = project by ADR-009.)*
-  * Draft versions are immutable after creation; revision creates a new version.
+  * *(Removed by ADR-012: `DraftEvidenceLink` exclusive-arc rule; "Draft versions are immutable after creation" — Message content is immutable per-message instead, already covered by §9 below.)*
 
 ---
 
@@ -610,8 +542,8 @@ The logical model is normalized to **third normal form (3NF)** as the baseline, 
 ## 9. Integrity Rules
 
 * **Referential integrity applies to every reference** (DR-028): no dangling project, document, chunk, version, or link references.
-* **Evidence links are immutable and non-cascading.** Chunk Evidence Links and Draft Evidence Links may not be cascade-deleted; deleting an evidence target (soft or hard) does not delete the links that reference it, preserving the audit record (ADR-005; 07 §3.4).
-* **Composition cascade.** Messages are removed with their conversation only under the documented retention policy (03 §3.6); draft versions are removed with their draft only under the documented deletion policy. All other references are **restrict**.
+* **Evidence links are immutable and non-cascading.** Chunk Evidence Links may not be cascade-deleted; deleting an evidence target (soft or hard) does not delete the links that reference it, preserving the audit record (ADR-005; 07 §3.4). *(Draft Evidence Links were governed by the same rule before ADR-012 removed it — see `08` §25.)*
+* **Composition cascade.** Messages are removed with their conversation only under the documented retention policy (03 §3.6). *(Draft versions were removed with their draft the same way, before ADR-012.)* All other references are **restrict**.
 * **Deletion preserves integrity (DR-025).** Soft-deleting a Research Document retains its identity and evidence links; referential integrity to remaining data is preserved.
 * **Supersession is monotonic.** A superseded Memory Record or Knowledge Element becomes read-only; its successor references it; the chain is never rewritten.
 * **Supersession writes are atomic.** Creating a record that supersedes an earlier one updates the new record's predecessor reference and the predecessor's status in the same logical transaction, so the stored status projection never diverges from the chain (§8).
@@ -622,8 +554,8 @@ The logical model is normalized to **third normal form (3NF)** as the baseline, 
 
 ## 10. Soft Delete Strategy
 
-* **Tombstoned entities (user-visible, removable):** Project, Research Document, Conversation, Writing Profile, Draft. These carry `deleted_at` (and `deleted_by` via the audit model). Active queries and API responses exclude tombstones.
-* **Never tombstoned (history-bearing):** Memory Record, Knowledge Element, Knowledge Chunk, Draft Version, Review, Review Decision, Profile Characteristic, evidence links. These are superseded or retained, never deleted, per the traceability requirements (DR-014, DR-017, DR-019; 07 §3.3–§3.4).
+* **Tombstoned entities (user-visible, removable):** Project, Research Document, Conversation, Writing Profile. These carry `deleted_at` (and `deleted_by` via the audit model). Active queries and API responses exclude tombstones. *(Draft was tombstoned too, before ADR-012 removed it — see `08` §25.)*
+* **Never tombstoned (history-bearing):** Memory Record, Knowledge Element, Knowledge Chunk, Profile Characteristic, evidence links. These are superseded or retained, never deleted, per the traceability requirements (DR-014, DR-017, DR-019; 07 §3.3–§3.4). *(Draft Version, Review, Review Decision were never tombstoned either, before ADR-012.)*
 * **Document removal** is explicit user action (05 §10); it tombstones the document while preserving the evidence chain (integrity rule above).
 * **Project deletion** tombstones the project and (per the documented retention policy, refined in document 07) its user-visible contents; history-bearing records are preserved for the retention window.
 * **Hard delete** is deferred and governed by the archival/deletion policy of SRS Ch7 §4.4 and document 07; it is never implicit.
@@ -633,7 +565,7 @@ The logical model is normalized to **third normal form (3NF)** as the baseline, 
 
 ## 11. Versioning Strategy
 
-* **Draft Version — immutable version chain.** Each writing or revision cycle creates a new Draft Version with the next `version_number`; content is immutable after creation (AIR-035, MVP-021). The current version is the latest. Branching is deferred (not an MVP requirement).
+* ~~**Draft Version — immutable version chain.** Each writing or revision cycle creates a new Draft Version with the next `version_number`; content is immutable after creation (AIR-035, MVP-021). The current version is the latest. Branching is deferred (not an MVP requirement).~~ **REMOVED by ADR-012** (2026-10-09, see `08` §25) — Message content is immutable per-message but not versioned; no successor to this strategy exists.
 * **Memory Record — supersession chain.** Evolving decisions create a new record that references its predecessor via `superseded_record_id`; chronology and history are retained (DR-014; 04 §8.2).
 * **Knowledge Element / Chunk — supersession with retained history.** When new evidence refines understanding, the earlier element/chunk is marked superseded and remains traceable (07 §3.3; AIR-065); re-chunking is coordinated by the knowledge pipeline (ADR-005, ADR-006).
 * **Configuration Item — versioned on change.** Every change appends a new version; exactly one version is active per key (DR-021).
@@ -645,9 +577,9 @@ The logical model is normalized to **third normal form (3NF)** as the baseline, 
 ## 12. Audit Strategy
 
 * **Creation audit:** every entity carries `created_at` and, where actor traceability is required, `created_by` (system capability or user).
-* **Change audit:** mutable entities carry `updated_at` where change timing matters, and `*_by` actor references where the baseline requires actor traceability (AIR-054, DR-021); the most audit-sensitive changes are append-only by design (Review Decision, evidence links, Configuration Item history).
-* **Immutability as audit:** Draft Version content, Memory Record content, Knowledge Element content, and all link entities are immutable — the audit trail is the entity history itself (append-only records).
-* **Human oversight records:** Review Decisions record the reviewer (user), outcome, rationale, and time (AIR-054); they are never modified once recorded.
+* **Change audit:** mutable entities carry `updated_at` where change timing matters, and `*_by` actor references where the baseline requires actor traceability (AIR-054, DR-021); the most audit-sensitive changes are append-only by design (evidence links, Configuration Item history). *(Review Decision was append-only too, before ADR-012 removed it — see `08` §25.)*
+* **Immutability as audit:** Memory Record content, Knowledge Element content, and all link entities are immutable — the audit trail is the entity history itself (append-only records). *(Draft Version content was too, before ADR-012.)*
+* ~~**Human oversight records:** Review Decisions record the reviewer (user), outcome, rationale, and time (AIR-054); they are never modified once recorded.~~ **REMOVED by ADR-012** — no successor record; the single-researcher use case has no distinct reviewer role to record oversight from.
 * **Configuration audit:** every configuration change records who changed what and when (DR-021; AIR-057).
 * **Observability linkage:** Work Items record failure context for the diagnostics baseline (API-040; NFR-027 to NFR-028).
 
@@ -657,8 +589,8 @@ The logical model is normalized to **third normal form (3NF)** as the baseline, 
 
 The following conventions are binding on the physical schema and API payloads that realize this model:
 
-* **Entity names:** singular, PascalCase logical names (Project, ResearchDocument, KnowledgeChunk, DraftVersion). Junction entities are compound names ending in a relationship word (ChunkEvidenceLink, MemoryProvenanceLink, MessageContextLink).
-* **Attributes:** lower_snake_case. Suffix conventions: `*_id` for identifiers and references (project_id, draft_version_id); `*_at` for timestamps (created_at, decided_at); `*_by` for actor references (decided_by, changed_by); `is_*` for booleans (is_active); enumerated state fields are named `*_type`, `*_status`, or `outcome` where appropriate.
+* **Entity names:** singular, PascalCase logical names (Project, ResearchDocument, KnowledgeChunk, Conversation). Junction entities are compound names ending in a relationship word (ChunkEvidenceLink, MemoryProvenanceLink, MessageContextLink).
+* **Attributes:** lower_snake_case. Suffix conventions: `*_id` for identifiers and references (project_id, conversation_id); `*_at` for timestamps (created_at, superseded_at); `*_by` for actor references (created_by, changed_by); `is_*` for booleans (is_active); enumerated state fields are named `*_type`, `*_status`, or `outcome` where appropriate. *(Examples previously cited DraftVersion/draft_version_id/decided_at/decided_by, all removed by ADR-012 — see `08` §25; the naming convention itself is unaffected.)*
 * **Reference names:** `<target_entity>_id`; when an entity carries more than one reference to the same target, the role prefix disambiguates (element_from_id / element_to_id; superseded_record_id).
 * **Keys:** primary key is always `<entity>_id`; candidate keys are named for their meaning (session_token, idempotency_key).
 * **Generalization handling:** shared provenance attributes are repeated on each entity (created_at, created_by) rather than inherited from a supertype (see §14).
@@ -670,7 +602,7 @@ The following conventions are binding on the physical schema and API payloads th
 
 * **1 : N relationships** are resolved by a reference column on the child entity (Section 5).
 * **N : M relationships** are resolved by junction entities: Chunk Evidence Link (chunk–document), Knowledge Element Relationship (element–element), Profile Characteristic Source (characteristic–document), and the exclusive-arc link entities for polymorphic associations.
-* **Polymorphic associations** (Draft Evidence Link, Message Context Link, Memory Provenance Link) use the **exclusive-arc pattern**: a `target_type`/`source_type` discriminator plus one nullable reference per possible target, with a rule that exactly one is set. This was chosen over a generic polymorphic foreign key because it preserves strong referential integrity per target (DR-028) while remaining engine-portable. Trade-off: one link entity per association; accepted for the MVP.
+* **Polymorphic associations** (Message Context Link, Memory Provenance Link) use the **exclusive-arc pattern**: a `target_type`/`source_type` discriminator plus one nullable reference per possible target, with a rule that exactly one is set. This was chosen over a generic polymorphic foreign key because it preserves strong referential integrity per target (DR-028) while remaining engine-portable. Trade-off: one link entity per association; accepted for the MVP. *(Draft Evidence Link used the same pattern before ADR-012 removed it — see `08` §25.)*
 * **Self-referential relationships** (Memory Record supersession, Knowledge Element supersession) use a nullable self-reference plus status; the chain is monotonic and history-bearing.
 * **Generalization ("Traceable Record", 03 §6) is flattened.** Shared provenance attributes are repeated on each member entity. The alternative — a supertype entity with subtype tables — was rejected: it adds join complexity and inheritance-dependent querying that provide no MVP benefit, and it reduces engine portability (ADR-004 migration path). If a future requirement (e.g., cross-entity audit traversal) justifies a supertype, it is an additive change, not a redesign.
 * **Subtyping (Message direction; evidence target kind)** uses enumerated discriminators on the entity itself, not separate entities.
@@ -681,11 +613,11 @@ The following conventions are binding on the physical schema and API payloads th
 
 This logical data model is traceable to the approved baseline as follows:
 
-* **SRS Chapter 7** — the data domains realized here (DR-001 to DR-033, DR-035; DC-002, DC-003), especially identifiers (DR-001), lifecycle (DR-002, DR-023 to DR-025), provenance (DR-012, DR-015, DR-018), versioning (DR-014, DR-017), review state (DR-019), configuration (DR-020 to DR-022), and referential integrity (DR-028).
-* **SRS Chapter 6** — evidence linkage (AIR-024, AIR-027, AIR-046 to AIR-048), memory persistence (AIR-019 to AIR-021, AIR-065 to AIR-066), profile provenance (AIR-016 to AIR-018), review audit (AIR-037 to AIR-039, AIR-054), artifact distinction (AIR-006), configuration (AIR-055 to AIR-057), draft versioning (AIR-035).
-* **SRS Chapter 10** — MVP scope: draft version history (MVP-021, MVP-022), review and approval (MVP-018 to MVP-020), memory (MVP-011, MVP-012), retrieval (MVP-007, MVP-008), profile (MVP-009, MVP-010).
+* **SRS Chapter 7** — the data domains realized here (DR-001 to DR-033, DR-035; DC-002, DC-003), especially identifiers (DR-001), lifecycle (DR-002, DR-023 to DR-025), provenance (DR-012, DR-015, DR-018), memory decision history (DR-014), configuration (DR-020 to DR-022), and referential integrity (DR-028). *(DR-017 "versioning" and DR-019 "review state" are historical-only mappings since ADR-012 removed Draft Version and Review — see `08` §25; the SRS document itself is not corrected by this pass.)*
+* **SRS Chapter 6** — evidence linkage (AIR-024, AIR-027, AIR-046 to AIR-048), memory persistence (AIR-019 to AIR-021, AIR-065 to AIR-066), profile provenance (AIR-016 to AIR-018), artifact distinction (AIR-006), configuration (AIR-055 to AIR-057). *(AIR-037 to AIR-039/AIR-054 "review audit" and AIR-035 "draft versioning" are historical-only mappings for the same reason.)*
+* **SRS Chapter 10** — MVP scope: memory (MVP-011, MVP-012), retrieval (MVP-007, MVP-008), profile (MVP-009, MVP-010). *(MVP-021/MVP-022 "draft version history" and MVP-018 to MVP-020 "review and approval" are historical-only mappings.)*
 * **Architecture 03** — ownership model (§4) and lifecycle (§5).
-* **Architecture 04** — memory (AIR-019 to AIR-021, 04 §8), chunking (04 §9), conversation (04 §10), evidence flow (04 §18), review (04 §19), writing and version awareness (04 §20), learning and chronology (04 §22).
+* **Architecture 04** — memory (AIR-019 to AIR-021, 04 §8), chunking (04 §9), conversation (04 §10), evidence flow (04 §18), learning and chronology (04 §22). *(§19 "review" and part of §20 "version awareness" are historical-only mappings since ADR-012.)*
 * **Architecture 05** — domain boundaries (§4), orchestration (§6), data access layer (§16), configuration model (§17), authentication (§15).
 * **Architecture 07** — consistency (§3.3), retention (§3.4), backup assumptions (§3.5).
 * **ADR-002** — ORM abstraction (the model must be expressible behind the data access layer).
@@ -694,13 +626,14 @@ This logical data model is traceable to the approved baseline as follows:
 * **ADR-005** — chunk-level retrieval; first-class evidence links (Chunk Evidence Link).
 * **ADR-006** — durable outbox (Work Item) and idempotent processing.
 * **Database Overview (01)** — governing rules and document set (§8, §12, §13); **Domain Model (02)** — vocabulary (§6 of 02); **Conceptual Data Model (03)** — entities and relationships (§3, §4 of 03).
-* **ADR-009** — adds Agent (§3.21); narrows Project (§3.3); renames Agent/Agent Capability to Capability/Capability Entry (§3.13–§3.14); re-points Knowledge Element, Knowledge Chunk, Memory Record, Conversation, Writing Profile, and Draft from `project_id` to `agent_id`; renames Configuration Item's `project` scope to `agent`.
+* **ADR-009** — adds Agent (§3.21); narrows Project (§3.3); renames Agent/Agent Capability to Capability/Capability Entry (§3.13–§3.14); re-points Knowledge Element, Knowledge Chunk, Memory Record, Conversation, Writing Profile, and (at the time) Draft from `project_id` to `agent_id`; renames Configuration Item's `project` scope to `agent`.
 * **ADR-010** — adds `password_hash` to User (§3.1), the Authentication Boundary's credential store, realized via the already-specified Session entity (§3.2) rather than a new mechanism.
+* **ADR-012** (2026-10-09, decision made earlier, 2026-09-16–2026-09-18 — see `08` §25) — removes Draft (§3.15), Draft Version (§3.16), Review (§3.17), Review Decision (§3.18), and Draft Evidence Link (§4.2); Conversation/Message (§3.9–§3.10), already specified here, become the primary writing-generation mechanism.
 
 ---
 
 ## 16. Summary
 
-The logical data model, as corrected by ADR-009 and ADR-010, refines the conceptual model into twenty-six logical entities — twenty-one core and system entities and five link entities — with logical attributes, surrogate identifiers, candidate keys, references, and integrity rules. User carries a `password_hash` (ADR-010) supporting the Authentication Boundary; Session, specified since Milestone 5 but previously unimplemented, is the credential mechanism ADR-010 realizes. Agent is the user's permanent workspace (1:1 with User in the MVP), owning exactly one Project (1:1, permanent) and everything derived from or accumulated within it (Knowledge Element, Knowledge Chunk, Memory Record, Conversation, Writing Profile, Draft); Project retains identity, topic, lifecycle, and Research Document ownership. The pre-existing capability registry is renamed Capability/Capability Entry to free the Agent name. The model resolves every conceptual relationship of Document 03: one-to-many via references, many-to-many and polymorphic associations via junction and exclusive-arc link entities, and supersession via self-references. It establishes normalization to 3NF with two documented deviations, nullability principles, integrity and soft-delete strategies that protect the evidence chain, versioning strategies for drafts, memory, knowledge, and configuration, an audit model grounded in immutability, and naming conventions binding on the physical schema and API payloads.
+The logical data model, as corrected by ADR-009, ADR-010, and ADR-012, refines the conceptual model into twenty-one logical entities — seventeen core and system entities and four link entities — with logical attributes, surrogate identifiers, candidate keys, references, and integrity rules. (Previously twenty-six/twenty-one/five, before ADR-012 removed `Draft`, `Draft Version`, `Review`, `Review Decision`, and `Draft Evidence Link` — see `08` §25.) User carries a `password_hash` (ADR-010) supporting the Authentication Boundary; Session, specified since Milestone 5 but previously unimplemented, is the credential mechanism ADR-010 realizes. Agent is the user's permanent workspace (1:1 with User in the MVP), owning exactly one Project (1:1, permanent) and everything derived from or accumulated within it (Knowledge Element, Knowledge Chunk, Memory Record, Conversation, Writing Profile); Project retains identity, topic, lifecycle, and Research Document ownership. The pre-existing capability registry is renamed Capability/Capability Entry to free the Agent name. `Conversation`/`Message`, already specified here, are the model's primary writing-generation mechanism as of ADR-012, not the secondary channel they were specified as. The model resolves every conceptual relationship of Document 03: one-to-many via references, many-to-many and polymorphic associations via junction and exclusive-arc link entities, and supersession via self-references. It establishes normalization to 3NF with two documented deviations, nullability principles, integrity and soft-delete strategies that protect the evidence chain, versioning strategies for conversations, memory, knowledge, and configuration, an audit model grounded in immutability, and naming conventions binding on the physical schema and API payloads.
 
 This document is implementation-independent: no SQL, no DDL, no migrations, no engine selection, no ORM discussion. A Senior Backend Engineer can begin physical schema design from this contract. The next documents in the layered set — 05 (Constraints and Integrity) through 08 (Validation and Review) — will progressively refine and validate this design, and their own ADR-009 corrections follow in this same session.

@@ -1,16 +1,28 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { TrayIcon } from "@phosphor-icons/react";
+import { MagnifyingGlassIcon, TrayIcon } from "@phosphor-icons/react";
 import {
   deleteResearchDocument,
+  importExternalSource,
+  importWebSearchResult,
   listProjectDocuments,
   retryResearchDocument,
+  searchExternalSources,
+  searchWeb,
   uploadResearchDocument,
   uploadResearchDocuments,
 } from "@/api/documents";
 import { searchKnowledge } from "@/api/knowledge";
+import { AI_USAGE_QUERY_KEY } from "@/api/usage";
+import {
+  parseDocumentMetadata,
+  type DocumentMetadata,
+  type DocumentMetadataErrors,
+  type DocumentMetadataField,
+} from "@/lib/documentMetadata";
 import { ApiError } from "@/lib/apiClient";
 import { useToast } from "@/lib/ToastContext";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { EmailVerificationNotice } from "@/components/EmailVerificationNotice";
 import { useWorkspaceContext } from "@/components/WorkspaceGate";
 import { Button } from "@/components/ui/button";
@@ -18,6 +30,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { VirtualList } from "@/components/VirtualList";
+import { cn } from "@/lib/utils";
 
 const DELETABLE_STATUSES = new Set(["pending", "failed"]);
 // Mirrors the backend's own MAX_RESEARCH_DOCUMENTS_PER_PROJECT (app/modules/document/
@@ -26,6 +40,7 @@ const DELETABLE_STATUSES = new Set(["pending", "failed"]);
 const RESEARCH_DOCUMENT_LIMIT = 20;
 
 export function DocumentsPage() {
+  useDocumentTitle("Research Documents");
   const workspace = useWorkspaceContext();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -34,9 +49,19 @@ export function DocumentsPage() {
   const [author, setAuthor] = useState("");
   const [year, setYear] = useState("");
   const [doi, setDoi] = useState("");
+  // Per-field messages from parseDocumentMetadata (@/lib/documentMetadata), shown under the
+  // input they belong to rather than in the generic upload-failure alert below.
+  const [metadataErrors, setMetadataErrors] = useState<DocumentMetadataErrors>({});
   const [selectedFileCount, setSelectedFileCount] = useState(0);
   const [query, setQuery] = useState("");
   const [searchSubmitted, setSearchSubmitted] = useState("");
+  const [acquisitionTab, setAcquisitionTab] = useState<"upload" | "search-sources" | "search-web">("upload");
+  const [sourceQuery, setSourceQuery] = useState("");
+  const [sourceQuerySubmitted, setSourceQuerySubmitted] = useState("");
+  const [importingId, setImportingId] = useState<string | null>(null);
+  const [webQuery, setWebQuery] = useState("");
+  const [webQuerySubmitted, setWebQuerySubmitted] = useState("");
+  const [importingWebUrl, setImportingWebUrl] = useState<string | null>(null);
   const previousStatusesRef = useRef<Record<number, string>>({});
 
   const documentsQuery = useInfiniteQuery({
@@ -70,10 +95,13 @@ export function DocumentsPage() {
       const previousStatus = previousStatusesRef.current[doc.document_id];
       if (previousStatus && previousStatus !== "processed" && doc.processing_status === "processed") {
         showToast(`"${doc.title}" finished processing.`);
+        // Processing is what actually spends (and records) AI tokens - the upload that queued it
+        // only checked the cap - so this transition is the moment the sidebar's figure changed.
+        queryClient.invalidateQueries({ queryKey: AI_USAGE_QUERY_KEY });
       }
       previousStatusesRef.current[doc.document_id] = doc.processing_status;
     }
-  }, [documentsQuery.data, showToast]);
+  }, [documentsQuery.data, showToast, queryClient]);
 
   // Once a document is fully processed, its knowledge has already been absorbed into the
   // Agent's knowledge base - it's no longer a "file" to manage here, only searchable below.
@@ -85,7 +113,9 @@ export function DocumentsPage() {
   const processedDocuments = allDocuments.filter((doc) => doc.processing_status === "processed");
 
   const uploadMutation = useMutation({
-    mutationFn: async () => {
+    // `metadata` is handleUpload's already-validated/normalized metadata for a single-file
+    // upload, or null for anything else (multi-file uploads carry no per-file metadata).
+    mutationFn: async (metadata: DocumentMetadata | null) => {
       const files = Array.from(fileInputRef.current?.files ?? []);
       if (files.length === 0) throw new Error("Choose at least one file first.");
       if (files.length > RESEARCH_DOCUMENT_LIMIT - documentCount) {
@@ -94,18 +124,17 @@ export function DocumentsPage() {
       // A custom title (and author/year/DOI) only makes sense for a single file. Multi-file
       // uploads preserve each filename so their source remains identifiable in the knowledge
       // base, with no per-file metadata UI.
-      if (files.length === 1 && (title.trim() || author.trim() || year.trim() || doi.trim())) {
+      if (metadata !== null) {
         const file = files[0];
         const extension = file.name.split(".").pop() ?? "txt";
-        const parsedYear = year.trim() ? Number(year.trim()) : undefined;
         return [await uploadResearchDocument({
           projectId: workspace.project.project_id,
           file,
-          title: title.trim() || file.name,
+          title: metadata.title || file.name,
           format: extension,
-          author: author.trim() || undefined,
-          publicationYear: parsedYear,
-          doi: doi.trim() || undefined,
+          author: metadata.author ?? undefined,
+          publicationYear: metadata.publicationYear ?? undefined,
+          doi: metadata.doi ?? undefined,
         })];
       }
       return uploadResearchDocuments(workspace.project.project_id, files);
@@ -115,9 +144,14 @@ export function DocumentsPage() {
       setAuthor("");
       setYear("");
       setDoi("");
+      setMetadataErrors({});
       setSelectedFileCount(0);
       if (fileInputRef.current) fileInputRef.current.value = "";
       queryClient.invalidateQueries({ queryKey: ["documents", workspace.project.project_id] });
+      // An upload only checks the cap; the Work Item records usage once it processes (see the
+      // status-transition effect above). Still invalidated here so the widget re-reads on every
+      // upload rather than waiting up to its own refetch interval.
+      queryClient.invalidateQueries({ queryKey: AI_USAGE_QUERY_KEY });
       showToast(`${documents.length} document${documents.length === 1 ? "" : "s"} uploaded. Processing is queued.`);
     },
   });
@@ -138,14 +172,86 @@ export function DocumentsPage() {
     enabled: searchSubmitted.length > 0,
   });
 
+  // Search-and-import source discovery (2026-10-17): searches OpenAlex's scholarly index for
+  // specific, named candidate sources - NotebookLM-style, the user explicitly picks which one(s)
+  // to import, never an unrestricted crawl of the open web.
+  const sourceSearchQuery = useQuery({
+    queryKey: ["external-source-search", sourceQuerySubmitted],
+    queryFn: () => searchExternalSources(sourceQuerySubmitted),
+    enabled: sourceQuerySubmitted.length > 0,
+  });
+
+  const importMutation = useMutation({
+    mutationFn: (openalexId: string) => importExternalSource(workspace.project.project_id, openalexId),
+    onMutate: (openalexId: string) => setImportingId(openalexId),
+    onSuccess: (document) => {
+      queryClient.invalidateQueries({ queryKey: ["documents", workspace.project.project_id] });
+      // Imported sources are processed exactly like uploads, so the same re-read applies.
+      queryClient.invalidateQueries({ queryKey: AI_USAGE_QUERY_KEY });
+      showToast(`"${document.title}" imported. Processing is queued.`);
+    },
+    onSettled: () => setImportingId(null),
+  });
+
+  // General web search discovery (2026-10-17): same NotebookLM-style pattern as the OpenAlex
+  // search-sources tab above, applied to the open web via Tavily instead of a curated scholarly
+  // index.
+  const webSearchQuery = useQuery({
+    queryKey: ["web-search", webQuerySubmitted],
+    queryFn: () => searchWeb(webQuerySubmitted),
+    enabled: webQuerySubmitted.length > 0,
+  });
+
+  const webImportMutation = useMutation({
+    mutationFn: ({ url, title }: { url: string; title: string }) =>
+      importWebSearchResult(workspace.project.project_id, url, title),
+    onMutate: ({ url }: { url: string; title: string }) => setImportingWebUrl(url),
+    onSuccess: (document) => {
+      queryClient.invalidateQueries({ queryKey: ["documents", workspace.project.project_id] });
+      // Imported sources are processed exactly like uploads, so the same re-read applies.
+      queryClient.invalidateQueries({ queryKey: AI_USAGE_QUERY_KEY });
+      showToast(`"${document.title}" imported. Processing is queued.`);
+    },
+    onSettled: () => setImportingWebUrl(null),
+  });
+
+  function clearMetadataError(field: DocumentMetadataField) {
+    setMetadataErrors((previous) => (previous[field] === undefined ? previous : { ...previous, [field]: undefined }));
+  }
+
   function handleUpload(event: FormEvent) {
     event.preventDefault();
-    uploadMutation.mutate();
+    const files = Array.from(fileInputRef.current?.files ?? []);
+    // Validate before mutating so a bad year/DOI renders under its own field instead of as the
+    // generic upload-failure alert - and never becomes a round trip that 422s (or, for a bad
+    // DOI, a confusing "DOI not found" badge after processing).
+    if (files.length === 1) {
+      const parsed = parseDocumentMetadata({ title, author, year, doi });
+      if (!parsed.ok) {
+        setMetadataErrors(parsed.errors);
+        return;
+      }
+      setMetadataErrors({});
+      uploadMutation.mutate(parsed.value);
+      return;
+    }
+    setMetadataErrors({});
+    uploadMutation.mutate(null);
   }
 
   function handleSearch(event: FormEvent) {
     event.preventDefault();
     setSearchSubmitted(query);
+  }
+
+  function handleSourceSearch(event: FormEvent) {
+    event.preventDefault();
+    setSourceQuerySubmitted(sourceQuery);
+  }
+
+  function handleWebSearch(event: FormEvent) {
+    event.preventDefault();
+    setWebQuerySubmitted(webQuery);
   }
 
   const documentCount = allDocuments.length;
@@ -167,10 +273,70 @@ export function DocumentsPage() {
             used).
           </p>
         </div>
+
+        {/* Acquisition tabs (2026-10-17, search-and-import source discovery): "Upload" (a
+            client file) and "Search sources" (an OpenAlex result the server fetches) are both
+            ways to bring a Research Document into this project - kept on one page since that's
+            where a user already looks for either. */}
+        <div role="tablist" aria-label="Add a research document" className="flex gap-1 border-b border-border">
+          <button
+            type="button"
+            role="tab"
+            id="acquisition-tab-upload"
+            aria-selected={acquisitionTab === "upload"}
+            aria-controls="acquisition-panel-upload"
+            onClick={() => setAcquisitionTab("upload")}
+            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              acquisitionTab === "upload"
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Upload
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="acquisition-tab-search-sources"
+            aria-selected={acquisitionTab === "search-sources"}
+            aria-controls="acquisition-panel-search-sources"
+            onClick={() => setAcquisitionTab("search-sources")}
+            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              acquisitionTab === "search-sources"
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Search sources
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="acquisition-tab-search-web"
+            aria-selected={acquisitionTab === "search-web"}
+            aria-controls="acquisition-panel-search-web"
+            onClick={() => setAcquisitionTab("search-web")}
+            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              acquisitionTab === "search-web"
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Search web
+          </button>
+        </div>
+
+        {acquisitionTab === "upload" && (
+        <div role="tabpanel" id="acquisition-panel-upload" aria-labelledby="acquisition-tab-upload" className="space-y-4">
         <form onSubmit={handleUpload} className="flex flex-wrap items-end gap-3">
+          {/* Accessibility (found during an audit, 2026-10-09): these labels had no htmlFor/id
+              pairing to their inputs, so a screen reader wouldn't announce the field name. */}
           <div className="space-y-1">
-            <label className="text-sm font-medium">Title (optional)</label>
+            <label htmlFor="document-title" className="text-sm font-medium">
+              Title (optional)
+            </label>
             <Input
+              id="document-title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder={selectedFileCount > 1 ? "Each file keeps its filename" : "Document title"}
@@ -178,8 +344,11 @@ export function DocumentsPage() {
             />
           </div>
           <div className="space-y-1">
-            <label className="text-sm font-medium">Author (optional)</label>
+            <label htmlFor="document-author" className="text-sm font-medium">
+              Author (optional)
+            </label>
             <Input
+              id="document-author"
               value={author}
               onChange={(e) => setAuthor(e.target.value)}
               placeholder="e.g. Uadiale, O."
@@ -188,25 +357,51 @@ export function DocumentsPage() {
             />
           </div>
           <div className="space-y-1">
-            <label className="text-sm font-medium">Year (optional)</label>
+            <label htmlFor="document-year" className="text-sm font-medium">
+              Year (optional)
+            </label>
             <Input
+              id="document-year"
               type="number"
               value={year}
-              onChange={(e) => setYear(e.target.value)}
+              onChange={(e) => {
+                setYear(e.target.value);
+                clearMetadataError("year");
+              }}
               placeholder="e.g. 2012"
               className="max-w-24"
               disabled={atLimit || selectedFileCount > 1}
+              aria-invalid={metadataErrors.year !== undefined}
+              aria-describedby={metadataErrors.year ? "document-year-error" : undefined}
             />
+            {metadataErrors.year && (
+              <p id="document-year-error" role="alert" className="text-xs text-destructive">
+                {metadataErrors.year}
+              </p>
+            )}
           </div>
           <div className="space-y-1">
-            <label className="text-sm font-medium">DOI (optional)</label>
+            <label htmlFor="document-doi" className="text-sm font-medium">
+              DOI (optional)
+            </label>
             <Input
+              id="document-doi"
               value={doi}
-              onChange={(e) => setDoi(e.target.value)}
+              onChange={(e) => {
+                setDoi(e.target.value);
+                clearMetadataError("doi");
+              }}
               placeholder="e.g. 10.1038/nphys1170"
               className="max-w-48"
               disabled={atLimit || selectedFileCount > 1}
+              aria-invalid={metadataErrors.doi !== undefined}
+              aria-describedby={metadataErrors.doi ? "document-doi-error" : undefined}
             />
+            {metadataErrors.doi && (
+              <p id="document-doi-error" role="alert" className="text-xs text-destructive">
+                {metadataErrors.doi}
+              </p>
+            )}
           </div>
           <Input
             ref={fileInputRef}
@@ -244,7 +439,7 @@ export function DocumentsPage() {
           (uploadMutation.error instanceof ApiError && uploadMutation.error.errorType === "EmailNotVerifiedError" ? (
             <EmailVerificationNotice />
           ) : (
-            <p className="text-sm text-destructive">
+            <p role="alert" className="text-sm text-destructive">
               {uploadMutation.error instanceof ApiError ? uploadMutation.error.message : "Upload failed."}
             </p>
           ))}
@@ -268,9 +463,14 @@ export function DocumentsPage() {
             Nothing pending - uploaded documents will appear here while processing.
           </p>
         )}
-        <ul className="divide-y divide-border">
-          {inProgressDocuments.map((doc) => (
-            <li key={doc.document_id} className="space-y-2 py-3">
+        <VirtualList
+          items={inProgressDocuments}
+          getItemKey={(doc) => doc.document_id}
+          estimateSize={88}
+          className="max-h-[24rem]"
+          ariaLabel="Documents being processed"
+          renderItem={(doc, index) => (
+            <div className={cn("space-y-2 py-3", index > 0 && "border-t border-border")}>
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">{doc.title}</span>
                 <div className="flex items-center gap-2">
@@ -299,10 +499,10 @@ export function DocumentsPage() {
                   )}
                 </div>
               </div>
-              {doc.error_message && <p className="text-sm text-destructive">{doc.error_message}</p>}
-            </li>
-          ))}
-        </ul>
+              {doc.error_message && <p role="alert" className="text-sm text-destructive">{doc.error_message}</p>}
+            </div>
+          )}
+        />
         {documentsQuery.hasNextPage && (
           <Button
             variant="outline"
@@ -314,14 +514,199 @@ export function DocumentsPage() {
           </Button>
         )}
         {retryMutation.isError && (
-          <p className="text-sm text-destructive">
+          <p role="alert" className="text-sm text-destructive">
             {retryMutation.error instanceof ApiError ? retryMutation.error.message : "Could not retry document."}
           </p>
         )}
         {deleteMutation.isError && (
-          <p className="text-sm text-destructive">
+          <p role="alert" className="text-sm text-destructive">
             {deleteMutation.error instanceof ApiError ? deleteMutation.error.message : "Could not delete document."}
           </p>
+        )}
+        </div>
+        )}
+
+        {acquisitionTab === "search-sources" && (
+        <div
+          role="tabpanel"
+          id="acquisition-panel-search-sources"
+          aria-labelledby="acquisition-tab-search-sources"
+          className="space-y-4"
+        >
+          <p className="text-sm text-muted-foreground">
+            Search OpenAlex's open scholarly index and import a specific result into this project.
+            Only sources you explicitly choose are ever added - nothing is fetched automatically.
+          </p>
+          <form onSubmit={handleSourceSearch} className="flex gap-3">
+            <Input
+              value={sourceQuery}
+              onChange={(e) => setSourceQuery(e.target.value)}
+              placeholder="Search by topic, title, or author..."
+              aria-label="Search external sources"
+            />
+            <Button type="submit" disabled={atLimit}>Search</Button>
+          </form>
+          {atLimit && (
+            <p className="text-sm text-muted-foreground">
+              You've reached the {RESEARCH_DOCUMENT_LIMIT}-document limit for this project - delete
+              a pending or failed document above to make room before importing another.
+            </p>
+          )}
+          {sourceSearchQuery.isFetching && (
+            <div className="space-y-2" aria-label="Searching external sources">
+              <Skeleton className="h-20" />
+              <Skeleton className="h-20" />
+              <Skeleton className="h-20" />
+            </div>
+          )}
+          {sourceSearchQuery.isError && (
+            <p role="alert" className="text-sm text-destructive">
+              {sourceSearchQuery.error instanceof ApiError
+                ? sourceSearchQuery.error.errorType === "SourceSearchNotConfiguredError"
+                  ? "Source search isn't set up yet."
+                  : sourceSearchQuery.error.message
+                : "Search failed. Try again."}
+            </p>
+          )}
+          {sourceSearchQuery.data && sourceSearchQuery.data.length === 0 && (
+            <EmptyState
+              icon={MagnifyingGlassIcon}
+              title="No results"
+              description="Try a different search term."
+            />
+          )}
+          {importMutation.isError && (
+            <p role="alert" className="text-sm text-destructive">
+              {importMutation.error instanceof ApiError
+                ? importMutation.error.errorType === "ExternalSourceHasNoContentError"
+                  ? "This source has no open-access full text or abstract available to import."
+                  : importMutation.error.message
+                : "Import failed. Try again."}
+            </p>
+          )}
+          <ul className="divide-y divide-border">
+            {sourceSearchQuery.data?.map((result) => (
+              <li key={result.openalex_id} className="space-y-2 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">{result.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {result.authors.length > 0 ? result.authors.join(", ") : "Author not listed"}
+                      {result.publication_year ? ` (${result.publication_year})` : ""}
+                      {result.source_name ? ` - ${result.source_name}` : ""}
+                    </p>
+                    {result.abstract && (
+                      <p className="text-xs text-muted-foreground line-clamp-2">{result.abstract}</p>
+                    )}
+                    <div className="flex items-center gap-2">
+                      {result.has_fetchable_full_text ? (
+                        <Badge variant="success">Full text available</Badge>
+                      ) : result.abstract ? (
+                        <Badge variant="secondary">Abstract only</Badge>
+                      ) : (
+                        <Badge variant="destructive">Nothing to import</Badge>
+                      )}
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    disabled={
+                      atLimit ||
+                      (!result.has_fetchable_full_text && !result.abstract) ||
+                      importMutation.isPending
+                    }
+                    onClick={() => importMutation.mutate(result.openalex_id)}
+                  >
+                    {importMutation.isPending && importingId === result.openalex_id ? "Importing..." : "Import"}
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+        )}
+
+        {acquisitionTab === "search-web" && (
+        <div
+          role="tabpanel"
+          id="acquisition-panel-search-web"
+          aria-labelledby="acquisition-tab-search-web"
+          className="space-y-4"
+        >
+          <p className="text-sm text-muted-foreground">
+            Search the open web and import a specific page into this project. Only pages you
+            explicitly choose are ever added - nothing is fetched automatically.
+          </p>
+          <form onSubmit={handleWebSearch} className="flex gap-3">
+            <Input
+              value={webQuery}
+              onChange={(e) => setWebQuery(e.target.value)}
+              placeholder="Search the web..."
+              aria-label="Search the web"
+            />
+            <Button type="submit" disabled={atLimit}>Search</Button>
+          </form>
+          {atLimit && (
+            <p className="text-sm text-muted-foreground">
+              You've reached the {RESEARCH_DOCUMENT_LIMIT}-document limit for this project - delete
+              a pending or failed document above to make room before importing another.
+            </p>
+          )}
+          {webSearchQuery.isFetching && (
+            <div className="space-y-2" aria-label="Searching the web">
+              <Skeleton className="h-20" />
+              <Skeleton className="h-20" />
+              <Skeleton className="h-20" />
+            </div>
+          )}
+          {webSearchQuery.isError && (
+            <p role="alert" className="text-sm text-destructive">
+              {webSearchQuery.error instanceof ApiError
+                ? webSearchQuery.error.errorType === "SourceSearchNotConfiguredError"
+                  ? "Web search isn't set up yet."
+                  : webSearchQuery.error.message
+                : "Search failed. Try again."}
+            </p>
+          )}
+          {webSearchQuery.data && webSearchQuery.data.length === 0 && (
+            <EmptyState
+              icon={MagnifyingGlassIcon}
+              title="No results"
+              description="Try a different search term."
+            />
+          )}
+          {webImportMutation.isError && (
+            <p role="alert" className="text-sm text-destructive">
+              {webImportMutation.error instanceof ApiError
+                ? webImportMutation.error.errorType === "WebPageFetchFailedError"
+                  ? "This page could not be fetched. It may be unreachable, blocked, or no longer available."
+                  : webImportMutation.error.message
+                : "Import failed. Try again."}
+            </p>
+          )}
+          <ul className="divide-y divide-border">
+            {webSearchQuery.data?.map((result) => (
+              <li key={result.url} className="space-y-2 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">{result.title}</p>
+                    <p className="text-xs text-muted-foreground">{result.url}</p>
+                    {result.snippet && (
+                      <p className="text-xs text-muted-foreground line-clamp-2">{result.snippet}</p>
+                    )}
+                  </div>
+                  <Button
+                    size="sm"
+                    disabled={atLimit || webImportMutation.isPending}
+                    onClick={() => webImportMutation.mutate({ url: result.url, title: result.title })}
+                  >
+                    {webImportMutation.isPending && importingWebUrl === result.url ? "Importing..." : "Import"}
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
         )}
       </section>
 
@@ -334,9 +719,14 @@ export function DocumentsPage() {
               as files here.
             </p>
           </div>
-          <ul className="divide-y divide-border">
-            {processedDocuments.map((doc) => (
-              <li key={doc.document_id} className="flex items-center justify-between py-3">
+          <VirtualList
+            items={processedDocuments}
+            getItemKey={(doc) => doc.document_id}
+            estimateSize={72}
+            className="max-h-[28rem]"
+            ariaLabel="Processed documents"
+            renderItem={(doc, index) => (
+              <div className={cn("flex items-center justify-between py-3", index > 0 && "border-t border-border")}>
                 <div>
                   <span className="text-sm font-medium">{doc.title}</span>
                   <p className="text-xs text-muted-foreground">
@@ -361,9 +751,9 @@ export function DocumentsPage() {
                   )}
                   <Badge variant="success">processed</Badge>
                 </div>
-              </li>
-            ))}
-          </ul>
+              </div>
+            )}
+          />
         </section>
       )}
 

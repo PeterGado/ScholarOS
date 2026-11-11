@@ -105,6 +105,7 @@ Verified via **07_Review_Checklist.md** (configuration, security) and **05_Defin
 | ADR-003 (Modular Monolith) | Accepted | A single deployable process matches the MVP topology. |
 | ADR-004 (Storage and Memory Strategy) | Accepted | Persistence engines match the deployment stage. |
 | ADR-006 (Async Processing) | Accepted | Worker process topology is defined at the cloud stage. |
+| ADR-013 (Production Deployment Cutover and Schema Growth) | Accepted (retroactively) | Records the realization of this ADR's Decision items 3–4 (containerized cloud deployment on Fly.io/Vercel/Neon) and is the "future ADR" this ADR's own Decision item 5 reserved for multi-tenant/per-tenant isolation decisions (Row-Level Security) — a cross-reference addition only, this ADR's own Decision text is unchanged. |
 
 ## Future Considerations
 

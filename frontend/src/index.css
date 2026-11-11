@@ -1,6 +1,5 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
 
 @custom-variant dark (&:is(.dark *));
@@ -156,6 +155,21 @@
   }
 }
 
+/* Respect the user's reduced-motion preference (WCAG 2.3.3) - found missing during the
+   2026-10-09 accessibility/best-practices audit. Without this, the mobile sidebar's slide
+   transition (AppShell.tsx), skeleton pulse (skeleton.tsx), and any Radix/tw-animate-css
+   open/close animations all ignore prefers-reduced-motion entirely. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* Minimal markdown styling for chat messages (MarkdownMessage.tsx) - deliberately small and
    scoped rather than a full typography plugin, since chat content only ever uses a handful of
    these element types. */
@@ -223,9 +237,14 @@
   margin: 1em 0 0.5em;
 }
 .markdown-content table {
+  display: block;
+  overflow-x: auto;
   border-collapse: collapse;
   margin: 0.75em 0;
   font-size: 0.9em;
+  /* A wide table in an AI reply (e.g. a comparison table) otherwise forces the whole message
+     column to scroll horizontally at phone width - found during a mobile-responsiveness audit,
+     2026-10-09. `pre` above already gets the same treatment; `table` never did. */
 }
 .markdown-content th,
 .markdown-content td {

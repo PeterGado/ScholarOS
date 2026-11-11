@@ -88,6 +88,15 @@ class UserCredential(Protocol):
     password_hash: str
     email: str | None
     email_verified: bool
+    # Added (skill-audit finding, 2026-10-09): AuthService.get_sign_in_methods already reads
+    # this via the real `User` model (which has always had it, Google Sign-In, 2026-09-20) -
+    # this Protocol just hadn't been kept in sync, which is exactly what let a real mypy error
+    # (app.auth.service.py:110, "UserCredential has no attribute google_subject") sit silently
+    # suppressed under that module's blanket `ignore_errors` override instead of being caught.
+    google_subject: str | None
+    # Added (email-squatting fix, 2026-10-10): app.auth.abandoned_account.reclaim_if_abandoned
+    # needs this to decide whether an unverified email claim has aged past the reap threshold.
+    created_at: datetime
 
 
 class UserCredentialLookup(Protocol):

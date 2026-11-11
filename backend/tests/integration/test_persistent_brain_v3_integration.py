@@ -164,8 +164,10 @@ def test_only_the_most_recent_memories_reach_a_real_chat_prompt(session, storage
     claimed = process_one_work_item(
         session, text_provider=spy, embedding_provider=FakeEmbeddingProvider(),
         embedding_model_version="test-embedding-model", storage=storage,
-        # Never make a real Wikipedia network call from a test (2026-09-30).
+        # Never make a real Wikipedia/web network call from a test (2026-09-30, extended
+        # 2026-10-17).
         background_knowledge_provider=lambda topic: None,
+        web_fetch_provider=lambda url: None,
     )
     assert claimed is True
     # Multi-pass generation (2026-10-06) is enabled by default: one reply now costs 3 generate()
@@ -233,12 +235,85 @@ def test_background_knowledge_provider_result_reaches_a_real_chat_prompt(session
         session, text_provider=spy, embedding_provider=FakeEmbeddingProvider(),
         embedding_model_version="test-embedding-model", storage=storage,
         background_knowledge_provider=fake_background_knowledge,
+        # Still overridden even though "Hello." contains no URL - belt-and-suspenders against
+        # the real default (2026-10-17), same reasoning as every other call site in this file.
+        web_fetch_provider=lambda url: None,
     )
     assert claimed is True
     assert topics_queried == ["Coastal erosion"]
     real_prompt = spy.prompts[0]
     assert "## BACKGROUND KNOWLEDGE (WIKIPEDIA)" in real_prompt
     assert "the wearing away of land along a shoreline" in real_prompt
+
+
+# --- Web source grounding (2026-10-17) reaching a real chat prompt ----------------------------
+
+
+def test_web_fetch_provider_result_reaches_a_real_chat_prompt(session, storage):
+    """Same proof shape as test_background_knowledge_provider_result_reaches_a_real_chat_prompt
+    above, for web-source grounding: SendChatMessageUseCase enqueues a plain ContextAssemblyInput
+    with no web_sources set (resolved later, worker-side, by extracting URLs out of
+    context.instructions - see GenerateConversationReplyUseCase.execute's own comment), and
+    process_one_work_item's injected web_fetch_provider is what actually reaches the final
+    assembled prompt.
+    """
+    workspace = _make_workspace(session, topic="Coastal erosion")
+    conversation = StartConversationUseCase(
+        SqlAlchemyConversationRepository(session), SqlAlchemyAgentRepository(session), SqlAlchemyUnitOfWork(session)
+    ).execute(user_id=workspace.agent.user_id)
+
+    search_knowledge = SearchKnowledgeUseCase(
+        SqlAlchemyAgentRepository(session),
+        FakeEmbeddingProvider(),
+        SqlAlchemyKnowledgeChunkEmbeddingRepository(session),
+        SqlAlchemyKnowledgeChunkRepository(session),
+        SqlAlchemyChunkEvidenceLinkRepository(session),
+        SqlAlchemyDocumentRepository(session),
+        SqlAlchemyLexicalSearchRepository(session),
+        AiUsageGuard(None, None, daily_token_cap=None),
+    )
+    send_message = SendChatMessageUseCase(
+        SqlAlchemyConversationRepository(session),
+        SqlAlchemyMessageRepository(session),
+        SqlAlchemyAgentRepository(session),
+        SqlAlchemyProjectRepository(session),
+        SqlAlchemyWritingProfileRepository(session),
+        SqlAlchemyProfileCharacteristicRepository(session),
+        SqlAlchemyMemoryRecordRepository(session),
+        search_knowledge,
+        WorkItemRepository(session),
+        storage,
+        SqlAlchemyUnitOfWork(session),
+        AiUsageGuard(None, None, daily_token_cap=None),
+        EmailVerificationGuard(SqlAlchemyUserCredentialLookup(session)),
+    )
+    send_message.execute(
+        user_id=workspace.agent.user_id,
+        conversation_id=conversation.conversation_id,
+        content="What do you think of https://example.com/erosion-study?",
+    )
+
+    spy = SpyingTextGenerationProvider()
+    urls_fetched: list[str] = []
+
+    def fake_web_fetch(url: str):
+        urls_fetched.append(url)
+        from app.ai.web_fetch import WebSource
+
+        return WebSource(url=url, content="A study finding coastal erosion rates have doubled.")
+
+    claimed = process_one_work_item(
+        session, text_provider=spy, embedding_provider=FakeEmbeddingProvider(),
+        embedding_model_version="test-embedding-model", storage=storage,
+        background_knowledge_provider=lambda topic: None,
+        web_fetch_provider=fake_web_fetch,
+    )
+    assert claimed is True
+    assert urls_fetched == ["https://example.com/erosion-study"]
+    real_prompt = spy.prompts[0]
+    assert "## REFERENCED WEB SOURCES" in real_prompt
+    assert "url=https://example.com/erosion-study" in real_prompt
+    assert "A study finding coastal erosion rates have doubled." in real_prompt
 
 
 # --- A blocked/failed message never poisons a later reply (2026-09-30) ------------------------
@@ -310,6 +385,7 @@ def test_a_content_blocked_message_does_not_poison_a_later_reply_in_the_same_con
         session, text_provider=provider, embedding_provider=FakeEmbeddingProvider(),
         embedding_model_version="test-embedding-model", storage=storage,
         background_knowledge_provider=lambda topic: None,
+        web_fetch_provider=lambda url: None,
     )
     assert first_claimed is True
 
@@ -322,6 +398,7 @@ def test_a_content_blocked_message_does_not_poison_a_later_reply_in_the_same_con
         session, text_provider=provider, embedding_provider=FakeEmbeddingProvider(),
         embedding_model_version="test-embedding-model", storage=storage,
         background_knowledge_provider=lambda topic: None,
+        web_fetch_provider=lambda url: None,
     )
     assert second_claimed is True
 

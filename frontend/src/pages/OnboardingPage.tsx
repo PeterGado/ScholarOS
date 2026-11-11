@@ -5,6 +5,7 @@ import { createAgentWorkspace } from "@/api/agents";
 import { uploadResearchDocuments } from "@/api/documents";
 import { extractWritingStyleProfile, startConversation, uploadWritingStyleDocument } from "@/api/writing";
 import { ApiError } from "@/lib/apiClient";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { CheckIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +26,7 @@ const STEPS: { key: Step; label: string }[] = [
  * not anything was uploaded, and the system falls back to its built-in style/reasoning when
  * nothing was. */
 export function OnboardingPage() {
+  useDocumentTitle("Set up your workspace");
   const navigate = useNavigate();
   const [step, setStep] = useState<Step>("project");
   const [workspace, setWorkspace] = useState<AgentWorkspaceResponse | null>(null);

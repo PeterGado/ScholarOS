@@ -5,6 +5,7 @@ import { connectGoogleAccount, getProfile, requestEmailVerification, setPassword
 import { resetAgentWorkspace } from "@/api/agents";
 import { ApiError } from "@/lib/apiClient";
 import { useToast } from "@/lib/ToastContext";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useWorkspaceContext } from "@/components/WorkspaceGate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +19,7 @@ const CONFIRMATION_WORD = "RESET";
 // workspace reset; the natural place plans/billing would live if this ever needs them, without
 // reshaping the rest of the app's navigation when that day comes).
 export function SettingsPage() {
+  useDocumentTitle("Settings");
   const workspace = useWorkspaceContext();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -122,7 +124,7 @@ export function SettingsPage() {
               </Button>
             </div>
             {emailMutation.isError && (
-              <p className="text-sm text-destructive">
+              <p role="alert" className="text-sm text-destructive">
                 {emailMutation.error instanceof ApiError ? emailMutation.error.message : "Could not save email."}
               </p>
             )}
@@ -162,7 +164,7 @@ export function SettingsPage() {
               </>
             )}
             {connectGoogleMutation.isError && (
-              <p className="text-sm text-destructive">
+              <p role="alert" className="text-sm text-destructive">
                 {connectGoogleMutation.error instanceof ApiError
                   ? connectGoogleMutation.error.message
                   : "Could not connect Google."}
@@ -201,7 +203,7 @@ export function SettingsPage() {
               </form>
             )}
             {setPasswordMutation.isError && (
-              <p className="text-sm text-destructive">
+              <p role="alert" className="text-sm text-destructive">
                 {setPasswordMutation.error instanceof ApiError
                   ? setPasswordMutation.error.message
                   : "Could not set password."}
@@ -249,7 +251,7 @@ export function SettingsPage() {
             {resetMutation.isPending ? "Resetting..." : "Permanently reset my workspace"}
           </Button>
           {resetMutation.isError && (
-            <p className="text-sm text-destructive">
+            <p role="alert" className="text-sm text-destructive">
               {resetMutation.error instanceof ApiError ? resetMutation.error.message : "Could not reset workspace."}
             </p>
           )}

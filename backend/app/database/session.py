@@ -1,6 +1,6 @@
 from collections.abc import Generator
 
-from sqlalchemy import Engine, create_engine, event, text
+from sqlalchemy import Engine, create_engine, event, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import get_settings
@@ -183,19 +183,16 @@ def get_db() -> Generator[Session, None, None]:
         current_user_id.set(None)
 
 
-def init_db(target_engine: Engine | None = None) -> None:
-    """Create every table registered on Base.metadata, against `target_engine` or (if not
-    given) this module's current `engine` - read at call time, not bound as a stale default
-    parameter, so tests can point the app at an isolated database by patching this module's
-    `engine`/`SessionLocal` attributes and still have a bare `init_db()` call (e.g. from the
-    app's startup lifespan) follow the patch. Imports each module's models first so they are
-    registered on the shared metadata before create_all runs - the model registration
-    mechanism for this modular-monolith structure (ADR-003).
+def _register_all_models() -> None:
+    """Import every module's models so they are registered on the shared `Base.metadata`
+    before anything reads it - the model registration mechanism for this modular-monolith
+    structure (ADR-003). Shared by `init_db` (which needs the full table set to create it) and
+    `find_schema_drift` (which needs it to know what the schema should contain), so the two can
+    never disagree about which models exist.
     """
     from app.ai.models import AiUsageRecord  # noqa: F401
     from app.auth.models import AuthSession  # noqa: F401
     from app.core.rate_limit_models import RateLimitCounter  # noqa: F401
-    from app.database.base import Base
     from app.database.shared_models import User  # noqa: F401
     from app.modules.agent.infrastructure.models import Agent  # noqa: F401
     from app.modules.document.infrastructure.models import (
@@ -220,6 +217,85 @@ def init_db(target_engine: Engine | None = None) -> None:
     )
     from app.workers.models import WorkItem  # noqa: F401
 
+
+def find_schema_drift(target_engine: Engine | None = None) -> dict[str, list[str]]:
+    """Report every ORM table that is absent from, or missing columns in, the live database.
+
+    Returns `{table_name: [missing column names]}` - empty when the database matches what the
+    models expect. Only the models -> database direction is checked: tables and columns that
+    exist in the database but not on the models are deliberately ignored, since the SQLite FTS5
+    virtual table, Postgres' generated `search_vector` column, and the RLS policies are all
+    created outside `Base.metadata` and are expected to be invisible here.
+
+    `target_engine` defaults to this module's current `engine`, read at call time for the same
+    patchability reason `init_db` documents.
+    """
+    from app.database.base import Base
+
+    _register_all_models()
+    active_engine = target_engine if target_engine is not None else engine
+    inspector = inspect(active_engine)
+    existing_tables = set(inspector.get_table_names())
+
+    drift: dict[str, list[str]] = {}
+    for table_name, table in Base.metadata.tables.items():
+        if table_name not in existing_tables:
+            drift[table_name] = sorted(column.name for column in table.columns)
+            continue
+        present = {column["name"] for column in inspector.get_columns(table_name)}
+        missing = sorted(column.name for column in table.columns if column.name not in present)
+        if missing:
+            drift[table_name] = missing
+    return drift
+
+
+def verify_schema(target_engine: Engine | None = None) -> None:
+    """Fail startup loudly when the database predates a column-adding migration.
+
+    2026-11-06: a local `backend/scholaros.db` bootstrapped by `create_all()` before the
+    google-signin/email-verification migrations had no `users.email`. Nothing complained - the
+    app started, and the first query touching that column died with SQLite's
+    `no such column: users.email` buried inside an unrelated SELECT from
+    `sync_configured_user`, surfacing as "Application startup failed" with no hint about the
+    real cause. This check names every missing table/column up front and says how to fix it.
+
+    Deliberately checks rather than repairs in place: silently guessing column types for an
+    ALTER TABLE on a populated database is not something startup should do on its own, and the
+    real repair path (`alembic upgrade head`) is explicit, reviewed, and preserves data. Since
+    2026-11-06 the migration chain is idempotent - see app.database.migration_helpers - so
+    running it against a database in this state adopts what already exists and adds only what
+    is missing, rather than aborting with "table users already exists" as it used to.
+    """
+    drift = find_schema_drift(target_engine)
+    if not drift:
+        return
+
+    details = "; ".join(
+        f"{table} ({', '.join(columns)})" for table, columns in sorted(drift.items())
+    )
+    raise RuntimeError(
+        f"Database schema is out of date with the ORM models - missing: {details}. "
+        "create_all() only creates tables that don't exist yet and never adds columns to an "
+        "existing table, so a database bootstrapped that way before a column-adding migration "
+        "stays stale indefinitely. Fix: run `alembic upgrade head` against this database - it "
+        "adopts the tables that already exist and adds only what is missing, preserving rows. "
+        "For a throwaway local SQLite file you can alternatively delete the file and rebuild "
+        "it with `alembic upgrade head`."
+    )
+
+
+def init_db(target_engine: Engine | None = None) -> None:
+    """Create every table registered on Base.metadata, against `target_engine` or (if not
+    given) this module's current `engine` - read at call time, not bound as a stale default
+    parameter, so tests can point the app at an isolated database by patching this module's
+    `engine`/`SessionLocal` attributes and still have a bare `init_db()` call (e.g. from the
+    app's startup lifespan) follow the patch. Imports each module's models first so they are
+    registered on the shared metadata before create_all runs - the model registration
+    mechanism for this modular-monolith structure (ADR-003).
+    """
+    from app.database.base import Base
+
+    _register_all_models()
     Base.metadata.create_all(bind=target_engine if target_engine is not None else engine)
 
     # ADR-005 Decision 1's lexical branch: on SQLite, an FTS5 virtual table, not representable

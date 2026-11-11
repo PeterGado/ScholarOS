@@ -8,7 +8,9 @@ import {
   uploadWritingStyleDocument,
 } from "@/api/writing";
 import { deleteResearchDocument } from "@/api/documents";
+import { AI_USAGE_QUERY_KEY } from "@/api/usage";
 import { ApiError } from "@/lib/apiClient";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useWorkspaceContext } from "@/components/WorkspaceGate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +25,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 const WRITING_STYLE_SAMPLE_LIMIT = 5;
 
 export function StyleProfilePage() {
+  useDocumentTitle("Writing Style");
   const workspace = useWorkspaceContext();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -57,7 +60,12 @@ export function StyleProfilePage() {
 
   const extractMutation = useMutation({
     mutationFn: () => extractWritingStyleProfile(documents.map((d) => d.document_id)),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["writing-profile"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["writing-profile"] });
+      // Extraction calls the AI provider synchronously in this request (unlike uploads, whose
+      // usage is recorded by the worker later), so the new total is already in the ledger.
+      queryClient.invalidateQueries({ queryKey: AI_USAGE_QUERY_KEY });
+    },
   });
 
   const deleteMutation = useMutation({
@@ -97,7 +105,7 @@ export function StyleProfilePage() {
           </p>
         )}
         {uploadMutation.isError && (
-          <p className="text-sm text-destructive">
+          <p role="alert" className="text-sm text-destructive">
             {uploadMutation.error instanceof ApiError ? uploadMutation.error.message : "Upload failed."}
           </p>
         )}
@@ -143,7 +151,7 @@ export function StyleProfilePage() {
           </Button>
         )}
         {deleteMutation.isError && (
-          <p className="text-sm text-destructive">
+          <p role="alert" className="text-sm text-destructive">
             {deleteMutation.error instanceof ApiError ? deleteMutation.error.message : "Could not delete sample."}
           </p>
         )}
@@ -163,7 +171,7 @@ export function StyleProfilePage() {
           </p>
         )}
         {extractMutation.isError && (
-          <p className="text-sm text-destructive">
+          <p role="alert" className="text-sm text-destructive">
             {extractMutation.error instanceof ApiError
               ? extractMutation.error.message
               : "Extraction failed."}

@@ -47,7 +47,7 @@ Candidates from product intuition that were **not** supported by these baselines
 
 ## 3. Domain Model Overview
 
-ScholarOS manages twelve domains. Each is a coherent area of information with a single business purpose:
+ScholarOS manages eleven domains (originally twelve; see the correction note below). Each is a coherent area of information with a single business purpose:
 
 | # | Domain | One-line purpose |
 |---|--------|------------------|
@@ -56,16 +56,16 @@ ScholarOS manages twelve domains. Each is a coherent area of information with a 
 | 3 | **Knowledge** | The interpreted understanding derived from source materials. |
 | 4 | **Knowledge Chunk** | The discrete, retrievable units of that understanding. |
 | 5 | **Memory** | The persistent project context, decisions, and chronology. |
-| 6 | **Conversation** | The interaction history between researcher and system. |
+| 6 | **Conversation** | The interaction history between researcher and system — the product's primary writing-generation surface as of ADR-012, not only an interaction log. |
 | 7 | **Writing Profile** | The author's preserved writing characteristics. |
 | 8 | **Capability** | The catalog of intelligence capabilities (renamed from "Agent"; ADR-009). |
-| 9 | **Draft** | The generated and refined academic content. |
-| 10 | **Review** | The evaluation, decision, and approval of drafts. |
+| 9 | ~~**Draft**~~ | **REMOVED by ADR-012 (2026-10-09, see `08` §25)** — number preserved, not reused, for cross-reference stability. |
+| 10 | ~~**Review**~~ | **REMOVED by ADR-012 (2026-10-09, see `08` §25)** — number preserved, not reused. |
 | 11 | **Configuration** | The operational settings governing system behavior. |
 | 12 | **User and Session** | The identity and interaction boundary. |
 | 13 | **Agent** | The user's permanent, specialized research workspace — added by ADR-009. |
 
-This inventory was extended from twelve to thirteen domains by ADR-009 (2026-09-04), which introduced **Agent** as the user's permanent workspace and renamed the pre-existing capability-registry domain from "Agent" to "Capability" to free the name. Domain #13 (Agent) is listed last to preserve the numbering of domains #1–#12 exactly as reviewed and frozen at Milestone 5 close-out; its position in this table does not reflect its role in the ownership hierarchy — see §4.13 and the corrected relationships in §5.
+This inventory was extended from twelve to thirteen domains by ADR-009 (2026-09-04), which introduced **Agent** as the user's permanent workspace and renamed the pre-existing capability-registry domain from "Agent" to "Capability" to free the name. Domain #13 (Agent) is listed last to preserve the numbering of domains #1–#12 exactly as reviewed and frozen at Milestone 5 close-out; its position in this table does not reflect its role in the ownership hierarchy — see §4.13 and the corrected relationships in §5. **Narrowed from thirteen to eleven live domains by ADR-012 (2026-10-09, decision made earlier, 2026-09-16–2026-09-18 — see `08` §25):** Draft (#9) and Review (#10) removed; their numbers are preserved, not reused, for the same cross-reference-stability reason ADR-009's own numbering choice above already established.
 
 ---
 
@@ -95,7 +95,7 @@ Each domain below defines its **purpose** (why it exists), **responsibility** (w
 * **Responsibility.** Capture what the system understands about the domain; support retrieval and context assembly; preserve evidence linkage to source material (AIR-024, DR-008).
 * **Ownership.** Shared: the system derives knowledge through processing, but the user retains authority over research content and interpretation (03 §3.3, §4).
 * **Lifecycle.** Created through interpretation of source materials; refined as the project evolves; superseded when new evidence alters prior understanding, with history retained (07 §3.3; AIR-065).
-* **Dependencies.** Derived from **Research Document**. Referenced by **Memory**, **Knowledge Chunk**, and **Draft**.
+* **Dependencies.** Derived from **Research Document**. Referenced by **Memory**, **Knowledge Chunk**, and **Conversation** (ADR-012: Draft, the original referencing domain, is removed; Conversation took over its evidence-grounding use).
 
 ### 4.4 Knowledge Chunk
 
@@ -103,7 +103,7 @@ Each domain below defines its **purpose** (why it exists), **responsibility** (w
 * **Responsibility.** Provide modular, evidence-carrying units for focused retrieval; support the hybrid retrieval strategy of ADR-005.
 * **Ownership.** Derived artifact associated with the project; sourced from user-provided materials (03 §3.4).
 * **Lifecycle.** Created during knowledge processing; re-linked or revised as project knowledge evolves; retained while relevant, eligible for controlled removal per the data lifecycle (04 §9.2; DR-023 to DR-025).
-* **Dependencies.** Derived from **Knowledge**; linked to **Research Document** (evidence); consumed by **Draft** (evidence annotations) and retrieval.
+* **Dependencies.** Derived from **Knowledge**; linked to **Research Document** (evidence); consumed by **Conversation** (evidence annotations via Message Context Link, ADR-012 — previously Draft) and retrieval.
 
 ### 4.5 Memory
 
@@ -111,7 +111,7 @@ Each domain below defines its **purpose** (why it exists), **responsibility** (w
 * **Responsibility.** Retain research objectives, methodological choices, terminology, rationale, and decisions; reduce the need to re-establish context across sessions; preserve chronology and supersession (DR-014).
 * **Ownership.** Owned by the Agent and the user; the system preserves and organizes it (03 §3.5; ADR-009). Memory is a first-class persisted domain, never reconstructed from conversation logs (ADR-004).
 * **Lifecycle.** Created when project decisions or context are established; updated as the project evolves; superseded by newer decisions while historical traceability is retained (04 §8.2; DR-014).
-* **Dependencies.** Populated from user input and system-derived context (including review outcomes and conversation outcomes); referenced by context assembly and drafting (04 §8.3).
+* **Dependencies.** Populated from user input and system-derived context (conversation outcomes, automatic extraction from Message content — ADR-012; review outcomes were a source before ADR-012 removed Review); referenced by context assembly (04 §8.3).
 
 ### 4.6 Conversation
 
@@ -119,7 +119,7 @@ Each domain below defines its **purpose** (why it exists), **responsibility** (w
 * **Responsibility.** Capture user intent, clarifications, requests, and system responses; preserve the evolution of the research workflow as a continuity record.
 * **Ownership.** User-owned, within the owning Agent's context; the system preserves the interaction record (03 §3.6; ADR-009).
 * **Lifecycle.** Created as the user interacts; retained as a continuity record; may be summarized or linked to memory rather than stored verbatim indefinitely (03 §3.6; 04 §10.2).
-* **Dependencies.** Scoped by **Project**; may reference **Research Document**, **Knowledge**, **Draft**, and **Memory** (04 §10.2); informs **Memory** only with user awareness (MVP-011).
+* **Dependencies.** Scoped by **Project**; may reference **Research Document**, **Knowledge**, and **Memory** (04 §10.2); informs **Memory** only with user awareness (MVP-011). As of ADR-012, Conversation is also the primary writing-generation surface itself, not only a referencing domain.
 
 ### 4.7 Writing Profile
 
@@ -127,7 +127,7 @@ Each domain below defines its **purpose** (why it exists), **responsibility** (w
 * **Responsibility.** Preserve writing patterns, vocabulary tendencies, structure preferences, and citation habits; support stylistic continuity in drafting.
 * **Ownership.** User-owned, associated with one or more Agents; in the MVP, scoped to the single Agent (03 §3.7; ADR-009).
 * **Lifecycle.** Created from supplied writing samples; updated as the user refines it; reused across future projects or sessions where appropriate (03 §3.7).
-* **Dependencies.** Derived from **User**-supplied samples; consumed by drafting; **Draft** depends on it for style application (AIR-016).
+* **Dependencies.** Derived from **User**-supplied samples; consumed by chat-based writing generation, which depends on it for style application (AIR-016; previously Draft, removed by ADR-012).
 
 ### 4.8 Capability
 
@@ -139,21 +139,13 @@ Each domain below defines its **purpose** (why it exists), **responsibility** (w
 * **Lifecycle.** Registered as named, replaceable units; updated through the controlled extension path (04 §14.2; AIR-058 to AIR-060).
 * **Dependencies.** Governed by **Configuration**; consumed by the orchestration layer (05 §13).
 
-### 4.9 Draft
+### 4.9 Draft — REMOVED (ADR-012, see `08` §25)
 
-* **Purpose.** Represent the academic content generated or refined during the project (DR-016 to DR-019; 03 §3.9; WR-019 to WR-021; MVP-015 to MVP-017).
-* **Responsibility.** Preserve draft content, structure, revisions, and review state; support iterative refinement and human approval; retain version history (DR-017, MVP-021).
-* **Ownership.** User-owned, associated with the owning Agent (03 §3.9; ADR-009).
-* **Lifecycle.** Created from a drafting task; revised through iterative workflow cycles; approved, rejected, or superseded as the project progresses (03 §3.9; 04 §20).
-* **Dependencies.** Built from **Knowledge Chunk** (evidence), **Memory** (context), and **Writing Profile** (style); reviewed by **Review**.
+Removed 2026-10-09 (decision made and implemented earlier, 2026-09-16–2026-09-18). Replaced by **Conversation** (§4.6) as the primary writing-generation domain. Section number preserved, not reused. See `ADR-012`.
 
-### 4.10 Review
+### 4.10 Review — REMOVED (ADR-012, see `08` §25)
 
-* **Purpose.** Represent the evaluation and approval state of drafts and supporting outputs (DR-019; 03 §3.10; WR-022 to WR-025; AIR-037 to AIR-039; MVP-018 to MVP-020).
-* **Responsibility.** Capture review feedback, revision requests, and approval decisions; preserve evidence of human oversight for audit (AIR-054).
-* **Ownership.** User-owned; the researcher is the final reviewer and approver (03 §3.10; AIR-003, AIR-038).
-* **Lifecycle.** Created during draft review; updated through revision cycles; preserved as part of project history (03 §3.10).
-* **Dependencies.** Applies to **Draft**; consumes evidence references from **Knowledge Chunk**; outcomes update **Memory** (04 §19.3).
+Removed alongside Draft (§4.9); no successor domain — see `ADR-012` Decision item 2 for why.
 
 ### 4.11 Configuration
 
@@ -176,10 +168,10 @@ Each domain below defines its **purpose** (why it exists), **responsibility** (w
 **Added by ADR-009.** Not part of the original twelve-domain inventory frozen at Milestone 5 close-out; introduced by a subsequent architecturally significant correction, following the product clarification recorded in `docs/journal/2026-09-04.md`.
 
 * **Purpose.** Represent the user's permanent, specialized research workspace: the entity that wraps one Project and accumulates everything the system learns and produces around it over time (ADR-009).
-* **Responsibility.** Anchor identity for everything derived from or accumulated within its one Project — Knowledge, Memory, Conversation, Writing Profile, Draft, and Review; enforce the MVP boundary of one Agent per User.
+* **Responsibility.** Anchor identity for everything derived from or accumulated within its one Project — Knowledge, Memory, Conversation, and Writing Profile (previously also Draft and Review, removed by ADR-012); enforce the MVP boundary of one Agent per User.
 * **Ownership.** User-owned. The Agent is created by the user and never transferred or merged with another Agent.
 * **Lifecycle.** Created together with its one Project at initiation, from the user-supplied topic, reference documents, and writing-style samples; persists permanently for the life of the user's engagement with that research undertaking; never replaced or reassigned to a different Project (ADR-009).
-* **Dependencies.** Depends on **User** (1:1 for the MVP; additional Agents per user are a deferred, monetization-gated capability, not built now) and **Project** (1:1, permanent — the pairing never changes). Owns **Knowledge**, **Knowledge Chunk**, **Memory**, **Conversation**, **Writing Profile**, **Draft**, and **Review**.
+* **Dependencies.** Depends on **User** (1:1 for the MVP; additional Agents per user are a deferred, monetization-gated capability, not built now) and **Project** (1:1, permanent — the pairing never changes). Owns **Knowledge**, **Knowledge Chunk**, **Memory**, **Conversation**, and **Writing Profile** (ADR-012 removed Draft and Review from this list).
 
 ---
 
@@ -196,16 +188,14 @@ The following relationships are stated at the business level. Their structural r
 | Agent | Knowledge Chunk | An Agent hosts its retrievable chunks (ADR-009). |
 | Agent | Memory | An Agent accumulates its memory records (ADR-009). |
 | Agent | Conversation | An Agent scopes its interaction history (ADR-009). |
-| Agent | Draft | An Agent produces its drafts (ADR-009). |
 | Agent | Writing Profile | An Agent is associated with an author profile (ADR-009). |
 | Research Document | Knowledge | Documents are the source from which knowledge is derived. |
 | Knowledge | Knowledge Chunk | Knowledge is divided into retrievable chunks. |
 | Knowledge Chunk | Research Document | Chunks are evidence-linked to source documents. |
-| Knowledge Chunk | Draft | Drafts are evidence-grounded in chunks. |
-| Memory | Draft | Memory supplies persistent context to drafting. |
-| Writing Profile | Draft | The profile shapes draft style. |
-| Draft | Review | Drafts are evaluated by reviews. |
-| Review | Memory | Review outcomes inform memory. |
+| Knowledge Chunk | Conversation | Chat-generated writing is evidence-grounded in chunks (ADR-012 — previously Draft). |
+| Memory | Conversation | Memory supplies persistent context to chat-based writing generation (ADR-012 — previously Draft). |
+| Writing Profile | Conversation | The profile shapes writing style (ADR-012 — previously Draft). |
+| ~~Draft~~ | ~~Review~~ | **Removed by ADR-012** (`08` §25) — no successor relationship; the single-researcher use case has no distinct reviewer role. |
 | Capability | Configuration | Capability sets are configuration-governed (renamed from "Agent"; ADR-009). |
 | Conversation | Memory | Approved conversation outcomes enter memory with user awareness. |
 | Configuration | All domains | Configuration governs behavior across all domains. |
@@ -228,13 +218,13 @@ The following terms are binding on all later database documents. They must be us
 | **Knowledge Chunk** | A discrete retrievable unit of interpreted knowledge carrying evidence. |
 | **Memory** | Persistent project context, decisions, and chronology. |
 | **Memory Record** | An individual persisted element of memory. |
-| **Conversation** | Interaction history within a project. |
+| **Conversation** | Interaction history within a project; the primary writing-generation surface as of ADR-012 (`08` §25), not only an interaction log. |
 | **Message** | An individual exchange within a conversation (user request or system response). |
 | **Writing Profile** | The author's preserved writing characteristics. |
 | **Capability** | A registered intelligence capability (renamed from "Agent" by ADR-009). |
-| **Draft** | Generated or refined academic content. |
-| **Review** | Evaluation and approval of a draft. |
-| **Review Decision** | The recorded outcome of a review (approve, revise, reject). |
+| **Draft** *(removed)* | Historical only — generated/refined academic content, before ADR-012 (2026-10-09, see `08` §25) replaced this domain with chat-based generation within Conversation. |
+| **Review** *(removed)* | Historical only — evaluation and approval of a draft, before ADR-012 removed it with no successor (see `08` §25). |
+| **Review Decision** *(removed)* | Historical only — the recorded outcome of a review, before ADR-012 removed it; its memory-provenance role is now carried by Memory Record directly. |
 | **Configuration** | Operational settings governing system behavior. |
 | **Evidence Link** | The traceable association between interpreted/generated content and its source material. |
 | **Supersession** | The replacement of an earlier record by a newer one with history retained. |
@@ -250,8 +240,8 @@ The following candidate domains were considered and **validated out** against th
 |-----------|----------|-----------|
 | **Citations / References** | Not a standalone domain in the MVP | Evidence linkage is a first-class *relationship* (evidence links, ADR-005; 04 §18), not a separate domain. Automated citation management is explicitly out of MVP scope (SRS Ch10 out-of-scope list) and scheduled in the roadmap (SRS Ch11). |
 | **Prompt Assets** | Not a user data domain | Prompt construction is a structured capability of the intelligence layer (04 §15; AIR-028 to AIR-030). Prompt and workflow assets are configuration-governed (AIR-055) and belong to **Configuration**. |
-| **Generated Responses** | Not a separate domain | Substantive generated content is **Draft**; conversational responses are **Message** within **Conversation** (03 §3.6, §3.9; AIR-006 artifact distinction). |
-| **Version History** | Not a separate domain | Versioning is a cross-cutting strategy realized in the logical model: draft versions (DR-017, MVP-021), memory chronology (DR-014), and knowledge supersession (07 §3.3). Document 04 defines it. |
+| **Generated Responses** | Not a separate domain | All generated content — substantive writing and conversational exchange alike — is **Message** within **Conversation** (03 §3.6, §3.9). Before ADR-012 (`08` §25) removed it, substantive content was **Draft** specifically, distinct from conversational Message; that distinction no longer exists. |
+| **Version History** | Not a separate domain | Versioning is a cross-cutting strategy realized in the logical model: memory chronology (DR-014) and knowledge supersession (07 §3.3). (Draft versioning, DR-017/MVP-021, was part of this before ADR-012 removed Draft; Message content is immutable per-message rather than versioned, so no successor versioning concept replaces it.) |
 | **Capability Configurations** | Part of **Configuration** | Capability sets and workflow parameters are configuration-governed and reviewable (AIR-055 to AIR-057). (Renamed from "Agent Configurations" by ADR-009.) |
 | **Sessions (login)** | Part of **User and Session** | Session state supports the authentication boundary (05 §15) but is not a business domain. |
 
@@ -281,6 +271,6 @@ This domain model is traceable to the approved baseline as follows:
 
 ## 9. Summary
 
-The ScholarOS domain model, as corrected by ADR-009, consists of thirteen domains — Project, Research Document, Knowledge, Knowledge Chunk, Memory, Conversation, Writing Profile, Capability, Draft, Review, Configuration, User and Session, and Agent — each with a defined purpose, responsibility, ownership, lifecycle, and dependencies. Agent is the user's permanent, specialized workspace, owning exactly one Project and everything derived from or accumulated within it (Knowledge, Memory, Conversation, Writing Profile, Draft, Review); Project retains identity, topic, lifecycle, and Research Document ownership. Candidates that product intuition suggested but the baselines did not support (Citations, Prompt Assets, Generated Responses, Version History, Capability Configurations, login Sessions) were validated out with explicit rationale.
+The ScholarOS domain model, as corrected by ADR-009 and ADR-012 (2026-10-09, see `08` §25), consists of eleven live domains — Project, Research Document, Knowledge, Knowledge Chunk, Memory, Conversation, Writing Profile, Capability, Configuration, User and Session, and Agent — each with a defined purpose, responsibility, ownership, lifecycle, and dependencies. (Draft and Review, domains #9–#10, were removed by ADR-012; their numbers are preserved above, not reused.) Agent is the user's permanent, specialized workspace, owning exactly one Project and everything derived from or accumulated within it (Knowledge, Memory, Conversation, Writing Profile); Project retains identity, topic, lifecycle, and Research Document ownership. Candidates that product intuition suggested but the baselines did not support (Citations, Prompt Assets, Generated Responses, Version History, Capability Configurations, login Sessions) were validated out with explicit rationale.
 
 This document establishes the **business language** of ScholarOS. The next document in the layered set, [03_Conceptual_Data_Model.md](03_Conceptual_Data_Model.md), defines how these domains relate to one another.

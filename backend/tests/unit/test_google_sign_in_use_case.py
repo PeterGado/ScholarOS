@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from datetime import UTC, datetime
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -14,6 +14,7 @@ from app.auth.exceptions import (
 from app.auth.google_sign_in import GoogleSignInUseCase
 from app.auth.repository import (
     AuthSessionRepository,
+    UserAccountRepository,
     UserCredentialLookup,
     UserRegistrationRepository,
 )
@@ -30,6 +31,7 @@ class FakeUserCredential:
     email: str | None = None
     google_subject: str | None = None
     email_verified: bool = True
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 class FakeUserCredentialLookup(UserCredentialLookup):
@@ -78,6 +80,24 @@ class FakeUserRegistrationRepository(UserRegistrationRepository):
         self._lookup._users.append(user)
         self.created.append(user)
         return user
+
+
+class FakeUserAccountRepository(UserAccountRepository):
+    def __init__(self, lookup: FakeUserCredentialLookup) -> None:
+        self._lookup = lookup
+
+    def update_password_hash(self, user_id: int, password_hash: str) -> None:
+        raise NotImplementedError("not exercised by these tests")
+
+    def update_email(self, user_id: int, email: str | None) -> None:
+        user = next(u for u in self._lookup._users if u.user_id == user_id)
+        user.email = email
+
+    def mark_email_verified(self, user_id: int) -> None:
+        raise NotImplementedError("not exercised by these tests")
+
+    def set_google_subject(self, user_id: int, google_subject: str) -> None:
+        raise NotImplementedError("not exercised by these tests")
 
 
 class FakeAuthSessionRepository(AuthSessionRepository):
@@ -136,10 +156,13 @@ def _build_use_case(
     google_client_id=GOOGLE_CLIENT_ID,
     verifier=None,
     raise_integrity_error=False,
+    unverified_email_reap_after_hours=48,
+    wire_user_accounts=True,
 ):
     lookup = FakeUserCredentialLookup(*existing_users)
     registration = FakeUserRegistrationRepository(lookup, raise_integrity_error=raise_integrity_error)
     auth_service = AuthService(FakeAuthSessionRepository(), lookup, FakeUnitOfWork())
+    user_accounts = FakeUserAccountRepository(lookup) if wire_user_accounts else None
     use_case = GoogleSignInUseCase(
         lookup,
         registration,
@@ -148,6 +171,8 @@ def _build_use_case(
         verifier or _verifier(),
         required_invite_code=required_invite_code,
         google_client_id=google_client_id,
+        user_accounts=user_accounts,
+        unverified_email_reap_after_hours=unverified_email_reap_after_hours,
     )
     return use_case, lookup, registration
 
@@ -272,6 +297,48 @@ def test_a_verified_email_colliding_with_an_existing_password_account_is_rejecte
         use_case.execute(id_token="raw-token", invite_code=None)
 
     assert registration.created == []  # no account was silently linked or duplicated
+
+
+def test_colliding_with_a_recently_squatted_unverified_email_is_still_rejected():
+    squatter = FakeUserCredential(
+        user_id=3,
+        username="squatter",
+        email="alice@example.com",
+        password_hash="hashed",
+        email_verified=False,
+        created_at=datetime.now(UTC),
+    )
+    use_case, _, registration = _build_use_case(existing_users=[squatter])
+
+    with pytest.raises(GoogleAccountEmailConflictError):
+        use_case.execute(id_token="raw-token", invite_code=None)
+
+    assert registration.created == []
+
+
+def test_an_abandoned_unverified_email_claim_past_the_ttl_is_reclaimed_by_google_sign_in():
+    """The email-squatting fix (2026-10-10) applies the same reap logic here: a verified Google
+    identity can reclaim an email an unverified password registration squatted on past the TTL."""
+    squatter = FakeUserCredential(
+        user_id=3,
+        username="squatter",
+        email="alice@example.com",
+        password_hash="hashed",
+        email_verified=False,
+        created_at=datetime.now(UTC) - timedelta(hours=49),
+    )
+    use_case, lookup, registration = _build_use_case(
+        existing_users=[squatter], unverified_email_reap_after_hours=48
+    )
+
+    token = use_case.execute(id_token="raw-token", invite_code=None)
+
+    assert isinstance(token, str) and token
+    new_account = lookup.get_by_google_subject("google-subject-1")
+    assert new_account is not None
+    assert new_account.email == "alice@example.com"
+    assert squatter.email is None  # the old account lost the claim, but still exists
+    assert len(registration.created) == 1
 
 
 def test_an_unverified_email_does_not_trigger_the_conflict_check():

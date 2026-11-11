@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,6 +22,22 @@ class Settings(BaseSettings):
     # 20MB comfortably covers real research documents/PDFs/docx writing samples at this
     # project's scale without inviting a trivial memory/storage-cost abuse vector.
     max_upload_size_bytes: int = 20 * 1024 * 1024
+    # Global request body-size ceiling (2026-10-10, production-readiness pass): applied to
+    # every request by MaxBodySizeMiddleware (app.core.middleware), before CORS/rate
+    # limiting/routes run. 25MB is deliberately just above max_upload_size_bytes plus
+    # multipart overhead, so the one real route that needs up to 20MB still passes through
+    # untouched while a pathologically large body to any other route (which should never see
+    # more than a few KB) is rejected before it reaches anything else.
+    max_request_body_bytes: int = 25 * 1024 * 1024
+    # Data retention (2026-10-10, production-readiness pass): how long purely operational
+    # bookkeeping rows survive before DataRetentionJob (app.workers.retention) deletes them.
+    # Scoped deliberately narrow - ai_usage_records and rate_limit_counters are billing/abuse
+    # ledgers, not content; work_items is transient queue bookkeeping, not an audit trail.
+    # Never applies to KnowledgeChunk, MemoryRecord, Message, or any other content table - the
+    # AI's actual knowledge and conversation history stay permanent and unbounded.
+    data_retention_usage_days: int = 90
+    data_retention_work_item_days: int = 30
+    data_retention_check_interval_seconds: float = 86400.0
     # Object storage backend (ADR-004 §5's content-addressed store, now provider-agnostic):
     # "filesystem" (default, unchanged) or "s3" - any S3-compatible endpoint (MinIO, Cloudflare
     # R2, AWS S3 itself), selected by configuration exactly like the AI provider gateway
@@ -42,6 +59,31 @@ class Settings(BaseSettings):
     # config-only gate for a friends-testing phase, removable later (clear this var) without a
     # code change when the project owner is ready for fully public registration.
     registration_invite_code: str | None = None
+    # Bot protection on registration (2026-10-11, production-readiness pass): Cloudflare
+    # Turnstile's secret key, used server-side to verify the token the frontend's widget
+    # produces (VITE_TURNSTILE_SITE_KEY, a separate, non-secret frontend env var). Unset means
+    # the feature is off - RegisterUserUseCase skips verification entirely rather than reject
+    # every registration, the same "missing config disables the feature" shape
+    # registration_invite_code/google_oauth_client_id already use above.
+    turnstile_secret_key: str | None = None
+    # Malware hash-reputation check on uploads (2026-10-11, production-readiness pass): the
+    # VirusTotal API key. Unset means the feature is off - uploads are checked only against the
+    # existing format/size checks, the same "missing config disables the feature" shape as
+    # turnstile_secret_key above. See app.core.virus_scan.is_known_malicious's own docstring for
+    # exactly what this does and does not catch (a known hash, not a fresh scan).
+    virustotal_api_key: str | None = None
+    # Search-and-import source discovery (2026-10-17): the free OpenAlex API key, self-serve via
+    # an emailed verification link (openalex.org/settings/api). Required, not optional like most
+    # integrations in this app - OpenAlex's unauthenticated tier shares a tiny ($0.10/day) budget
+    # across every caller on the same network IP, which isn't viable for a real feature. Unset
+    # means the feature is off (SourceSearchNotConfiguredError), the same "missing config
+    # disables the feature" shape as turnstile_secret_key/virustotal_api_key above.
+    openalex_api_key: str | None = None
+    # General web search discovery (2026-10-17): Tavily's search API key (sign up at
+    # tavily.com, no card required for the free tier). Same "missing config disables the
+    # feature" shape as openalex_api_key above (SourceSearchNotConfiguredError) - unlike
+    # OpenAlex, Tavily has no viable unauthenticated tier at all.
+    tavily_api_key: str | None = None
     # Google Sign-In (2026-09-20): the OAuth Client ID from Google Cloud Console, used to verify
     # the `aud` claim of every ID token. Not a secret (it's also embedded in the frontend
     # bundle as VITE_GOOGLE_CLIENT_ID) - unset means the feature is off (GoogleSignInNotConfiguredError).
@@ -166,22 +208,33 @@ class Settings(BaseSettings):
     # production database ever hits, since Postgres has no such single-writer limitation.
     # Defaults False: production and every other test always start the real executor, unchanged.
     disable_work_item_executor: bool = False
-    # Connection pool sizing (2026-09-30, concurrent-load planning): both engines previously
-    # relied on SQLAlchemy's own defaults (pool_size=5, max_overflow=10 - up to 15 connections
-    # each, ~30 total from one process) - never deliberately chosen. The app connects through
-    # Neon's pooled (PgBouncer transaction-mode) endpoint, whose own client-connection ceiling is
-    # documented as being far above what this app needs at its target scale (~100-300 concurrent
-    # users, a handful of worker threads) regardless of compute size - these values are picked to
-    # be comfortably conservative for that scale, not measured against an exact confirmed number
-    # (checking the dashboard for compute size alone didn't surface a hard connection-count
-    # figure, and hunting further wasn't worth it at this scale - see the RLS incident memory/
-    # this session's own discussion for that judgment call). Revisit if the pool is ever
-    # genuinely observed to be a bottleneck (connections timing out waiting for the pool, not a
-    # symptom this app has seen).
+    # Test-infrastructure-only fake AI provider (2026-10-09): selected via ai_provider="fake",
+    # same configuration-only selection as every other provider (ADR-002). Lets CI run e2e specs
+    # that need *a* provider response (chat replies, document knowledge extraction, style
+    # extraction) without a real API key or a live billable call - see app.ai.providers.fake.
+    # ai_fake_provider_fail flips it to always raise instead of succeeding, for the one spec
+    # that specifically tests the failure/retry path (chat-reply-failure.spec.ts). Never set in
+    # production; mirrors disable_work_item_executor's own "test-only, defaults off" pattern.
+    ai_fake_provider_fail: bool = False
+    # Connection pool sizing (2026-09-30, concurrent-load planning; retightened 2026-10-11 against
+    # a real confirmed ceiling). The original 2026-09-30 values (web 10+15, worker 10+10) were
+    # picked as "comfortably conservative" against an unknown ceiling - checking Neon's dashboard
+    # at the time didn't surface a hard connection-count figure. The project owner has since
+    # confirmed the real number directly from Neon: this project's direct/backend connection
+    # ceiling is 104 total, 7 reserved for the Neon superuser, 97 usable. At the old settings,
+    # worst-case simultaneous overflow across this app's 2 Fly machines was up to 90 connections
+    # (45/machine: web 10+15=25, worker 10+10=20) - only ~7 of headroom against 97, before
+    # counting the release_command migration connection, any direct psql/dashboard session, or
+    # headroom for a future third machine. Retightened to a worst-case ceiling of 60 across 2
+    # machines (30/machine: web 10+10=20, worker 5+5=10), leaving ~37 of real headroom. The app
+    # connects through Neon's pooled (PgBouncer transaction-mode) endpoint, but the pooler's own
+    # backend connections to Postgres are themselves bounded by this same project-wide ceiling -
+    # it is not a separate, larger number. Revisit if the pool is ever genuinely observed to be a
+    # bottleneck (connections timing out waiting for the pool, not a symptom this app has seen).
     web_engine_pool_size: int = 10
-    web_engine_max_overflow: int = 15
-    worker_engine_pool_size: int = 10
-    worker_engine_max_overflow: int = 10
+    web_engine_max_overflow: int = 10
+    worker_engine_pool_size: int = 5
+    worker_engine_max_overflow: int = 5
     # Password reset (2026-10-06): unset means the feature fails closed with EmailSendError
     # rather than silently pretending to send (app.email.resend.send_email's own docstring) -
     # same "missing config fails the same way a bad call would" precedent as ai_api_key/
@@ -206,6 +259,33 @@ class Settings(BaseSettings):
     # has no reason to otherwise know where its frontend is deployed, so this must be set
     # explicitly per environment rather than guessed from a request header.
     frontend_base_url: str = "http://localhost:5173"
+    # Email-squatting fix (2026-10-10): how long an unverified email claim (password
+    # registration or - rare, since Google's own claim is normally authoritative immediately -
+    # a Google account somehow left unverified) is held exclusively before
+    # app.auth.abandoned_account.reclaim_if_abandoned treats it as abandoned and frees the
+    # email for the real owner to register or sign in with. Long enough that a real user who
+    # just hasn't checked their inbox yet is never bumped (email_verification_token_ttl_minutes
+    # above is only 24h itself, so this is double that), short enough that an attacker's
+    # squatted claim is not a practically-permanent block.
+    unverified_email_reap_after_hours: int = 48
+
+    @model_validator(mode="after")
+    def _forbid_fake_ai_provider_in_production(self) -> "Settings":
+        """Production-readiness guard (2026-10-10): nothing previously stopped
+        `AI_PROVIDER=fake` (app.ai.providers.fake, test-infrastructure-only - see its own
+        docstring) from being accidentally set on a real `ENVIRONMENT=production` deploy,
+        which would silently serve every user a canned response instead of a real AI reply.
+        Fails fast at settings construction (process startup) rather than letting it run
+        and only be noticed from user reports - the same fail-closed instinct as every other
+        test-only escape hatch in this file (ai_fake_provider_fail, disable_work_item_executor)
+        being scoped tightly, just enforced instead of merely documented.
+        """
+        if self.environment == "production" and self.ai_provider == "fake":
+            raise ValueError(
+                "AI_PROVIDER=fake is test-infrastructure-only and must never be set when "
+                "ENVIRONMENT=production - it would silently serve canned responses to real users."
+            )
+        return self
 
 
 @lru_cache

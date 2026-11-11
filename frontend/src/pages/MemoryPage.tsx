@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { BrainIcon } from "@phosphor-icons/react";
 import { listMemory, supersedeMemoryRecord } from "@/api/writing";
 import { ApiError } from "@/lib/apiClient";
 import { useToast } from "@/lib/ToastContext";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,6 +26,7 @@ const PROVENANCE_LABELS: Record<string, string> = {
 // allow correction". Read-only listing plus a per-record "Correct this" action that supersedes
 // a record rather than editing it in place - the old content is preserved, not rewritten.
 export function MemoryPage() {
+  useDocumentTitle("Memory");
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const memoryQuery = useInfiniteQuery({
@@ -37,6 +39,19 @@ export function MemoryPage() {
   const records = memoryQuery.data?.pages.flatMap((page) => page.items) ?? [];
   const [editingId, setEditingId] = useState<number | null>(null);
   const [draftContent, setDraftContent] = useState("");
+  const correctTriggerRefs = useRef<Record<number, HTMLButtonElement | null>>({});
+  const previousEditingIdRef = useRef<number | null>(null);
+
+  // Accessibility: focusing synchronously inside Cancel's onClick doesn't work - at that
+  // point React hasn't re-rendered yet, so the ref still holds null from when the trigger
+  // button was unmounted (see AppShell.tsx's own version of this fix for the full explanation,
+  // found there first via an actual browser check).
+  useEffect(() => {
+    if (editingId === null && previousEditingIdRef.current !== null) {
+      correctTriggerRefs.current[previousEditingIdRef.current]?.focus();
+    }
+    previousEditingIdRef.current = editingId;
+  }, [editingId]);
 
   const supersedeMutation = useMutation({
     mutationFn: ({ recordId, content }: { recordId: number; content: string }) =>
@@ -98,12 +113,19 @@ export function MemoryPage() {
                     >
                       Save correction
                     </Button>
-                    <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>
+                    <Button
+                      // Accessibility (found during an audit, 2026-10-09): swapping to this
+                      // edit card used to drop keyboard focus to <body> with no follow-up.
+                      autoFocus
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setEditingId(null)}
+                    >
                       Cancel
                     </Button>
                   </div>
                   {supersedeMutation.isError && (
-                    <p className="text-sm text-destructive">
+                    <p role="alert" className="text-sm text-destructive">
                       {supersedeMutation.error instanceof ApiError
                         ? supersedeMutation.error.message
                         : "Could not save correction."}
@@ -125,6 +147,9 @@ export function MemoryPage() {
               <p className="text-sm whitespace-pre-wrap">{record.content}</p>
               {record.rationale && <p className="text-xs text-muted-foreground">Why: {record.rationale}</p>}
               <Button
+                ref={(el) => {
+                  correctTriggerRefs.current[record.record_id] = el;
+                }}
                 size="sm"
                 variant="outline"
                 onClick={() => {

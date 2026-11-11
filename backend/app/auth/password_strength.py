@@ -21,7 +21,12 @@ def is_breached_password(password: str, *, client: httpx.Client | None = None) -
     this is a defense-in-depth enhancement on top of bcrypt (the actual security control), so an
     HIBP outage must never block registration or password reset.
     """
-    digest = hashlib.sha1(password.encode("utf-8")).hexdigest().upper()
+    # SHA-1 here is HIBP's own k-anonymity API protocol (the range endpoint is keyed by the
+    # first 5 hex chars of a password's SHA-1 digest) - not a security control of ours, so
+    # usedforsecurity=False accurately reflects that and silences the otherwise-correct
+    # "weak hash" SAST warning for a case where a weak hash is specifically what the protocol
+    # requires.
+    digest = hashlib.sha1(password.encode("utf-8"), usedforsecurity=False).hexdigest().upper()
     prefix, suffix = digest[:5], digest[5:]
 
     owns_client = client is None

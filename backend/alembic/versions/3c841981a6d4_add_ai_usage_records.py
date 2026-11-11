@@ -10,6 +10,10 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 
 from alembic import op
+from app.database.migration_helpers import (
+    create_index_if_missing,
+    create_table_if_missing,
+)
 
 # revision identifiers, used by Alembic.
 revision: str = '3c841981a6d4'
@@ -26,7 +30,7 @@ def upgrade() -> None:
     stripped out of e0429480c207 (they're created by raw SQL at runtime, never tracked in
     SQLAlchemy metadata).
     """
-    op.create_table(
+    create_table_if_missing(
         'ai_usage_records',
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('user_id', sa.Integer(), nullable=False),
@@ -35,7 +39,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(['user_id'], ['users.user_id']),
         sa.PrimaryKeyConstraint('id'),
     )
-    op.create_index('ix_ai_usage_records_user_id_recorded_at', 'ai_usage_records', ['user_id', 'recorded_at'], unique=False)
+    create_index_if_missing('ix_ai_usage_records_user_id_recorded_at', 'ai_usage_records', ['user_id', 'recorded_at'], unique=False)
 
 
 def downgrade() -> None:

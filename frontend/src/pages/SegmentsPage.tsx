@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   applySegmentTemplate,
@@ -9,6 +9,7 @@ import {
   updateWritingSegment,
 } from "@/api/writing";
 import { ApiError } from "@/lib/apiClient";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -26,6 +27,7 @@ const WRITING_SEGMENT_LIMIT = 50;
 export const WRITING_SEGMENTS_QUERY_KEY = ["writing-segments"];
 
 export function SegmentsPage() {
+  useDocumentTitle("Project Segments");
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [instructions, setInstructions] = useState("");
@@ -33,6 +35,19 @@ export function SegmentsPage() {
   const [editName, setEditName] = useState("");
   const [editInstructions, setEditInstructions] = useState("");
   const [lastApplyResult, setLastApplyResult] = useState<ApplySegmentTemplateResponse | null>(null);
+  const editTriggerRefs = useRef<Record<number, HTMLButtonElement | null>>({});
+  const previousEditingIdRef = useRef<number | null>(null);
+
+  // Accessibility: focusing synchronously inside Cancel's onClick doesn't work - at that
+  // point React hasn't re-rendered yet, so the ref still holds null from when the trigger
+  // button was unmounted (see AppShell.tsx's own version of this fix for the full explanation,
+  // found there first via an actual browser check).
+  useEffect(() => {
+    if (editingId === null && previousEditingIdRef.current !== null) {
+      editTriggerRefs.current[previousEditingIdRef.current]?.focus();
+    }
+    previousEditingIdRef.current = editingId;
+  }, [editingId]);
 
   const segmentsQuery = useQuery({ queryKey: WRITING_SEGMENTS_QUERY_KEY, queryFn: listWritingSegments });
   const segments = segmentsQuery.data ?? [];
@@ -121,7 +136,7 @@ export function SegmentsPage() {
             ))}
           </ul>
           {applyTemplateMutation.isError && (
-            <p className="text-sm text-destructive">
+            <p role="alert" className="text-sm text-destructive">
               {applyTemplateMutation.error instanceof ApiError
                 ? applyTemplateMutation.error.message
                 : "Could not apply template."}
@@ -143,14 +158,25 @@ export function SegmentsPage() {
       <section className="space-y-4">
         <h2 className="text-base font-semibold tracking-tight leading-snug">Add a Segment</h2>
         <form onSubmit={handleCreate} className="space-y-3">
+          {/* Accessibility (found during an audit, 2026-10-09): these fields relied on
+              placeholder text alone, which isn't a reliable accessible name - sr-only labels
+              fix that without changing the visual design. */}
+          <label htmlFor="new-segment-name" className="sr-only">
+            Segment name
+          </label>
           <Input
+            id="new-segment-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Segment name (e.g. Background of the Study)"
             disabled={atLimit}
             required
           />
+          <label htmlFor="new-segment-instructions" className="sr-only">
+            Segment instructions
+          </label>
           <Textarea
+            id="new-segment-instructions"
             value={instructions}
             onChange={(e) => setInstructions(e.target.value)}
             placeholder="Instructions to apply whenever this segment is selected..."
@@ -169,7 +195,7 @@ export function SegmentsPage() {
           </p>
         )}
         {createMutation.isError && (
-          <p className="text-sm text-destructive">
+          <p role="alert" className="text-sm text-destructive">
             {createMutation.error instanceof ApiError ? createMutation.error.message : "Could not add segment."}
           </p>
         )}
@@ -211,12 +237,19 @@ export function SegmentsPage() {
                       >
                         {updateMutation.isPending ? "Saving..." : "Save"}
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>
+                      <Button
+                        // Accessibility (found during an audit, 2026-10-09): swapping to this
+                        // edit card used to drop keyboard focus to <body> with no follow-up.
+                        autoFocus
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setEditingId(null)}
+                      >
                         Cancel
                       </Button>
                     </div>
                     {updateMutation.isError && (
-                      <p className="text-sm text-destructive">
+                      <p role="alert" className="text-sm text-destructive">
                         {updateMutation.error instanceof ApiError ? updateMutation.error.message : "Could not save."}
                       </p>
                     )}
@@ -228,7 +261,14 @@ export function SegmentsPage() {
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-sm">{segment.name}</CardTitle>
                   <div className="flex gap-1">
-                    <Button size="sm" variant="ghost" onClick={() => startEditing(segment)}>
+                    <Button
+                      ref={(el) => {
+                        editTriggerRefs.current[segment.segment_id] = el;
+                      }}
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => startEditing(segment)}
+                    >
                       Edit
                     </Button>
                     <Button
@@ -247,7 +287,7 @@ export function SegmentsPage() {
           )}
         </ul>
         {deleteMutation.isError && (
-          <p className="text-sm text-destructive">
+          <p role="alert" className="text-sm text-destructive">
             {deleteMutation.error instanceof ApiError ? deleteMutation.error.message : "Could not delete segment."}
           </p>
         )}

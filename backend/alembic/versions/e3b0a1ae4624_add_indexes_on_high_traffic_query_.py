@@ -8,6 +8,7 @@ Create Date: 2026-09-21 12:56:59.004952
 from collections.abc import Sequence
 
 from alembic import op
+from app.database.migration_helpers import create_index_if_missing
 
 # revision identifiers, used by Alembic.
 revision: str = 'e3b0a1ae4624'
@@ -22,14 +23,14 @@ def upgrade() -> None:
     # Note: autogenerate always proposes dropping the knowledge_chunk_fts* shadow tables here -
     # a known false positive since they're raw-SQL-created (FTS5 virtual table), never part of
     # SQLAlchemy metadata. Stripped, same as every prior migration in this project.
-    op.create_index('ix_chunk_evidence_links_document_id', 'chunk_evidence_links', ['document_id'], unique=False)
-    op.create_index('ix_conversations_agent_id_deleted_at', 'conversations', ['agent_id', 'deleted_at'], unique=False)
-    op.create_index('ix_knowledge_chunks_agent_id_status', 'knowledge_chunks', ['agent_id', 'status'], unique=False)
-    op.create_index('ix_memory_provenance_links_record_id', 'memory_provenance_links', ['record_id'], unique=False)
-    op.create_index('ix_memory_records_agent_id_status', 'memory_records', ['agent_id', 'status'], unique=False)
-    op.create_index('ix_message_context_links_message_id', 'message_context_links', ['message_id'], unique=False)
-    op.create_index('ix_profile_characteristics_profile_id', 'profile_characteristics', ['profile_id'], unique=False)
-    op.create_index('ix_research_documents_project_id', 'research_documents', ['project_id'], unique=False)
+    create_index_if_missing('ix_chunk_evidence_links_document_id', 'chunk_evidence_links', ['document_id'], unique=False)
+    create_index_if_missing('ix_conversations_agent_id_deleted_at', 'conversations', ['agent_id', 'deleted_at'], unique=False)
+    create_index_if_missing('ix_knowledge_chunks_agent_id_status', 'knowledge_chunks', ['agent_id', 'status'], unique=False)
+    create_index_if_missing('ix_memory_provenance_links_record_id', 'memory_provenance_links', ['record_id'], unique=False)
+    create_index_if_missing('ix_memory_records_agent_id_status', 'memory_records', ['agent_id', 'status'], unique=False)
+    create_index_if_missing('ix_message_context_links_message_id', 'message_context_links', ['message_id'], unique=False)
+    create_index_if_missing('ix_profile_characteristics_profile_id', 'profile_characteristics', ['profile_id'], unique=False)
+    create_index_if_missing('ix_research_documents_project_id', 'research_documents', ['project_id'], unique=False)
     # ### end Alembic commands ###
 
 

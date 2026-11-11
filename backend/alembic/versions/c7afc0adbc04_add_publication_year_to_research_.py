@@ -10,6 +10,7 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 
 from alembic import op
+from app.database.migration_helpers import existing_columns
 
 # revision identifiers, used by Alembic.
 revision: str = 'c7afc0adbc04'
@@ -25,9 +26,13 @@ def upgrade() -> None:
 
     Batch mode for SQLite portability (local dev/tests), matching this codebase's existing
     column-add migrations (e.g. e0429480c207) - plain ALTER on Postgres (production).
+
+    Idempotent (2026-11-06): skipped when the column is already there (a `create_all()`-
+    bootstrapped database), so this revision can be part of repairing one.
     """
-    with op.batch_alter_table('research_documents') as batch_op:
-        batch_op.add_column(sa.Column('publication_year', sa.Integer(), nullable=True))
+    if 'publication_year' not in existing_columns('research_documents'):
+        with op.batch_alter_table('research_documents') as batch_op:
+            batch_op.add_column(sa.Column('publication_year', sa.Integer(), nullable=True))
 
 
 def downgrade() -> None:

@@ -1,9 +1,13 @@
 from collections.abc import Callable
+from datetime import timedelta
 
 from sqlalchemy.exc import IntegrityError
 
+from app.auth.abandoned_account import reclaim_if_abandoned
+from app.auth.bot_protection import verify_turnstile_token
 from app.auth.email_verification import RequestEmailVerificationUseCase
 from app.auth.exceptions import (
+    BotVerificationFailedError,
     EmailAlreadyInUseError,
     InvalidInviteCodeError,
     PasswordCompromisedError,
@@ -11,7 +15,11 @@ from app.auth.exceptions import (
 )
 from app.auth.hashing import hash_password
 from app.auth.password_strength import is_breached_password
-from app.auth.repository import UserCredentialLookup, UserRegistrationRepository
+from app.auth.repository import (
+    UserAccountRepository,
+    UserCredentialLookup,
+    UserRegistrationRepository,
+)
 from app.auth.service import AuthService
 from app.auth.username import derive_unique_username
 from app.core.unit_of_work import UnitOfWork
@@ -43,6 +51,10 @@ class RegisterUserUseCase:
         required_invite_code: str | None,
         is_breached: Callable[[str], bool] = is_breached_password,
         email_verification: RequestEmailVerificationUseCase | None = None,
+        user_accounts: UserAccountRepository | None = None,
+        unverified_email_reap_after_hours: int = 48,
+        turnstile_secret_key: str | None = None,
+        verify_turnstile: Callable[..., bool] = verify_turnstile_token,
     ) -> None:
         self._users = user_lookup
         self._registration = user_registration
@@ -50,11 +62,22 @@ class RegisterUserUseCase:
         self._uow = unit_of_work
         self._required_invite_code = required_invite_code
         self._is_breached = is_breached
+        # None skips verification entirely (feature off) - see turnstile_secret_key's own
+        # docstring in app.core.config. DI (get_register_user_use_case) wires the real setting.
+        self._turnstile_secret_key = turnstile_secret_key
+        self._verify_turnstile = verify_turnstile
         # None in tests that don't care about email verification (most registration unit
         # tests); DI (get_register_user_use_case) always wires a real instance in production.
         self._email_verification = email_verification
+        # None in tests that don't exercise the email-squatting reap path (reclaim_if_abandoned
+        # is simply never reachable without it, same opt-in-by-omission shape as
+        # email_verification above); DI always wires a real instance in production.
+        self._user_accounts = user_accounts
+        self._reap_after = timedelta(hours=unverified_email_reap_after_hours)
 
-    def execute(self, *, email: str, password: str, invite_code: str | None) -> str:
+    def execute(
+        self, *, email: str, password: str, invite_code: str | None, turnstile_token: str | None = None
+    ) -> str:
         """Returns a raw session token, exactly like `AuthService.login` - the caller is
         registered and logged in in one step, per ADR-011 Decision item 1.
 
@@ -62,9 +85,18 @@ class RegisterUserUseCase:
         is still synthesized server-side (derive_unique_username) to satisfy the `users.username`
         NOT NULL UNIQUE column, mirroring exactly what Google Sign-In already does for its own
         accounts, but it is never shown to the caller as their real identity.
+
+        turnstile_token is only ever checked when `turnstile_secret_key` is configured
+        (2026-10-11, production-readiness pass - bot protection); otherwise this parameter is
+        silently ignored, mirroring invite_code's own opt-in-by-configuration shape below.
         """
         if self._required_invite_code and invite_code != self._required_invite_code:
             raise InvalidInviteCodeError()
+
+        if self._turnstile_secret_key and not self._verify_turnstile(
+            turnstile_token or "", secret_key=self._turnstile_secret_key
+        ):
+            raise BotVerificationFailedError()
 
         if len(password) < MINIMUM_PASSWORD_LENGTH:
             raise WeakPasswordError(minimum_length=MINIMUM_PASSWORD_LENGTH)
@@ -72,8 +104,13 @@ class RegisterUserUseCase:
         if self._is_breached(password):
             raise PasswordCompromisedError()
 
-        if self._users.get_by_email(email) is not None:
-            raise EmailAlreadyInUseError()
+        existing = self._users.get_by_email(email)
+        if existing is not None:
+            reclaimed = self._user_accounts is not None and reclaim_if_abandoned(
+                existing, accounts=self._user_accounts, unit_of_work=self._uow, reap_after=self._reap_after
+            )
+            if not reclaimed:
+                raise EmailAlreadyInUseError()
 
         username = derive_unique_username(email, users=self._users)
         try:

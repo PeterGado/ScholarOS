@@ -2,10 +2,14 @@ from fastapi import Depends
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
+from app.ai.openalex import get_openalex_work_by_id, search_openalex_works
 from app.ai.providers.base import EmbeddingProvider, TextGenerationProvider
 from app.ai.providers.factory import create_provider
+from app.ai.tavily import search_web
 from app.ai.usage_guard import AiUsageGuard
 from app.ai.usage_infrastructure import SqlAlchemyAiUsageRepository
+from app.ai.usage_snapshot import GetAiUsageSnapshotUseCase
+from app.ai.web_fetch import fetch_web_source
 from app.auth.account import UpdateEmailUseCase
 from app.auth.account_linking import ConnectGoogleAccountUseCase, SetPasswordUseCase
 from app.auth.dependencies import extract_bearer_token
@@ -43,8 +47,12 @@ from app.modules.agent.application.use_cases import (
 from app.modules.agent.infrastructure.repositories import SqlAlchemyAgentRepository
 from app.modules.document.application.use_cases import (
     DeleteResearchDocumentUseCase,
+    ImportExternalSourceUseCase,
+    ImportWebSearchResultUseCase,
     ListProjectDocumentsUseCase,
     RetryDocumentProcessingUseCase,
+    SearchExternalSourcesUseCase,
+    SearchWebUseCase,
     UploadResearchDocumentUseCase,
 )
 from app.modules.document.domain.ports import ContentStore
@@ -152,6 +160,15 @@ def get_ai_usage_guard(
     return AiUsageGuard(repository, unit_of_work, daily_token_cap=get_settings().ai_daily_token_cap_per_user)
 
 
+def get_ai_usage_snapshot_use_case(
+    repository: SqlAlchemyAiUsageRepository = Depends(get_ai_usage_repository),
+) -> GetAiUsageSnapshotUseCase:
+    """Read-only counterpart of get_ai_usage_guard - same repository, same configured cap, so
+    what GET /ai/usage reports is exactly what the guard would accept.
+    """
+    return GetAiUsageSnapshotUseCase(repository, daily_token_cap=get_settings().ai_daily_token_cap_per_user)
+
+
 def get_create_project_use_case(
     project_repository: SqlAlchemyProjectRepository = Depends(get_project_repository),
 ) -> CreateProjectUseCase:
@@ -250,6 +267,98 @@ def get_retry_document_processing_use_case(
     )
 
 
+def get_openalex_search_provider():
+    """A dependency-injected seam around the one function that actually calls OpenAlex's search
+    endpoint (app.ai.openalex.search_openalex_works) - overridden in e2e tests with a fake, the
+    same pattern get_google_token_verifier/get_content_store already use, so no test ever needs
+    a real OpenAlex API key or hits OpenAlex's real network.
+    """
+    return search_openalex_works
+
+
+def get_openalex_work_lookup_provider():
+    """Same seam as get_openalex_search_provider, for the single-work lookup
+    (app.ai.openalex.get_openalex_work_by_id) ImportExternalSourceUseCase uses to re-resolve a
+    work server-side at import time."""
+    return get_openalex_work_by_id
+
+
+def get_import_content_fetch_provider():
+    """Same seam again, for the real-page fetch (app.ai.web_fetch.fetch_web_source)
+    ImportExternalSourceUseCase uses to pull a work's open-access full text when one exists."""
+    return fetch_web_source
+
+
+def get_search_external_sources_use_case(
+    search_provider=Depends(get_openalex_search_provider),
+) -> SearchExternalSourcesUseCase:
+    return SearchExternalSourcesUseCase(openalex_api_key=get_settings().openalex_api_key, search_provider=search_provider)
+
+
+def get_import_external_source_use_case(
+    document_repository: SqlAlchemyDocumentRepository = Depends(get_document_repository),
+    project_repository: SqlAlchemyProjectRepository = Depends(get_project_repository),
+    agent_repository: SqlAlchemyAgentRepository = Depends(get_agent_repository),
+    content_store: ContentStore = Depends(get_content_store),
+    unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
+    work_item_repository: WorkItemRepository = Depends(get_work_item_repository),
+    ai_usage_guard: AiUsageGuard = Depends(get_ai_usage_guard),
+    email_verification_guard: EmailVerificationGuard = Depends(get_email_verification_guard),
+    work_lookup_provider=Depends(get_openalex_work_lookup_provider),
+    content_fetch_provider=Depends(get_import_content_fetch_provider),
+) -> ImportExternalSourceUseCase:
+    return ImportExternalSourceUseCase(
+        document_repository,
+        project_repository,
+        agent_repository,
+        content_store,
+        unit_of_work,
+        work_item_repository,
+        ai_usage_guard,
+        email_verification_guard,
+        openalex_api_key=get_settings().openalex_api_key,
+        work_lookup_provider=work_lookup_provider,
+        content_fetch_provider=content_fetch_provider,
+    )
+
+
+def get_tavily_search_provider():
+    """Same seam as get_openalex_search_provider, around the one function that actually calls
+    Tavily's search endpoint (app.ai.tavily.search_web) - overridden in e2e tests with a fake so
+    no test ever needs a real Tavily API key or hits Tavily's real network."""
+    return search_web
+
+
+def get_search_web_use_case(search_provider=Depends(get_tavily_search_provider)) -> SearchWebUseCase:
+    return SearchWebUseCase(tavily_api_key=get_settings().tavily_api_key, search_provider=search_provider)
+
+
+def get_import_web_search_result_use_case(
+    document_repository: SqlAlchemyDocumentRepository = Depends(get_document_repository),
+    project_repository: SqlAlchemyProjectRepository = Depends(get_project_repository),
+    agent_repository: SqlAlchemyAgentRepository = Depends(get_agent_repository),
+    content_store: ContentStore = Depends(get_content_store),
+    unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
+    work_item_repository: WorkItemRepository = Depends(get_work_item_repository),
+    ai_usage_guard: AiUsageGuard = Depends(get_ai_usage_guard),
+    email_verification_guard: EmailVerificationGuard = Depends(get_email_verification_guard),
+    # Same fetch-provider seam ImportExternalSourceUseCase already uses - it is the same
+    # underlying function (app.ai.web_fetch.fetch_web_source), so no second seam is needed.
+    content_fetch_provider=Depends(get_import_content_fetch_provider),
+) -> ImportWebSearchResultUseCase:
+    return ImportWebSearchResultUseCase(
+        document_repository,
+        project_repository,
+        agent_repository,
+        content_store,
+        unit_of_work,
+        work_item_repository,
+        ai_usage_guard,
+        email_verification_guard,
+        content_fetch_provider=content_fetch_provider,
+    )
+
+
 def get_auth_session_repository(db: Session = Depends(get_db)) -> SqlAlchemyAuthSessionRepository:
     return SqlAlchemyAuthSessionRepository(db)
 
@@ -300,6 +409,10 @@ def get_request_email_verification_use_case(
     )
 
 
+def get_user_account_repository(db: Session = Depends(get_db)) -> SqlAlchemyUserAccountRepository:
+    return SqlAlchemyUserAccountRepository(db)
+
+
 def get_register_user_use_case(
     user_lookup: SqlAlchemyUserCredentialLookup = Depends(get_user_credential_lookup),
     user_registration: SqlAlchemyUserRegistrationRepository = Depends(get_user_registration_repository),
@@ -307,6 +420,7 @@ def get_register_user_use_case(
     unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
     is_breached=Depends(get_password_breach_checker),
     email_verification: RequestEmailVerificationUseCase = Depends(get_request_email_verification_use_case),
+    user_accounts: SqlAlchemyUserAccountRepository = Depends(get_user_account_repository),
 ) -> RegisterUserUseCase:
     return RegisterUserUseCase(
         user_lookup,
@@ -316,6 +430,9 @@ def get_register_user_use_case(
         required_invite_code=get_settings().registration_invite_code,
         is_breached=is_breached,
         email_verification=email_verification,
+        user_accounts=user_accounts,
+        unverified_email_reap_after_hours=get_settings().unverified_email_reap_after_hours,
+        turnstile_secret_key=get_settings().turnstile_secret_key,
     )
 
 
@@ -334,6 +451,7 @@ def get_google_sign_in_use_case(
     auth_service: AuthService = Depends(get_auth_service),
     unit_of_work: SqlAlchemyUnitOfWork = Depends(get_unit_of_work),
     verify_id_token=Depends(get_google_token_verifier),
+    user_accounts: SqlAlchemyUserAccountRepository = Depends(get_user_account_repository),
 ) -> GoogleSignInUseCase:
     return GoogleSignInUseCase(
         user_lookup,
@@ -343,11 +461,9 @@ def get_google_sign_in_use_case(
         verify_id_token,
         required_invite_code=get_settings().registration_invite_code,
         google_client_id=get_settings().google_oauth_client_id,
+        user_accounts=user_accounts,
+        unverified_email_reap_after_hours=get_settings().unverified_email_reap_after_hours,
     )
-
-
-def get_user_account_repository(db: Session = Depends(get_db)) -> SqlAlchemyUserAccountRepository:
-    return SqlAlchemyUserAccountRepository(db)
 
 
 def get_confirm_email_verification_use_case(

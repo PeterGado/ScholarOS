@@ -127,6 +127,28 @@ def test_uploading_an_unsupported_style_document_type_returns_422(client, auth_h
     assert response.json()["error_type"] == "UnsupportedUploadFormatError"
 
 
+def test_uploading_a_known_malicious_style_document_is_rejected_when_virustotal_is_configured(
+    client, auth_headers, monkeypatch
+):
+    import app.modules.writing.interface.routes as writing_routes
+
+    monkeypatch.setenv("VIRUSTOTAL_API_KEY", "fake-key-for-test")
+    get_settings.cache_clear()
+    monkeypatch.setattr(writing_routes, "is_known_malicious", lambda content, *, api_key: True)
+
+    _create_workspace(client, auth_headers)
+
+    response = client.post(
+        "/writing/style-profile/documents",
+        files={"file": ("essay.pdf", io.BytesIO(b"pdf bytes"), "application/pdf")},
+        data={"title": "Malicious", "format": "pdf"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error_type"] == "MaliciousUploadError"
+
+
 def test_upload_style_document_for_a_user_with_no_agent_returns_404(client, auth_headers):
     """No /agents call was made for this authenticated user - AgentNotFoundForUserError, not a
     generic 500, matching the same pattern already established for GET /knowledge/search.

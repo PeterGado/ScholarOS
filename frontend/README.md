@@ -21,6 +21,11 @@ The backend must be running separately (`../backend`) and must allow this origin
 `CORS_ALLOWED_ORIGINS` (defaults already cover `http://localhost:5173` - see
 `../backend/README.md` "Frontend / CORS Setup").
 
+For an invited beta, set `REGISTRATION_INVITE_CODE` as a backend secret and
+`VITE_REQUIRE_INVITE_CODE=true` in the frontend build environment. The invite code is submitted
+to the backend during email registration and first-time Google sign-in; never put the code in a
+`VITE_*` variable or the frontend bundle.
+
 ## Test
 
 ```bash
@@ -33,7 +38,7 @@ npm run build            # production build
 
 ## Layout
 
-```
+```sh
 src/
 ├── api/        # typed API client per backend module + Zod response schemas
 ├── components/ # shared UI (shadcn/ui-generated primitives in components/ui/, plus app shell,

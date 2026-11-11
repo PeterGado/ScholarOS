@@ -14,6 +14,7 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 
 from alembic import op
+from app.database.migration_helpers import create_table_if_missing
 
 # revision identifiers, used by Alembic.
 revision: str = 'e0316c6e0352'
@@ -24,7 +25,7 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.create_table(
+    create_table_if_missing(
         'password_reset_tokens',
         sa.Column('token_id', sa.Integer(), primary_key=True),
         sa.Column('user_id', sa.Integer(), sa.ForeignKey('users.user_id'), nullable=False),

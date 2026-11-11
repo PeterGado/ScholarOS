@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { confirmEmailVerification } from "@/api/auth";
 import { ApiError } from "@/lib/apiClient";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { Button } from "@/components/ui/button";
 
 type Status = "verifying" | "verified" | "failed" | "missing";
 
 export function VerifyEmailPage() {
+  useDocumentTitle("Verify your email");
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token");
   const [status, setStatus] = useState<Status>(token ? "verifying" : "missing");

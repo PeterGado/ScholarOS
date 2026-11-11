@@ -1,7 +1,9 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from app.ai.openalex import OpenAlexWork
+from app.ai.tavily import WebSearchResult
 from app.modules.document.application.use_cases import ResearchDocumentWithError
 from app.modules.document.domain.entities import ResearchDocument
 
@@ -62,3 +64,77 @@ class ResearchDocumentListResponse(BaseModel):
             ],
             has_more=has_more,
         )
+
+
+class ExternalSourceResponse(BaseModel):
+    """One OpenAlex search result (2026-10-17, search-and-import source discovery) - a
+    candidate the user may choose to import, not yet a Research Document. `openalex_id` is the
+    only field the import request actually needs to carry back (app.ai.openalex.
+    get_openalex_work_by_id re-resolves everything else server-side at import time); the rest
+    is shown so the user can judge the result before importing it.
+    """
+
+    openalex_id: str
+    doi: str | None
+    title: str
+    authors: list[str]
+    publication_year: int | None
+    source_name: str | None
+    is_open_access: bool
+    has_fetchable_full_text: bool
+    abstract: str | None
+
+    @classmethod
+    def from_domain(cls, work: OpenAlexWork) -> "ExternalSourceResponse":
+        return cls(
+            openalex_id=work.openalex_id,
+            doi=work.doi,
+            title=work.title,
+            authors=list(work.authors),
+            publication_year=work.publication_year,
+            source_name=work.source_name,
+            is_open_access=work.is_open_access,
+            has_fetchable_full_text=work.fetchable_url is not None,
+            abstract=work.abstract,
+        )
+
+
+class ExternalSourceSearchResponse(BaseModel):
+    results: list[ExternalSourceResponse]
+
+    @classmethod
+    def from_domain(cls, works: list[OpenAlexWork]) -> "ExternalSourceSearchResponse":
+        return cls(results=[ExternalSourceResponse.from_domain(work) for work in works])
+
+
+class ImportExternalSourceRequest(BaseModel):
+    openalex_id: str = Field(..., min_length=1)
+
+
+class WebSearchResultResponse(BaseModel):
+    """One Tavily search result (2026-10-17, general web search discovery) - a candidate the
+    user may choose to import, not yet a Research Document. Unlike ExternalSourceResponse,
+    `url` and `title` travel back to the import request as-is (see app.ai.tavily.WebSearchResult's
+    own docstring for why there is no ID to re-resolve server-side here).
+    """
+
+    url: str
+    title: str
+    snippet: str | None
+
+    @classmethod
+    def from_domain(cls, result: WebSearchResult) -> "WebSearchResultResponse":
+        return cls(url=result.url, title=result.title, snippet=result.snippet)
+
+
+class WebSearchResponse(BaseModel):
+    results: list[WebSearchResultResponse]
+
+    @classmethod
+    def from_domain(cls, results: list[WebSearchResult]) -> "WebSearchResponse":
+        return cls(results=[WebSearchResultResponse.from_domain(result) for result in results])
+
+
+class ImportWebSearchResultRequest(BaseModel):
+    url: str = Field(..., min_length=1)
+    title: str = Field(..., min_length=1)

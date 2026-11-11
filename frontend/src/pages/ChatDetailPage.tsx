@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Navigate, useParams } from "react-router-dom";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AI_USAGE_QUERY_KEY } from "@/api/usage";
 import { getChatReplyStatus, listConversationMessages, listWritingSegments, retryChatReply, sendChatMessage } from "@/api/writing";
+import type { ChatMessageResponse } from "@/api/schemas";
 import { WRITING_SEGMENTS_QUERY_KEY } from "@/pages/SegmentsPage";
 import { DEFAULT_LIST_LIMIT } from "@/api/pagination";
 import { ApiError } from "@/lib/apiClient";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { EmailVerificationNotice } from "@/components/EmailVerificationNotice";
@@ -12,6 +15,7 @@ import { MarkdownMessage } from "@/components/MarkdownMessage";
 import { ThinkingIndicator } from "@/components/ThinkingIndicator";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
+import { VirtualList, type VirtualListHandle, type VirtualListScrollAnchor } from "@/components/VirtualList";
 
 const REPLY_POLL_INTERVAL_MS = 1500;
 const IN_FLIGHT_STATES = new Set(["queued", "running"]);
@@ -20,6 +24,40 @@ interface ActiveReply {
   conversationId: number;
   workItemId: number;
   startedAt: number;
+}
+
+// One virtualized row of the thread. Everything the old list rendered inline - the loading
+// skeleton, the "load older" control, the reply-in-progress indicator and the failure/status
+// alerts - is a row too, so a single scroll container can hold them in their original order
+// while only the ones near the viewport stay mounted.
+type ChatRow =
+  | { kind: "loading" }
+  | { kind: "load-error" }
+  | { kind: "load-older" }
+  | { kind: "message"; message: ChatMessageResponse }
+  | { kind: "thinking"; startedAt: number }
+  | { kind: "reply-failed" }
+  | { kind: "reply-status-error" };
+
+function chatRowKey(row: ChatRow) {
+  return row.kind === "message" ? `message-${row.message.message_id}` : row.kind;
+}
+
+// Rough height used only for rows that have not been rendered yet - real rows are measured by
+// the virtualizer, this just keeps the scrollbar and scroll offsets sensible for the rest.
+function estimateChatRowSize(row: ChatRow) {
+  switch (row.kind) {
+    case "message":
+      return Math.min(600, 56 + Math.ceil(row.message.content.length / 90) * 22);
+    case "loading":
+      return 232;
+    case "load-older":
+      return 20;
+    case "thinking":
+      return 88;
+    default:
+      return 128;
+  }
 }
 
 function activeReplyStorageKey(conversationId: number) {
@@ -68,12 +106,17 @@ export function ChatDetailPage() {
 }
 
 function ChatConversation({ conversationId }: { conversationId: number }) {
+  useDocumentTitle("Chat");
   const queryClient = useQueryClient();
   const [content, setContent] = useState("");
   const [selectedSegmentId, setSelectedSegmentId] = useState<number | null>(null);
   const [activeReply, setActiveReply] = useState<ActiveReply | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<VirtualListHandle>(null);
   const isLoadingOlderRef = useRef(false);
+  // The message the user was reading when "Load older messages" was clicked. Prepending rows
+  // above the viewport leaves scrollTop where it was, which would silently move that message
+  // down the screen; restoring this anchor puts it back exactly where it was.
+  const olderAnchorRef = useRef<VirtualListScrollAnchor | null>(null);
   const activeWorkItemId = activeReply?.conversationId === conversationId ? activeReply.workItemId : null;
 
   const trackActiveReply = useCallback((workItemId: number | null) => {
@@ -119,11 +162,20 @@ function ChatConversation({ conversationId }: { conversationId: number }) {
     // consumed so no real message is ever skipped.
     getNextPageParam: (lastPage, allPages) => (lastPage.hasMore ? allPages.length * DEFAULT_LIST_LIMIT : undefined),
   });
-  const messages = messagesQuery.data?.pages.slice().reverse().flatMap((page) => page.items) ?? [];
+  const messages = useMemo(
+    () => messagesQuery.data?.pages.slice().reverse().flatMap((page) => page.items) ?? [],
+    [messagesQuery.data],
+  );
 
   function loadOlderMessages() {
+    olderAnchorRef.current = listRef.current?.captureAnchor() ?? null;
     isLoadingOlderRef.current = true;
-    messagesQuery.fetchNextPage();
+    messagesQuery.fetchNextPage().catch(() => {
+      // A failed page load leaves the thread exactly as it was - don't let the flag make the
+      // next genuine update look like an older-page insertion.
+      isLoadingOlderRef.current = false;
+      olderAnchorRef.current = null;
+    });
   }
 
   const replyStatusQuery = useQuery({
@@ -141,9 +193,12 @@ function ChatConversation({ conversationId }: { conversationId: number }) {
   const isWaitingForReply =
     activeWorkItemId !== null && !replyFailed && (replyState === undefined || IN_FLIGHT_STATES.has(replyState));
 
+  // Usage is recorded worker-side, when the reply actually finishes (app.workers.executor), so
+  // this - not the send itself - is the moment the sidebar's number can have changed.
   useEffect(() => {
     if (replyState === "succeeded") {
       queryClient.invalidateQueries({ queryKey: ["conversation-messages", conversationId] });
+      queryClient.invalidateQueries({ queryKey: AI_USAGE_QUERY_KEY });
       trackActiveReply(null);
     }
   }, [replyState, conversationId, queryClient, trackActiveReply]);
@@ -154,9 +209,14 @@ function ChatConversation({ conversationId }: { conversationId: number }) {
     // only the initial load and a genuinely new message at the tail should autoscroll.
     if (isLoadingOlderRef.current) {
       isLoadingOlderRef.current = false;
+      const anchor = olderAnchorRef.current;
+      olderAnchorRef.current = null;
+      if (anchor) listRef.current?.restoreAnchor(anchor);
       return;
     }
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    // Not `scrollTop = scrollHeight`: rows that have not been measured yet use an estimate, and
+    // the virtualizer follows the ones that turn out taller while the scroll is in flight.
+    listRef.current?.scrollToEnd("smooth");
   }, [messagesQuery.data]);
 
   const segmentsQuery = useQuery({ queryKey: WRITING_SEGMENTS_QUERY_KEY, queryFn: listWritingSegments });
@@ -167,6 +227,11 @@ function ChatConversation({ conversationId }: { conversationId: number }) {
       sendChatMessage(conversationId, message, selectedSegmentId ?? undefined),
     onSuccess: (status, message) => {
       queryClient.invalidateQueries({ queryKey: ["conversation-messages", conversationId] });
+      // A send records no usage itself (it only checks the cap; generation is queued), so this
+      // normally shows no change - the completion effect above is what catches the real total.
+      // Kept as a natural re-read point so the sidebar never sits on a cache entry older than
+      // the user's last action.
+      queryClient.invalidateQueries({ queryKey: AI_USAGE_QUERY_KEY });
       trackActiveReply(status.work_item_id);
       if (content === message) setContent("");
     },
@@ -194,17 +259,45 @@ function ChatConversation({ conversationId }: { conversationId: number }) {
     }
   }
 
-  return (
-    <div className="flex flex-1 flex-col overflow-hidden">
-      <div ref={scrollRef} className="flex-1 space-y-6 overflow-y-auto px-6 py-6">
-        {messagesQuery.isLoading && (
+  // The thread in display order (oldest first), as rows rather than a flat JSX list so the
+  // virtualizer can place each one at its measured offset. Conditional chrome keeps the same
+  // position it had as a direct child of the scroll container.
+  const rows = useMemo<ChatRow[]>(() => {
+    const result: ChatRow[] = [];
+    if (messagesQuery.isLoading) result.push({ kind: "loading" });
+    if (messagesQuery.isError) result.push({ kind: "load-error" });
+    if (messagesQuery.hasNextPage) result.push({ kind: "load-older" });
+    for (const message of messages) result.push({ kind: "message", message });
+    if (isWaitingForReply && !replyFailed && activeReply) {
+      result.push({ kind: "thinking", startedAt: activeReply.startedAt });
+    }
+    if (replyFailed && replyStatusQuery.data) result.push({ kind: "reply-failed" });
+    if (replyStatusQuery.isError && !replyStatusQuery.data) result.push({ kind: "reply-status-error" });
+    return result;
+  }, [
+    messagesQuery.isLoading,
+    messagesQuery.isError,
+    messagesQuery.hasNextPage,
+    messages,
+    isWaitingForReply,
+    replyFailed,
+    activeReply,
+    replyStatusQuery.data,
+    replyStatusQuery.isError,
+  ]);
+
+  function renderRow(row: ChatRow) {
+    switch (row.kind) {
+      case "loading":
+        return (
           <div className="mx-auto max-w-2xl space-y-3" aria-label="Loading messages">
             <Skeleton className="h-16 w-2/3" />
             <Skeleton className="ml-auto h-12 w-1/2" />
             <Skeleton className="h-20 w-3/4" />
           </div>
-        )}
-        {messagesQuery.isError && (
+        );
+      case "load-error":
+        return (
           <Alert>
             <AlertDescription className="text-destructive">
               {messagesQuery.error instanceof ApiError ? messagesQuery.error.message : "Could not load this conversation."}
@@ -213,8 +306,9 @@ function ChatConversation({ conversationId }: { conversationId: number }) {
               Try again
             </Button>
           </Alert>
-        )}
-        {messagesQuery.hasNextPage && (
+        );
+      case "load-older":
+        return (
           <div className="mx-auto max-w-2xl text-center">
             <button
               type="button"
@@ -225,27 +319,28 @@ function ChatConversation({ conversationId }: { conversationId: number }) {
               {messagesQuery.isFetchingNextPage ? "Loading..." : "Load older messages"}
             </button>
           </div>
-        )}
-        {messages.map((message) =>
-          message.direction === "user_request" ? (
-            <div key={message.message_id} className="mx-auto max-w-2xl rounded-xl bg-muted px-4 py-3">
-              <p className="mb-1 text-xs font-medium text-muted-foreground">You</p>
-              <MarkdownMessage content={message.content} />
-            </div>
-          ) : (
-            <div key={message.message_id} className="mx-auto max-w-2xl">
-              <p className="mb-1 text-xs font-medium text-muted-foreground">Assistant</p>
-              <MarkdownMessage content={message.content} />
-            </div>
-          ),
-        )}
-        {isWaitingForReply && !replyFailed && activeReply && (
+        );
+      case "message":
+        return row.message.direction === "user_request" ? (
+          <div className="mx-auto max-w-2xl rounded-xl bg-muted px-4 py-3">
+            <p className="mb-1 text-xs font-medium text-muted-foreground">You</p>
+            <MarkdownMessage content={row.message.content} />
+          </div>
+        ) : (
           <div className="mx-auto max-w-2xl">
             <p className="mb-1 text-xs font-medium text-muted-foreground">Assistant</p>
-            <ThinkingIndicator startedAt={activeReply.startedAt} />
+            <MarkdownMessage content={row.message.content} />
           </div>
-        )}
-        {replyFailed && replyStatusQuery.data && (
+        );
+      case "thinking":
+        return (
+          <div className="mx-auto max-w-2xl">
+            <p className="mb-1 text-xs font-medium text-muted-foreground">Assistant</p>
+            <ThinkingIndicator startedAt={row.startedAt} />
+          </div>
+        );
+      case "reply-failed":
+        return (
           <Alert>
             <AlertTitle>Reply failed</AlertTitle>
             <AlertDescription>
@@ -266,8 +361,9 @@ function ChatConversation({ conversationId }: { conversationId: number }) {
               </p>
             )}
           </Alert>
-        )}
-        {replyStatusQuery.isError && !replyStatusQuery.data && (
+        );
+      case "reply-status-error":
+        return (
           <Alert>
             <AlertDescription className="text-destructive">
               {replyStatusQuery.error instanceof ApiError
@@ -278,7 +374,23 @@ function ChatConversation({ conversationId }: { conversationId: number }) {
               Check again
             </Button>
           </Alert>
-        )}
+        );
+    }
+  }
+
+  return (
+    <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex-1 overflow-hidden px-6 py-6">
+        <VirtualList
+          ref={listRef}
+          items={rows}
+          getItemKey={chatRowKey}
+          estimateSize={estimateChatRowSize}
+          renderItem={renderRow}
+          gap={24}
+          className="h-full"
+          ariaLabel="Conversation messages"
+        />
       </div>
 
       <div className="border-t border-border p-4">
@@ -318,7 +430,7 @@ function ChatConversation({ conversationId }: { conversationId: number }) {
               <EmailVerificationNotice />
             </div>
           ) : (
-            <p className="mx-auto mt-2 max-w-2xl text-sm text-destructive">
+            <p role="alert" className="mx-auto mt-2 max-w-2xl text-sm text-destructive">
               {sendMutation.error instanceof ApiError ? sendMutation.error.message : "Could not send message."}
             </p>
           ))}

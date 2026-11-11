@@ -1,15 +1,21 @@
 from collections.abc import Callable
+from datetime import timedelta
 from typing import Any
 
 from sqlalchemy.exc import IntegrityError
 
+from app.auth.abandoned_account import reclaim_if_abandoned
 from app.auth.exceptions import (
     GoogleAccountEmailConflictError,
     GoogleSignInNotConfiguredError,
     InvalidGoogleTokenError,
     InvalidInviteCodeError,
 )
-from app.auth.repository import UserCredentialLookup, UserRegistrationRepository
+from app.auth.repository import (
+    UserAccountRepository,
+    UserCredentialLookup,
+    UserRegistrationRepository,
+)
 from app.auth.service import AuthService
 from app.auth.username import derive_unique_username
 from app.core.unit_of_work import UnitOfWork
@@ -38,6 +44,8 @@ class GoogleSignInUseCase:
         *,
         required_invite_code: str | None,
         google_client_id: str | None,
+        user_accounts: UserAccountRepository | None = None,
+        unverified_email_reap_after_hours: int = 48,
     ) -> None:
         self._users = user_lookup
         self._registration = user_registration
@@ -46,6 +54,11 @@ class GoogleSignInUseCase:
         self._verify_id_token = verify_id_token
         self._required_invite_code = required_invite_code
         self._google_client_id = google_client_id
+        # None in tests that don't exercise the email-squatting reap path - see
+        # RegisterUserUseCase's identical field for the full rationale. DI always wires a real
+        # instance in production.
+        self._user_accounts = user_accounts
+        self._reap_after = timedelta(hours=unverified_email_reap_after_hours)
 
     def execute(self, *, id_token: str, invite_code: str | None) -> str:
         if self._google_client_id is None:
@@ -67,8 +80,14 @@ class GoogleSignInUseCase:
         email = claims.get("email")
         # Only a Google-verified email is treated as a real collision signal - an unverified
         # one proves nothing about who actually controls that address.
-        if email and claims.get("email_verified") and self._users.get_by_email(email) is not None:
-            raise GoogleAccountEmailConflictError()
+        if email and claims.get("email_verified"):
+            colliding = self._users.get_by_email(email)
+            if colliding is not None:
+                reclaimed = self._user_accounts is not None and reclaim_if_abandoned(
+                    colliding, accounts=self._user_accounts, unit_of_work=self._uow, reap_after=self._reap_after
+                )
+                if not reclaimed:
+                    raise GoogleAccountEmailConflictError()
 
         username = derive_unique_username(email or google_subject, users=self._users)
         try:

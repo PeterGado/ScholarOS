@@ -20,6 +20,16 @@ export const profileResponseSchema = z.object({
 });
 export type ProfileResponse = z.infer<typeof profileResponseSchema>;
 
+// GET /ai/usage (backend/app/api/routes/ai_usage.py). `daily_token_cap`/`remaining_tokens`
+// are null when no cap is configured - "unlimited", never "0 left".
+export const aiUsageResponseSchema = z.object({
+  used_tokens: z.number(),
+  daily_token_cap: z.number().nullable(),
+  remaining_tokens: z.number().nullable(),
+  window_hours: z.number(),
+});
+export type AiUsageResponse = z.infer<typeof aiUsageResponseSchema>;
+
 export const agentResponseSchema = z.object({
   agent_id: z.number(),
   status: z.string(),
@@ -61,6 +71,34 @@ export type ResearchDocumentResponse = z.infer<typeof researchDocumentResponseSc
 export const researchDocumentListResponseSchema = z.object({
   documents: z.array(researchDocumentResponseSchema),
   has_more: z.boolean(),
+});
+
+export const externalSourceResponseSchema = z.object({
+  openalex_id: z.string(),
+  doi: z.string().nullable(),
+  title: z.string(),
+  authors: z.array(z.string()),
+  publication_year: z.number().nullable(),
+  source_name: z.string().nullable(),
+  is_open_access: z.boolean(),
+  has_fetchable_full_text: z.boolean(),
+  abstract: z.string().nullable(),
+});
+export type ExternalSourceResponse = z.infer<typeof externalSourceResponseSchema>;
+
+export const externalSourceSearchResponseSchema = z.object({
+  results: z.array(externalSourceResponseSchema),
+});
+
+export const webSearchResultResponseSchema = z.object({
+  url: z.string(),
+  title: z.string(),
+  snippet: z.string().nullable(),
+});
+export type WebSearchResultResponse = z.infer<typeof webSearchResultResponseSchema>;
+
+export const webSearchResponseSchema = z.object({
+  results: z.array(webSearchResultResponseSchema),
 });
 
 export const searchResultEvidenceResponseSchema = z.object({

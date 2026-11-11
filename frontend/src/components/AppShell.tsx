@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate, useOutletContext, useParams } from "react-router-dom";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -15,6 +15,7 @@ import {
 import { useAuth } from "@/lib/AuthContext";
 import { logout as logoutRequest } from "@/api/auth";
 import { deleteConversation, listConversations, startConversation } from "@/api/writing";
+import { AiUsageCard } from "@/components/AiUsageCard";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -52,6 +53,22 @@ export function AppShell() {
   const { conversationId: activeConversationId } = useParams<{ conversationId: string }>();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<number | null>(null);
+  const closeMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const deleteTriggerRefs = useRef<Record<number, HTMLButtonElement | null>>({});
+  const previousConfirmingDeleteIdRef = useRef<number | null>(null);
+
+  // Accessibility (found during an audit, 2026-10-09, and corrected after an actual browser
+  // check caught it): focusing the trigger button synchronously inside Cancel's onClick looked
+  // right but didn't work - at that point React hasn't re-rendered yet, so the ref still holds
+  // null from the confirm block's own mount (the trigger button was unmounted when it opened).
+  // Running this after commit, in an effect keyed on confirmingDeleteId, means the trigger
+  // button has already been freshly (re)mounted and its ref populated by the time this runs.
+  useEffect(() => {
+    if (confirmingDeleteId === null && previousConfirmingDeleteIdRef.current !== null) {
+      deleteTriggerRefs.current[previousConfirmingDeleteIdRef.current]?.focus();
+    }
+    previousConfirmingDeleteIdRef.current = confirmingDeleteId;
+  }, [confirmingDeleteId]);
 
   // A route change (tapping a nav item, a conversation, or "New chat") means the user is done
   // with the sidebar on mobile - closing it automatically is what makes a phone/tablet sidebar
@@ -60,6 +77,19 @@ export function AppShell() {
   useEffect(() => {
     setIsSidebarOpen(false);
   }, [location.pathname]);
+
+  // Accessibility (found during an audit, 2026-10-09): the mobile drawer previously had no
+  // Escape-to-close and never moved focus into itself on open, so a keyboard user tabbing from
+  // the hamburger button landed straight in the hidden main content behind the backdrop.
+  useEffect(() => {
+    if (!isSidebarOpen) return;
+    closeMenuButtonRef.current?.focus();
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setIsSidebarOpen(false);
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isSidebarOpen]);
 
   const conversationsQuery = useInfiniteQuery({
     queryKey: ["conversations"],
@@ -141,6 +171,7 @@ export function AppShell() {
         <div className="flex items-center justify-between p-3 lg:block">
           <span className="block px-2 py-1 text-sm font-semibold">ScholarOS</span>
           <Button
+            ref={closeMenuButtonRef}
             variant="ghost"
             size="sm"
             aria-label="Close menu"
@@ -161,7 +192,7 @@ export function AppShell() {
             New chat
           </Button>
           {newChatMutation.isError && (
-            <p className="mt-2 px-1 text-xs text-destructive">
+            <p role="alert" className="mt-2 px-1 text-xs text-destructive">
               {newChatMutation.error instanceof ApiError ? newChatMutation.error.message : "Could not start a chat."}
             </p>
           )}
@@ -191,7 +222,7 @@ export function AppShell() {
           <p className="px-2 pb-1 text-xs font-medium text-sidebar-foreground/60">Recent chats</p>
           {conversationsQuery.isError && (
             <div className="px-2 py-1">
-              <p className="text-xs text-destructive">
+              <p role="alert" className="text-xs text-destructive">
                 {conversationsQuery.error instanceof ApiError
                   ? conversationsQuery.error.message
                   : "Could not load conversations."}
@@ -230,6 +261,13 @@ export function AppShell() {
                         Delete
                       </Button>
                       <Button
+                        // Accessibility (found during an audit, 2026-10-09): replacing the
+                        // trigger button with this confirmation block used to drop keyboard
+                        // focus to <body> with no follow-up. Autofocusing Cancel (the
+                        // non-destructive default) here, and the effect above returning focus
+                        // to the original trigger button once it's remounted, keeps focus
+                        // somewhere meaningful throughout.
+                        autoFocus
                         size="xs"
                         variant="ghost"
                         className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -255,6 +293,9 @@ export function AppShell() {
                       {conversation.title ?? "Untitled conversation"}
                     </NavLink>
                     <button
+                      ref={(el) => {
+                        deleteTriggerRefs.current[conversation.conversation_id] = el;
+                      }}
                       type="button"
                       aria-label="Delete conversation"
                       onClick={(event) => {
@@ -264,7 +305,10 @@ export function AppShell() {
                       // Hover-to-reveal has no equivalent on touch - a lg:opacity-0 button would
                       // be permanently invisible and untappable on a phone, since there's no
                       // hover state to trigger it. Always visible below the lg breakpoint instead.
-                      className="absolute top-1/2 right-1 -translate-y-1/2 rounded p-1 text-sidebar-foreground/50 opacity-100 hover:bg-sidebar-accent hover:text-destructive lg:opacity-0 lg:group-hover:opacity-100"
+                      // Touch target (found during the 2026-10-09 accessibility audit): icon +
+                      // p-1 padding was only 22x22px, under WCAG 2.5.8's 24x24px minimum -
+                      // min-h-6/min-w-6 guarantee the floor without changing the visible icon size.
+                      className="absolute top-1/2 right-1 flex min-h-6 min-w-6 -translate-y-1/2 items-center justify-center rounded p-1 text-sidebar-foreground/50 opacity-100 hover:bg-sidebar-accent hover:text-destructive lg:opacity-0 lg:group-hover:opacity-100"
                     >
                       <XIcon className="size-3.5" />
                     </button>
@@ -284,12 +328,17 @@ export function AppShell() {
           )}
         </div>
         {deleteChatMutation.isError && (
-          <p className="border-t border-sidebar-border px-3 py-2 text-xs text-destructive">
+          <p role="alert" className="border-t border-sidebar-border px-3 py-2 text-xs text-destructive">
             {deleteChatMutation.error instanceof ApiError
               ? deleteChatMutation.error.message
               : "Could not delete the conversation."}
           </p>
         )}
+
+        {/* Above the Settings/logout footer, not inside it: the AI budget applies to the whole
+            app, and the backend rejects AI work with a 429 once it is reached - it needs to be
+            visible while working, not only after the fact. */}
+        <AiUsageCard />
 
         <div className="border-t border-sidebar-border p-2">
           <NavLink

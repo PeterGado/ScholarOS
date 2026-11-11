@@ -108,6 +108,7 @@ Verified via **07_Review_Checklist.md** (architecture alignment, data-access dis
 | ADR-005 (Retrieval and Search Strategy) | Accepted | The vector index serves the retrieval contract. |
 | ADR-007 (Deployment Strategy) | Accepted | Storage engines match the single-node deployment model. |
 | ADR-010 (Authentication Boundary — Single-User Session Model) | Accepted | The Session entity (structured core, this ADR's storage-category mapping) is the persistence vehicle ADR-010 realizes authentication through. |
+| ADR-013 (Production Deployment Cutover and Schema Growth) | Accepted (retroactively) | Records the realization of this ADR's Decision items 2–3 (the PostgreSQL migration; the still-pending pgvector migration) as of 2026-10-10 — a cross-reference addition only, this ADR's own Decision text is unchanged. |
 
 ## Future Considerations
 

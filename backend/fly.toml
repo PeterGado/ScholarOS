@@ -6,16 +6,30 @@ primary_region = "fra"
 [env]
   ENVIRONMENT = "production"
 
+# ADR-014 (2026-10-10): migrations now run exactly once per deploy, before any machine
+# receives traffic, instead of racing on every machine's own boot (backend/Dockerfile's CMD
+# no longer runs `alembic upgrade head`). A failed release_command fails the deploy cleanly
+# with no new machine ever started, which is also a strictly safer failure mode than a
+# migration failing inside a machine that's already serving traffic.
+[deploy]
+  release_command = "alembic upgrade head"
+
 [http_service]
   internal_port = 8000
   force_https = true
   # Fly's default behavior stops idle machines to save cost - fine for a stateless request/
   # response API, but this backend's Work Item executor (ADR-006) needs to keep polling
   # continuously even with no incoming HTTP traffic, exactly the same reason Render's free-tier
-  # sleep doesn't work for this app. Disabled so the one machine stays running.
+  # sleep doesn't work for this app. Disabled so neither machine ever stops.
   auto_stop_machines = "off"
   auto_start_machines = true
-  min_machines_running = 1
+  # 2 (ADR-014, 2026-10-10): was 1 - a single machine was a literal single point of failure
+  # for both the API and the in-process Work Item executor it runs alongside. Verified safe to
+  # run concurrently before this change: Work Item claiming and stale-item recovery both use
+  # `SELECT ... FOR UPDATE SKIP LOCKED` (app/workers/repository.py), rate limiting is
+  # database-backed (app/core/rate_limit_storage.py), and sessions are database-backed
+  # (ADR-010) - see ADR-014 for the full verification record.
+  min_machines_running = 2
 
 [[vm]]
   size = "shared-cpu-1x"

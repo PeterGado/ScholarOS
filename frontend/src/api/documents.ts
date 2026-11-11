@@ -1,9 +1,13 @@
 import { apiClient } from "../lib/apiClient";
 import type { Page, PageParams } from "./pagination";
 import {
+  externalSourceSearchResponseSchema,
   researchDocumentListResponseSchema,
   researchDocumentResponseSchema,
+  webSearchResponseSchema,
+  type ExternalSourceResponse,
   type ResearchDocumentResponse,
+  type WebSearchResultResponse,
 } from "./schemas";
 
 export interface UploadResearchDocumentRequest {
@@ -72,5 +76,55 @@ export async function retryResearchDocument(
   documentId: number,
 ): Promise<ResearchDocumentResponse> {
   const response = await apiClient.post(`/projects/${projectId}/documents/${documentId}/retry`);
+  return researchDocumentResponseSchema.parse(response.data);
+}
+
+/**
+ * Search-and-import source discovery (2026-10-17, NotebookLM-style): finds specific, named
+ * candidate sources from OpenAlex's scholarly index for the user to explicitly choose from -
+ * never an unrestricted crawl of the open web. Not project-scoped - this searches a public
+ * external index, not anything the project owns.
+ */
+export async function searchExternalSources(query: string, limit = 10): Promise<ExternalSourceResponse[]> {
+  const response = await apiClient.get("/projects/source-search", { params: { query, limit } });
+  return externalSourceSearchResponseSchema.parse(response.data).results;
+}
+
+/**
+ * Imports a previously-searched OpenAlex result as a real Research Document - the second half
+ * of search-and-import source discovery, and a second on-ramp into the same Knowledge
+ * Processing Pipeline uploadResearchDocument already starts.
+ */
+export async function importExternalSource(
+  projectId: number,
+  openalexId: string,
+): Promise<ResearchDocumentResponse> {
+  const response = await apiClient.post(`/projects/${projectId}/documents/import`, { openalex_id: openalexId });
+  return researchDocumentResponseSchema.parse(response.data);
+}
+
+/**
+ * General web search discovery (2026-10-17): the same NotebookLM-style search-and-import
+ * pattern as searchExternalSources, applied to the open web via Tavily instead of OpenAlex's
+ * curated scholarly index. Also not project-scoped - searches a public external index.
+ */
+export async function searchWeb(query: string, limit = 10): Promise<WebSearchResultResponse[]> {
+  const response = await apiClient.get("/projects/web-search", { params: { query, limit } });
+  return webSearchResponseSchema.parse(response.data).results;
+}
+
+/**
+ * Imports a previously-searched web result as a real Research Document. Unlike
+ * importExternalSource, there is no server-side ID to re-resolve - a general web page has no
+ * authoritative registry, so `url`/`title` are sent back exactly as the search result showed
+ * them (the same trust boundary the existing chat-paste-URL feature already accepts for any
+ * URL a user provides).
+ */
+export async function importWebSearchResult(
+  projectId: number,
+  url: string,
+  title: string,
+): Promise<ResearchDocumentResponse> {
+  const response = await apiClient.post(`/projects/${projectId}/documents/import-web`, { url, title });
   return researchDocumentResponseSchema.parse(response.data);
 }

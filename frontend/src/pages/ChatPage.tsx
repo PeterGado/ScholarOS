@@ -2,12 +2,14 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { ChatCircleIcon } from "@phosphor-icons/react";
 import { startConversation } from "@/api/writing";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 
 // The empty state shown at /chat (no conversation selected yet) - the sidebar and layout
 // itself come from ChatLayout, which wraps this via <Outlet/>.
 export function ChatPage() {
+  useDocumentTitle("Chat");
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 

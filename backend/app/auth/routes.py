@@ -53,7 +53,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
     responses={
         401: {"model": ErrorResponse, "description": "Missing or incorrect invite code (only when one is configured)."},
         409: {"model": ErrorResponse, "description": "That email is already associated with another account."},
-        422: {"model": ErrorResponse, "description": "Malformed request body, or password shorter than the minimum, or appears in a known data breach."},
+        422: {"model": ErrorResponse, "description": "Malformed request body, password shorter than the minimum, appears in a known data breach, or (only when Turnstile is configured) failed bot verification."},
         429: {"model": ErrorResponse, "description": "Too many registration attempts from this client."},
     },
 )
@@ -74,7 +74,12 @@ def register(
     and account creation all happen in RegisterUserUseCase; exceptions are translated to HTTP
     responses by the handlers registered in app.api.exception_handlers.
     """
-    token = use_case.execute(email=payload.email, password=payload.password, invite_code=payload.invite_code)
+    token = use_case.execute(
+        email=payload.email,
+        password=payload.password,
+        invite_code=payload.invite_code,
+        turnstile_token=payload.turnstile_token,
+    )
     return TokenResponse(access_token=token)
 
 

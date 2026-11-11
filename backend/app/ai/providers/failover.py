@@ -1,3 +1,4 @@
+import logging
 import random
 from collections.abc import Callable
 from typing import Protocol
@@ -6,6 +7,8 @@ from app.ai.exceptions import ProviderConfigurationError, ProviderRateLimitError
 from app.ai.providers.base import EmbeddingProvider, TextGenerationProvider
 
 __all__ = ["FailoverProvider"]
+
+logger = logging.getLogger(__name__)
 
 
 class _GenerationAndEmbeddingProvider(TextGenerationProvider, EmbeddingProvider, Protocol):
@@ -41,6 +44,14 @@ class FailoverProvider:
     later keys absorb load, and every request pays for walking past the same dead key first.
     Randomizing the start spreads load evenly instead. `start_index_fn` is injectable (defaults
     to `random.randrange`) so tests can force a specific, deterministic order.
+
+    Every failover is logged (2026-10-23): before this, a single exhausted key and a completely
+    exhausted pool looked identical from the outside - the user-visible error was the same
+    generic rate-limit message either way, and the only log line came from the Work Item
+    executor after all keys had already failed. Logging the switch is what makes "how healthy
+    is the pool" answerable at all, without changing which errors trigger it (still only
+    ProviderRateLimitError - see above). Never logs a key, only its 1-based position and the
+    provider's own already-truncated, secret-free error text.
     """
 
     def __init__(
@@ -65,13 +76,21 @@ class FailoverProvider:
 
     def _try_each(self, call):
         last_error: ProviderRateLimitError | None = None
-        start = self._start_index_fn(len(self._providers))
+        provider_count = len(self._providers)
+        start = self._start_index_fn(provider_count)
         ordered = self._providers[start:] + self._providers[:start]
-        for provider in ordered:
+        for position, provider in enumerate(ordered):
             try:
                 return call(provider)
             except ProviderRateLimitError as exc:
                 last_error = exc
+                logger.warning(
+                    "AI provider key %d of %d is rate limited, failing over to the next key. (%s)",
+                    (start + position) % provider_count + 1,
+                    provider_count,
+                    exc,
+                )
                 continue
         assert last_error is not None  # unreachable with providers non-empty (checked in __init__)
+        logger.error("All %d configured AI provider keys are rate limited.", provider_count)
         raise last_error

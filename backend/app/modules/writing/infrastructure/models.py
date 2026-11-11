@@ -224,7 +224,18 @@ class Message(Base):
     # (count_by_conversation_id/list_by_conversation_id) filters `WHERE conversation_id = ?`
     # alone, and conversation_id is already the leading column of the unique constraint below,
     # so the btree-prefix rule already serves it without a dedicated index.
-    __table_args__ = (UniqueConstraint("conversation_id", "sequence", name="uq_message_conversation_sequence"),)
+    __table_args__ = (
+        UniqueConstraint("conversation_id", "sequence", name="uq_message_conversation_sequence"),
+        # 2026-10-10, production-readiness pass: defense-in-depth only. The user's own outgoing
+        # message is already bounded to 8000 chars at the API boundary
+        # (SendChatMessageRequest.content, app.modules.writing.interface.schemas) - but an AI
+        # reply is written into this same column by the background Work Item executor, never
+        # through that schema, so the DB column itself was genuinely unbounded for that path.
+        # 40,000 gives comfortable headroom above the ~4096-output-token cap (app.core.config's
+        # max_output_tokens, roughly 15-30k chars worst case) without ever constraining a real
+        # reply - this exists to catch a pathological/runaway value, not a normal one.
+        CheckConstraint("length(content) <= 40000", name="ck_messages_content_length"),
+    )
 
     message_id: Mapped[int] = mapped_column(primary_key=True)
     conversation_id: Mapped[int] = mapped_column(ForeignKey("conversations.conversation_id"), nullable=False)

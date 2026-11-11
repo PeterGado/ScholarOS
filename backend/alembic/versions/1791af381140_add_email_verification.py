@@ -17,6 +17,10 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 
 from alembic import op
+from app.database.migration_helpers import (
+    add_column_if_missing,
+    create_table_if_missing,
+)
 
 # revision identifiers, used by Alembic.
 revision: str = '1791af381140'
@@ -26,12 +30,17 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    """Upgrade schema."""
-    op.add_column(
+    """Upgrade schema.
+
+    Idempotent (2026-11-06): both the column and the token table are guarded, so this revision
+    can be part of repairing a `create_all()`-bootstrapped database - which already has the
+    table (the current models define it) but not the column.
+    """
+    add_column_if_missing(
         'users',
         sa.Column('email_verified', sa.Boolean(), nullable=False, server_default=sa.true()),
     )
-    op.create_table(
+    create_table_if_missing(
         'email_verification_tokens',
         sa.Column('token_id', sa.Integer(), primary_key=True),
         sa.Column('user_id', sa.Integer(), sa.ForeignKey('users.user_id'), nullable=False),

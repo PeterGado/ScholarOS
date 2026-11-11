@@ -5,6 +5,7 @@ from app.ai.exceptions import (
     ProviderRateLimitError,
     ProviderRequestError,
 )
+from app.ai.provider_usage import observe_provider_usage
 from app.ai.providers.failover import FailoverProvider
 from app.ai.providers.rate_limited import RateLimitedProvider
 from app.core.config import Settings
@@ -22,6 +23,11 @@ class OpenAICompatibleProvider:
     Never logs or returns the API key; `httpx.Client` is injectable so tests can supply a
     `MockTransport` instead of making real network calls (ADR-005 §AI Engineering
     Implications: retrieval-adjacent components must be testable without network access).
+
+    Every call reports the response's own `usage` block (prompt_tokens/completion_tokens) into
+    the active usage meter when one is active (app.ai.provider_usage) - the OpenAI-compatible
+    API reports exact usage for embeddings as well as chat completions, so both capabilities
+    contribute real numbers rather than estimates.
     """
 
     def __init__(
@@ -56,6 +62,7 @@ class OpenAICompatibleProvider:
         if self._temperature is not None:
             request_body["temperature"] = self._temperature
         body = self._post("/chat/completions", request_body)
+        _observe_usage(body)
         try:
             return body["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
@@ -63,6 +70,7 @@ class OpenAICompatibleProvider:
 
     def embed(self, text: str) -> list[float]:
         body = self._post("/embeddings", {"model": self._embedding_model, "input": text})
+        _observe_usage(body)
         try:
             return body["data"][0]["embedding"]
         except (KeyError, IndexError, TypeError) as exc:
@@ -73,6 +81,7 @@ class OpenAICompatibleProvider:
             return []
 
         body = self._post("/embeddings", {"model": self._embedding_model, "input": texts})
+        _observe_usage(body)
         try:
             items = sorted(body["data"], key=lambda item: item["index"])
             embeddings = [item["embedding"] for item in items]
@@ -110,6 +119,26 @@ genuinely useful - an OpenAI-compatible 429 typically names the specific quota e
 contains no secret (never the API key; this provider's own contract already promises never to
 leak it, confirmed by inspection of what these bodies actually contain). Truncated defensively
 in case an unusually verbose error body ever shows up."""
+
+
+def _observe_usage(body: dict) -> None:
+    """Reports the response's own usage block, when it has one. An OpenAI-compatible server is
+    not required to include `usage` (and some only do when asked via `stream_options`), and a
+    body with a usage block of all zeros is treated as no report at all - otherwise it would
+    mask AiUsageGuard.record_metered's fallback with a meaningless zero.
+    """
+    usage = body.get("usage")
+    if not isinstance(usage, dict):
+        return
+
+    def _count(key: str) -> int:
+        value = usage.get(key)
+        return value if isinstance(value, int) and value > 0 else 0
+
+    input_tokens = _count("prompt_tokens") or _count("total_tokens")
+    output_tokens = _count("completion_tokens")
+    if input_tokens or output_tokens:
+        observe_provider_usage(input_tokens=input_tokens, output_tokens=output_tokens)
 
 
 def _response_detail(response: httpx.Response) -> str:

@@ -11,6 +11,7 @@ This 90-day plan is meant to create momentum without exhausting you. It gives yo
 ## Posting rhythm
 
 For 90 days, aim for:
+
 - 2 posts per week minimum
 - 3 posts per week if you can sustain it
 - one “update” post, one “insight” post, and one “conversation” post each week

@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import timedelta
 
 import sentry_sdk
 from fastapi import FastAPI, Request
@@ -15,18 +16,38 @@ from app.api.router import api_router
 from app.auth.provisioning import sync_configured_user
 from app.core.config import get_settings
 from app.core.dependencies import get_content_store
+from app.core.middleware import MaxBodySizeMiddleware
 from app.core.rate_limit import limiter
 from app.database import session as db_session_module
-from app.database.session import init_db
+from app.database.session import init_db, verify_schema
 from app.workers.executor import WorkItemExecutorLoop
+from app.workers.health import QueueHealthMonitor
+from app.workers.retention import DataRetentionJob
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    # Schema bootstrap for the current SQLite/dev-test scope (ADR-004); create_all is
-    # idempotent, so this is safe on every startup. Superseded by real migrations (Alembic)
-    # before any PostgreSQL cutover - not needed for this stage (Stage 3's open item).
-    init_db()
+    settings = get_settings()
+
+    # Schema bootstrap (ADR-004), narrowed to ephemeral test databases only (2026-11-06).
+    # Alembic has owned this app's schema in every real deployment since the Postgres cutover,
+    # run via `alembic upgrade head` before the process starts (fly.toml's release_command).
+    # create_all() used to also run here for local SQLite dev, on the theory that it was
+    # "harmless and idempotent". It is neither: it is additive at *table* level only, so any
+    # database it bootstrapped before a column-adding migration silently kept the old column
+    # set forever - which is exactly how this app ended up unable to start against its own
+    # local database (`no such column: users.email`, thrown from sync_configured_user below).
+    # Local development now bootstraps through `alembic upgrade head` like production does
+    # (see backend/README.md), leaving create_all() for the throwaway per-test databases that
+    # have no migration history at all.
+    if settings.environment == "test":
+        init_db()
+
+    # Schema drift guard (2026-11-06): whatever created the schema, verify it actually matches
+    # the models before serving. Without this the failure above stays opaque - the first query
+    # naming a missing column dies with a bare `no such column`, attributed to whichever
+    # unrelated feature happened to run it first. This names the drift and the fix instead.
+    verify_schema()
 
     # Single-user credential provisioning (ADR-010 Decision item 1; Stage 4). A no-op if
     # AUTH_USERNAME/AUTH_PASSWORD_HASH aren't configured yet - acceptable before Stage 6 makes
@@ -34,7 +55,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # the module (not `from ... import SessionLocal`) so tests that monkeypatch
     # app.database.session.SessionLocal are honored here too - the same reason init_db()
     # resolves its default engine at call time rather than via a stale bound default.
-    settings = get_settings()
     db = db_session_module.SessionLocal()
     try:
         sync_configured_user(db, username=settings.auth_username, password_hash=settings.auth_password_hash)
@@ -54,7 +74,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
         return
 
-    if settings.ai_api_key:
+    if settings.ai_api_key or settings.ai_provider == "fake":
         text_provider = create_provider(settings)
     else:
         text_provider = UnavailableAIProvider()
@@ -93,10 +113,31 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     executor_loop.start()
 
+    # Started alongside the executor, stopped alongside it (2026-10-10) - see
+    # QueueHealthMonitor's own docstring for what this does and does not catch.
+    health_monitor = QueueHealthMonitor(
+        lambda: db_session_module.WorkerSessionLocal(),
+        stale_threshold_seconds=settings.queue_stale_threshold_seconds,
+    )
+    health_monitor.start()
+
+    # Started alongside the executor and health monitor (2026-10-10) - see DataRetentionJob's
+    # own docstring for exactly which tables this touches (never knowledge/memory/conversation
+    # content, only operational bookkeeping).
+    retention_job = DataRetentionJob(
+        lambda: db_session_module.WorkerSessionLocal(),
+        usage_retention=timedelta(days=settings.data_retention_usage_days),
+        work_item_retention=timedelta(days=settings.data_retention_work_item_days),
+        check_interval_seconds=settings.data_retention_check_interval_seconds,
+    )
+    retention_job.start()
+
     yield
 
     if executor_loop is not None:
         await executor_loop.stop()
+    await health_monitor.stop()
+    await retention_job.stop()
 
 
 # Sentry (2026-09-21): a no-op if SENTRY_DSN isn't configured - init() is simply never called,
@@ -115,7 +156,20 @@ if get_settings().sentry_dsn:
         traces_sample_rate=0.0,
     )
 
-app = FastAPI(title="ScholarOS Backend", version="0.1.0", lifespan=lifespan)
+# 2026-10-11, production-readiness pass: FastAPI's auto-generated /docs, /redoc, and
+# /openapi.json were reachable with no gating at all - low severity (reveals endpoint/field
+# shapes, not secrets) but unnecessary reconnaissance surface for zero real cost, since the
+# frontend never calls these routes. Disabled only in production; still available locally/in
+# dev for real use (manual API exploration, generating a client, etc.).
+_is_production = get_settings().environment == "production"
+app = FastAPI(
+    title="ScholarOS Backend",
+    version="0.1.0",
+    lifespan=lifespan,
+    docs_url=None if _is_production else "/docs",
+    redoc_url=None if _is_production else "/redoc",
+    openapi_url=None if _is_production else "/openapi.json",
+)
 app.state.limiter = limiter
 app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(
@@ -149,3 +203,11 @@ async def add_security_headers(request: Request, call_next):
     # browsers' hardcoded preload lists and is hard to reverse if ever needed.
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
+
+
+# Registered last (2026-10-10, production-readiness pass) - Starlette's middleware stack runs
+# the most-recently-added middleware outermost, so this must be added after every other
+# add_middleware/@app.middleware call to actually run first, rejecting an oversized request
+# before CORS, rate limiting, or any route sees it. See MaxBodySizeMiddleware's own docstring
+# for what it does and does not catch.
+app.add_middleware(MaxBodySizeMiddleware, max_bytes=get_settings().max_request_body_bytes)

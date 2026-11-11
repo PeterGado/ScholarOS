@@ -1,10 +1,12 @@
 # ScholarOS Documentation
 
-**Version:** 1.7.0  
+**Version:** 1.12.0  
 **Status:** Active  
-**Last Updated:** 2026-09-10  
-**Latest ADR:** ADR-010 — Authentication Boundary, Single-User Session Model
+**Last Updated:** 2026-10-10  
+**Latest ADR:** ADR-014 — Multi-Machine Deployment, Eliminating the Single-Machine Point of Failure
 **Governance Framework:** Engineering Governance Framework v2.0 — Active
+
+**Journaling gap (flagged 2026-10-09, not resolved by this update):** no journal entry exists after `docs/journal/2026-09-16.md`. The Postgres/Neon cutover, Row-Level Security rollout, the frontend's own implementation and deployment, and the auth hardening described below all happened after that date with no corresponding journal record — this update corrects this document's own stale claims against what the code and deployed system actually show, but does not retroactively reconstruct the missing stage-by-stage history those journal entries would normally hold.
 
 ---
 
@@ -44,12 +46,17 @@ This repository now explicitly distinguishes between documentation/governance ha
 
 * Milestone 5: Database Design is **complete and frozen** as Database Baseline v1 (`docs/database/01`–`08`, recorded in [docs/Baseline_Register.md](Baseline_Register.md)).
 * An Independent Repository Audit (`docs/journal/2026-09-04.md`) concluded the repository is **READY FOR BACKEND IMPLEMENTATION**, and this was ratified as **[ADR-008](adr/ADR-008_API_Contract_Governance_During_Backend_Implementation.md)**: API Design is **not** a standalone documentation milestone. **Milestone 6 (Backend Implementation) is complete**, committed, and pushed to `origin/main` — the first vertical slice, Agent Creation (with its one Project) → Document Upload (corrected 2026-09-04 by ADR-009).
-* **Milestone 7 (Real Authentication Boundary) is in progress.** [ADR-010](adr/ADR-010_Authentication_Boundary_Single_User_Session_Model.md) (2026-09-10) authorizes a real Authentication Boundary for the MVP's single pre-provisioned user, realized via the Database Baseline's already-specified Session entity. Stages 2-6 are complete — login/logout are live over real HTTP, and `get_current_user_id` now resolves real authenticated identity, with `/agents` and document upload both requiring authentication and enforcing ownership; see `docs/Authentication_Implementation_Plan.md` for the full staged plan.
-* **Backend Slice 2 (Knowledge Processing Pipeline) is complete and validated (2026-09-11)**, built on Milestone 7's authentication boundary. Real document upload → mechanical extraction/chunking → AI semantic extraction → evidence-linked Knowledge Element/Chunk persistence → embedding → agent-scoped authenticated retrieval (`GET /knowledge/search`), verified with both fake providers (311 automated tests) and a real Gemini account end to end. One deliberate, flagged gap remains open: retrieval is vector-only, not yet the full hybrid (lexical + semantic, fused) design ADR-005 specifies — see `docs/Backend_Slice2_Implementation_Plan.md` and the 2026-09-11 journal entries for the full staged history and compliance review. The next milestone, Project Writing, was out of Slice 2's scope; **Project Writing (Stages 1-8) is now complete and validated (2026-09-15)** — see `docs/Project_Writing_Implementation_Plan.md` and the 2026-09-15 journal entries.
+* **Milestone 7 (Real Authentication Boundary) is complete, and self-service registration has since superseded its single-user exclusion.** [ADR-010](adr/ADR-010_Authentication_Boundary_Single_User_Session_Model.md) (2026-09-10) authorized a real Authentication Boundary for the MVP's single pre-provisioned user, realized via the Database Baseline's already-specified Session entity; see `docs/Authentication_Implementation_Plan.md` for the staged plan. [ADR-011](adr/ADR-011_Self_Service_Registration_and_Multi_User_Access.md) (2026-09-18) then added `POST /auth/register`, superseding ADR-010's single-account exclusion — registration is fully open in production (the invite-code gate was removed). Beyond ADR-011's own scope (undocumented by any ADR, but additive to `app/auth/` in the same shape ADR-011 established): Google Sign-In (OIDC ID-token verification), password reset via email, email-based registration with server-derived usernames, email verification gating document upload/chat for password accounts (with existing accounts grandfathered verified), and account linking (Settings → Security) between a Google identity and a password account. Rate limiting on every auth-sensitive endpoint also shipped, closing the gap ADR-010/ADR-011 both flagged as open (see ADR-011's own correction note under Decision item 5).
+* **Backend Slice 2 (Knowledge Processing Pipeline) is complete and validated (2026-09-11)**, built on Milestone 7's authentication boundary. Real document upload → mechanical extraction/chunking → AI semantic extraction → evidence-linked Knowledge Element/Chunk persistence → embedding → agent-scoped authenticated retrieval (`GET /knowledge/search`), verified with both fake providers (311 automated tests) and a real Gemini account end to end. The vector-only retrieval gap this bullet previously described as open is resolved: ADR-005's hybrid (lexical + semantic, fused) retrieval is fully realized as of 2026-09-18 per `docs/Project_Status.md`'s own record — see `docs/Backend_Slice2_Implementation_Plan.md` and the 2026-09-11 journal entries for the original staged history. The next milestone, Project Writing, was out of Slice 2's scope; **Project Writing (Stages 1-8) is now complete and validated (2026-09-15)** — see `docs/Project_Writing_Implementation_Plan.md` and the 2026-09-15 journal entries.
+* **The database has been cut over to PostgreSQL (Neon)** with schema migrations now owned by Alembic (14 revisions as of 2026-10-09) rather than `create_all()`, and **Row-Level Security is enforced** on the tenant-scoped tables via a restricted, non-superuser application DB role — realizing ADR-004's named Postgres migration path. No ADR or journal entry records this cutover's own decision history (see the journaling-gap note at the top of this document).
+* **CI now runs backend lint (`ruff`) and type-checking (`mypy`) as blocking gates**, alongside the existing pytest suite, frontend lint/typecheck/build/unit-test steps, and a `e2e` job that runs 2 of the 8 Playwright specs under `frontend/e2e/` (the ones needing no live AI provider) against a real backend and database. The other 6 specs remain manual-only, since they need a real, billable AI provider call. CI is verification-only — merging to `main` does not itself deploy; backend (Fly.io) and frontend (Vercel) deploys are still run manually.
+* **A substantial frontend now exists and is deployed** — a React/Vite SPA covering landing, auth (login/register/Google sign-in/password reset/email verification/account linking), onboarding, chat, document upload, writing style, segments, memory, and settings, deployed to Vercel with the backend on Fly.io. This is a real, working, deployed system, not a deferred milestone — but no ADR, journal entry, or formal milestone close-out records its own implementation history (see the journaling-gap note above); `docs/Frontend_Implementation_Plan.md`, where it exists, should be treated as a starting point for reconstructing that record, not as current status.
 * The authoritative chain is now: Project Constitution → Governance Framework → Vision → SRS → Architecture and ADRs → Database design milestone documents (frozen baseline) → Implementation, with API contracts defined progressively during implementation as code (Pydantic/FastAPI models, per ADR-002 and ADR-008), remaining traceable to SRS Chapter 9 and `05_Backend_Architecture.md`.
-* The architecture set (01–07), the ADR set (ADR-001 to ADR-010), and the database set (01–08) remain the authoritative baseline for the current repository phase.
+* The architecture set (01–07), the ADR set (ADR-001 to ADR-014), and the database set (01–08) remain the authoritative baseline for the current repository phase.
+* **The single largest flagged governance gap in this repository has been closed.** [ADR-012](adr/ADR-012_Chat_Memory_Model_Replaces_Draft_Review_Pipeline.md) (2026-10-09, written retroactively — the decision itself was made and implemented in an uncommitted working session, 2026-09-16–2026-09-18) formally records the removal of `Draft`, `Draft Version`, `Review`, and `Review Decision` from the Database Baseline, replaced by the chat/memory model (`Conversation`/`Message`/`Memory Record`) already specified in the frozen model. See `docs/database/08_Database_Design_Review_and_Readiness_Assessment.md` §25 for the full correction record, including an honest accounting of which documents were and were not exhaustively corrected.
+* **The production cloud cutover and its schema consequences now have a decision record.** [ADR-013](adr/ADR-013_Production_Deployment_Cutover_and_Schema_Growth.md) (2026-10-10, written retroactively) records the realization of ADR-004's and ADR-007's own named migration paths (PostgreSQL on Neon; containerized deployment on Fly.io/Vercel), adopts Row-Level Security via a restricted application role as the per-tenant isolation decision ADR-007 Decision item 5 reserved for a future ADR, and formally acknowledges five new tables and seven new columns that had accumulated with no prior baseline correction. See `docs/database/08_Database_Design_Review_and_Readiness_Assessment.md` §26 and `docs/Backend_Schema_Reference.md` for full detail.
+* **The single-machine point of failure is eliminated.** [ADR-014](adr/ADR-014_Multi_Machine_Deployment_and_Statelessness.md) (2026-10-10, written and reviewed as a proposal *before* implementation — the first ADR in this repository's history to follow that order rather than correct a decision already live) found that most of the groundwork for running the backend on multiple Fly machines was already quietly built in earlier, undated sessions (concurrency-safe Work Item claiming, DB-backed rate limiting, DB-backed sessions), and closed the small remaining gap: a Fly `release_command` for migrations, and `min_machines_running` raised from 1 to 2. Backend now runs on two machines.
 * API contracts are an engineering activity within implementation, not a prerequisite milestone (ADR-008); architecturally significant API decisions (authentication model, versioning scheme, protocol, service-boundary changes) still require a new ADR.
-* Frontend implementation, testing at scale, and deployment automation remain intentionally deferred.
 * A lightweight cross-reference index is maintained in [docs/Traceability_Index.md](Traceability_Index.md) to support navigation and traceability without creating a heavy maintenance burden.
 
 ## Reading Order
@@ -202,7 +209,11 @@ Contains significant engineering decisions made throughout the project's lifecyc
 * ADR-007 — Deployment Strategy
 * ADR-008 — API Contract Governance During Backend Implementation
 * ADR-009 — Agent and Project Domain Model Introduction (corrects Database Baseline v1 and Architecture Baseline v1)
-* ADR-010 — Authentication Boundary, Single-User Session Model (further corrects Database Baseline v1 and Architecture Baseline v1; Milestone 7, Stage 6 of 8 complete — `get_current_user_id` resolves real authenticated identity; `/agents` and document upload require authentication and enforce ownership)
+* ADR-010 — Authentication Boundary, Single-User Session Model (further corrects Database Baseline v1 and Architecture Baseline v1; Milestone 7 complete — `get_current_user_id` resolves real authenticated identity; `/agents` and document upload require authentication and enforce ownership)
+* ADR-011 — Self-Service Registration and Multi-User Access (2026-09-18; supersedes ADR-010's single-account exclusion; `POST /auth/register`, invite-code gate now removed in production)
+* ADR-012 — Chat/Memory Model Replaces the Draft/Review Pipeline (2026-10-09, written retroactively; removes Draft, Draft Version, Review, Review Decision from the Database Baseline; further corrects Database Baseline v1)
+* ADR-013 — Production Deployment Cutover and Schema Growth (2026-10-10, written retroactively; records the Fly.io/Vercel/Neon cutover, Row-Level Security, and accumulated schema growth; further corrects Architecture Baseline v1 and Database Baseline v1)
+* ADR-014 — Multi-Machine Deployment, Eliminating the Single-Machine Point of Failure (2026-10-10, written and accepted before implementation; moves the backend from one Fly machine to two; further corrects Architecture Baseline v1)
 
 ---
 
@@ -250,6 +261,23 @@ These files identify:
 * Current task
 * Completed work
 * Upcoming work
+
+---
+
+## Synthesis References (2026-10-10)
+
+Six practical, concise entry-point documents, added 2026-10-10 to orient a reader quickly without reading the full requirements/architecture/database document sets first. Per `09_Documentation_Standards.md` §2, each cross-references its authoritative sources rather than duplicating them — where any of them disagrees with a source listed below, the source governs.
+
+| File | Purpose | Builds on |
+| ---- | ------- | --------- |
+| `docs/Product_Requirements_Document.md` | What ScholarOS is, who it's for, MVP vs. future scope, where the live product has evolved past the original SRS | `vision/Vision.md`, `srs/02`, `srs/10`, `srs/11` |
+| `docs/Design_Brief.md` | The design language, visual system, and UI patterns actually in use | `vision/Vision.md`, the shipped `frontend/src` code |
+| `docs/Technical_Design_Document.md` | System architecture, tech stack, module boundaries, and known current architectural limitations | `architecture/01`–`07`, the ADR set |
+| `docs/Backend_Schema_Reference.md` | A practical, current view of the real live database schema — explicitly a living companion to the frozen Database Baseline v1, not a revision of it | `database/04`, `database/08` §23–§25, the real SQLAlchemy models and Alembic history |
+| `docs/User_Flow_Diagrams.md` | Mermaid flowcharts of the real core user flows (auth, onboarding→chat, document processing, password reset), with explicit notes on where they diverge from the original SRS workflow description | `srs/08`, the real frontend routes and pages |
+| `docs/roadmaps/Engineering_Plan.md` | A forward-looking near/medium/longer-term engineering plan, grounded in `Project_Status.md`'s recorded open items | `Project_Status.md`, `srs/11`, ADR-012 |
+
+All six were produced by reading the underlying governance/architecture/database/SRS documents together with the real current code (SQLAlchemy models, Alembic migrations, frontend routes) — each flags, rather than silently smooths over, any place the frozen baseline or an ADR has fallen behind the live implementation.
 
 ---
 

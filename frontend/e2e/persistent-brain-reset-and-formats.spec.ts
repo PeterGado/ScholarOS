@@ -2,9 +2,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, expect } from "@playwright/test";
 
-// Real manual verification for: workspace reset (letting a user re-test onboarding), real PDF
-// upload processing, and conversation deletion from the sidebar. Real backend, real (small) AI
-// provider calls, a fresh throwaway user/database.
+// Verification for: workspace reset (letting a user re-test onboarding), PDF upload
+// processing, and conversation deletion from the sidebar. Real backend, a fresh throwaway
+// user/database. Runs in CI (2026-10-09) against AI_PROVIDER=fake (app.ai.providers.fake) for
+// the knowledge-extraction step - this spec only checks processing status, never extracted
+// content, so a deterministic fake response satisfies it identically to a real one.
 
 const USERNAME = process.env.PLAYWRIGHT_AUTH_USERNAME ?? "manual-verify-user";
 const PASSWORD = process.env.PLAYWRIGHT_AUTH_PASSWORD ?? "ManualVerify-Pass-1";
@@ -19,8 +21,20 @@ test("reset workspace, re-onboard, upload a real PDF, and delete a conversation"
   await page.getByLabel("Password").fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
 
-  // This user already has a workspace from a prior run - go straight to Settings and reset it,
-  // exactly the flow that unblocks "I can't check the new onboarding".
+  // Originally written assuming a workspace already existed from an earlier manual run against
+  // the same long-lived database - not true of this spec's own fresh-per-run database (each
+  // hermetic spec gets one), so onboard once first to create a real workspace to reset (found
+  // while adding this spec to automated CI, where every run starts genuinely fresh).
+  await expect(page).toHaveURL(/\/onboarding$/);
+  await page.getByLabel("Project title").fill("First Onboarding Pass");
+  await page.getByLabel("Topic").fill("Setting up a workspace to reset");
+  await page.getByRole("button", { name: "Next" }).click();
+  await expect(page.getByText("Add your documents (optional)")).toBeVisible();
+  await page.getByRole("button", { name: "Skip and generate" }).click();
+  await expect(page).toHaveURL(/\/chat\/\d+$/, { timeout: 20_000 });
+
+  // Now go to Settings and reset it, exactly the flow that unblocks "I can't check the new
+  // onboarding".
   await expect(page).toHaveURL(/\/chat/);
   await page.getByRole("link", { name: "Settings" }).click();
   await page.getByLabel(/Type RESET to confirm/).fill("RESET");

@@ -13,6 +13,16 @@ name: CI
 # the `e2e` job runs the subset of browser specs that need no live AI provider, each against its
 # own fresh throwaway database. See backend/pyproject.toml for the rule set and the documented
 # type-check baseline, and frontend/playwright.config.ts for which specs are hermetic.
+#
+# 2026-10-09: grew from 2 of 8 specs to 7 of 8 - app.ai.providers.fake (backend-only, no
+# network/API key) lets the five specs that merely need *a* provider response, not a real one,
+# run in CI too. Only persistent-brain-memory.spec.ts remains manual-only now.
+#
+# 2026-10-11: dependency-installation steps (pip/npm/Playwright browser downloads) now retry up
+# to 3 times via nick-fields/retry - these hit an external registry/CDN over the network and can
+# fail on a transient blip unrelated to this repo's own code. Deliberately scoped to installation
+# only, never to the actual lint/type-check/test/e2e steps themselves - those must fail loudly on
+# a real regression, not get silently retried into passing.
 
 on:
   push:
@@ -32,12 +42,30 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          # 3.12, not 3.13 (2026-10-10, dependency-lockfile pass): matches backend/Dockerfile's
+          # python:3.12-slim exactly, so requirements-dev.lock below is tested under the same
+          # interpreter version production actually runs, not a third, untested one.
+          python-version: "3.12"
           cache: pip
-          cache-dependency-path: backend/pyproject.toml
+          cache-dependency-path: backend/requirements-dev.lock
 
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        # Installs from the pinned lockfile (2026-10-10: "no dependency lockfile - what's
+        # installed can silently drift between environments"), not pyproject.toml's loose
+        # constraints directly - regenerate via
+        # `pip-compile --extra=dev --output-file=requirements-dev.lock pyproject.toml` whenever
+        # pyproject.toml's dependencies change. --no-deps on the second install for the same
+        # reason backend/Dockerfile's does: the lockfile already pins every transitive
+        # dependency, so the editable install of this package itself must not let pip re-resolve
+        # them.
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          command: |
+            cd backend
+            pip install --no-cache-dir -r requirements-dev.lock
+            pip install --no-cache-dir --no-deps -e .
 
       - name: Lint
         run: ruff check app tests alembic
@@ -64,7 +92,11 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          command: cd frontend && npm ci
 
       - name: Lint
         run: npm run lint
@@ -83,13 +115,19 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          # 3.12, matching the backend job above and python:3.12-slim in backend/Dockerfile.
+          # Was 3.13, which meant the e2e specs ran the backend under an interpreter nothing
+          # else in the pipeline (or production) uses (2026-11-06 alignment).
+          python-version: "3.12"
           cache: pip
           cache-dependency-path: backend/pyproject.toml
 
       - name: Install backend dependencies
-        working-directory: backend
-        run: pip install -e ".[dev]"
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          command: cd backend && pip install -e ".[dev]"
 
       - uses: actions/setup-node@v4
         with:
@@ -98,12 +136,18 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          command: cd frontend && npm ci
 
       - name: Install Chromium
-        working-directory: frontend
-        run: npx playwright install --with-deps chromium
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          command: cd frontend && npx playwright install --with-deps chromium
 
       # Each spec is run against its own fresh database, storage root, and pre-provisioned user,
       # in its own Playwright invocation - several of these specs assert on onboarding state
@@ -114,9 +158,7 @@ jobs:
       # AUTH_PASSWORD_HASH is generated here rather than committed, matching the repo's own
       # "no credential literals in source or config" rule (backend/README.md documents the same
       # generation step for local manual verification). The password is a throwaway; nothing
-      # here is a real secret. AI_API_KEY is deliberately left unset so the app runs its
-      # UnavailableAIProvider: both hermetic specs are provider-free by design, and the
-      # provider-dependent specs live in the `manual` project instead.
+      # here is a real secret.
       #
       # 2026-10-09: upload-limits.spec.ts sets DISABLE_WORK_ITEM_EXECUTOR=1 for its own backend
       # process, and only its own - it uploads 20+5 documents in quick succession and, by its
@@ -127,31 +169,59 @@ jobs:
       # (confirmed locally, not a flake) as hung/timed-out requests - a failure mode already
       # documented once before in app/main.py's lifespan function (see its get_content_store
       # comment) for a related incident, and never a concern in real (Postgres) production,
-      # which has no single-writer limitation. ui-redesign-and-document-retry.spec.ts needs the
-      # real executor - it asserts on an actual extraction failure - so it deliberately leaves
+      # which has no single-writer limitation. Every other spec here needs the real executor -
+      # several assert on actual extraction/generation outcomes - so they deliberately leave
       # this unset.
+      #
+      # AI_API_KEY is deliberately left unset throughout: upload-limits and
+      # ui-redesign-and-document-retry need no provider at all (UnavailableAIProvider is never
+      # called on either path), and the other five run with AI_PROVIDER=fake
+      # (app.ai.providers.fake, no network/API key) instead of a real provider, closing an
+      # external audit finding that only 2 of 8 specs ran in CI because the rest assumed a real
+      # AI provider was required - none of them actually assert on real AI response content,
+      # only on structural/UI outcomes a deterministic fake response satisfies identically.
+      # chat-reply-failure.spec.ts additionally sets AI_FAKE_PROVIDER_FAIL=1, since it
+      # specifically tests the failure/retry path. persistent-brain-memory.spec.ts stays in the
+      # manual-only project - it depends on memory records seeded by an earlier real
+      # conversation, a setup step with no automated equivalent yet.
       - name: Run hermetic e2e specs
         working-directory: frontend
         env:
           PLAYWRIGHT_START_BACKEND: "1"
           PLAYWRIGHT_API_BASE_URL: http://127.0.0.1:8123
           AUTH_USERNAME: manual-verify-user
+          # Hermetic E2E uses a throwaway SQLite database; one real executor thread
+          # avoids needless worker-vs-worker write contention without disabling processing.
+          WORK_ITEM_WORKER_COUNT: "1"
         run: |
           set -euo pipefail
           AUTH_PASSWORD_HASH="$(python -c 'import bcrypt; print(bcrypt.hashpw(b"ManualVerify-Pass-1", bcrypt.gensalt()).decode())')"
           export AUTH_PASSWORD_HASH
 
-          for spec in upload-limits ui-redesign-and-document-retry; do
+          for spec in upload-limits ui-redesign-and-document-retry chat-reply-failure persistent-brain-chat persistent-brain-documents persistent-brain-reset-and-formats writing-style-and-toast; do
             echo "::group::e2e / $spec (fresh database)"
             export DATABASE_URL="sqlite:///$RUNNER_TEMP/e2e-$spec.db"
             export STORAGE_ROOT="$RUNNER_TEMP/e2e-$spec-storage"
             rm -f "$RUNNER_TEMP/e2e-$spec.db"
             rm -rf "$STORAGE_ROOT"
+
             if [ "$spec" = "upload-limits" ]; then
               export DISABLE_WORK_ITEM_EXECUTOR=1
             else
               unset DISABLE_WORK_ITEM_EXECUTOR
             fi
+
+            if [ "$spec" = "upload-limits" ] || [ "$spec" = "ui-redesign-and-document-retry" ]; then
+              unset AI_PROVIDER AI_FAKE_PROVIDER_FAIL
+            else
+              export AI_PROVIDER=fake
+              if [ "$spec" = "chat-reply-failure" ]; then
+                export AI_FAKE_PROVIDER_FAIL=1
+              else
+                unset AI_FAKE_PROVIDER_FAIL
+              fi
+            fi
+
             npx playwright test --project=hermetic "e2e/$spec.spec.ts"
             echo "::endgroup::"
           done

@@ -1,6 +1,14 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import Enum, ForeignKey, Index, String, Text, UniqueConstraint
+from sqlalchemy import (
+    CheckConstraint,
+    Enum,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
@@ -61,10 +69,18 @@ class KnowledgeChunk(Base):
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
     updated_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
-    # 2026-09-21: real-traffic audit - the hottest missing index found. Every search request and
-    # every chat message (which always searches first) filters chunks by exactly
-    # (agent_id, status) via a join in KnowledgeChunkEmbeddingRepository.list_by_agent_id.
-    __table_args__ = (Index("ix_knowledge_chunks_agent_id_status", "agent_id", "status"),)
+    __table_args__ = (
+        # 2026-09-21: real-traffic audit - the hottest missing index found. Every search request
+        # and every chat message (which always searches first) filters chunks by exactly
+        # (agent_id, status) via a join in KnowledgeChunkEmbeddingRepository.list_by_agent_id.
+        Index("ix_knowledge_chunks_agent_id_status", "agent_id", "status"),
+        # 2026-10-10, production-readiness pass: defense-in-depth only. Chunking
+        # (app.modules.knowledge.domain.chunking, DEFAULT_TARGET_CHUNK_SIZE) targets ~1000
+        # chars per chunk and never intentionally produces anything close to this - 10,000 is
+        # 10x that target, headroom for a rare oversized merged chunk without ever constraining
+        # normal chunking behavior.
+        CheckConstraint("length(content) <= 10000", name="ck_knowledge_chunks_content_length"),
+    )
 
 
 class ChunkEvidenceLink(Base):

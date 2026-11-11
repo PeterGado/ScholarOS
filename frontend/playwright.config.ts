@@ -10,10 +10,25 @@ import { defineConfig, devices } from "@playwright/test";
  * skipped inside CI, they are simply not in the project CI selects.
  */
 
-/** Specs that need no AI provider call, so they can run for real in CI: one exercises the
- * server-driven upload limits, the other drives a corrupt PDF through a genuine extraction
- * failure (which happens before any AI call). Keep this list in sync with each spec's header. */
-const HERMETIC_SPECS = ["**/upload-limits.spec.ts", "**/ui-redesign-and-document-retry.spec.ts"];
+/** Specs that need no *live* AI provider call, so they can run for real in CI: upload-limits
+ * and ui-redesign-and-document-retry need no provider at all (the second drives a genuine
+ * extraction failure, which happens before any AI call); the other five run against
+ * AI_PROVIDER=fake (app.ai.providers.fake, backend-only, no network/API key) instead of a real
+ * provider, since none of them actually assert on real AI response content - only on
+ * structural/UI outcomes a deterministic fake response satisfies just as well. Keep this list
+ * in sync with each spec's header.
+ *
+ * persistent-brain-memory.spec.ts stays manual-only: it depends on memory records seeded by an
+ * earlier real conversation, a setup step this repo has no automated equivalent for yet. */
+const HERMETIC_SPECS = [
+  "**/upload-limits.spec.ts",
+  "**/ui-redesign-and-document-retry.spec.ts",
+  "**/chat-reply-failure.spec.ts",
+  "**/persistent-brain-chat.spec.ts",
+  "**/persistent-brain-documents.spec.ts",
+  "**/persistent-brain-reset-and-formats.spec.ts",
+  "**/writing-style-and-toast.spec.ts",
+];
 
 const frontendServer = {
   command: "npm run dev -- --port 5173 --host 127.0.0.1",

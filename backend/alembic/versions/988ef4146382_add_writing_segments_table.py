@@ -23,6 +23,10 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 
 from alembic import op
+from app.database.migration_helpers import (
+    create_index_if_missing,
+    create_table_if_missing,
+)
 
 # revision identifiers, used by Alembic.
 revision: str = '988ef4146382'
@@ -33,7 +37,7 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.create_table(
+    create_table_if_missing(
         'writing_segments',
         sa.Column('segment_id', sa.Integer(), primary_key=True),
         sa.Column('agent_id', sa.Integer(), sa.ForeignKey('agents.agent_id'), nullable=False),
@@ -43,7 +47,7 @@ def upgrade() -> None:
         sa.Column('updated_at', sa.DateTime(), nullable=True),
         sa.UniqueConstraint('agent_id', 'name', name='uq_writing_segment_agent_name'),
     )
-    op.create_index('ix_writing_segments_agent_id', 'writing_segments', ['agent_id'], unique=False)
+    create_index_if_missing('ix_writing_segments_agent_id', 'writing_segments', ['agent_id'], unique=False)
 
     bind = op.get_bind()
     if bind.dialect.name != "postgresql":
