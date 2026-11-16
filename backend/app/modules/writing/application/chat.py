@@ -26,7 +26,6 @@ from app.modules.writing.domain.context_assembly import (
     ContextWebSource,
     assemble_context,
     build_critique_prompt,
-    build_post_generation_humanizing_prompt,
     build_revision_prompt,
     detect_likely_citations,
     find_unverified_citations,
@@ -623,15 +622,6 @@ class GenerateConversationReplyUseCase:
             )
         else:
             content = draft
-
-        # Second-pass humanizing rewrite: keep the substance, but strip the most obvious AI
-        # writing patterns before persisting the final assistant reply. This is a style-rewrite
-        # layer, not an authenticity check or a proof of human authorship; it just reduces the
-        # strongest detector-visible tell patterns in a low-effort, repeatable way.
-        content = self._require_nonempty(
-            self._text_provider.generate(
-                build_post_generation_humanizing_prompt(content))
-        )
 
         if not assembled.evidence:
             if detect_likely_citations(content):
